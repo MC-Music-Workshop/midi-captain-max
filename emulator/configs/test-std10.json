@@ -1,0 +1,23 @@
+{
+  "device": "std10",
+  "buttons": [
+    {"label": "BTN1", "cc": 20, "color": "red", "mode": "toggle"},
+    {"label": "BTN2", "cc": 21, "color": "green", "mode": "toggle"},
+    {"label": "BTN3", "cc": 22, "color": "blue", "mode": "toggle"},
+    {"label": "BTN4", "cc": 23, "color": "yellow", "mode": "toggle"},
+    {"label": "BTN5", "cc": 24, "color": "cyan", "mode": "toggle"},
+    {"label": "BTN6", "cc": 25, "color": "magenta", "mode": "toggle"},
+    {"label": "BTN7", "cc": 26, "color": "orange", "mode": "toggle"},
+    {"label": "BTN8", "cc": 27, "color": "purple", "mode": "toggle"},
+    {"label": "BTN9", "cc": 28, "color": "white", "mode": "toggle"},
+    {"label": "BTN10", "cc": 29, "color": "red", "mode": "toggle"}
+  ],
+  "encoder": {
+    "cc": 11,
+    "push_cc": 14
+  },
+  "expression": {
+    "exp1_cc": 12,
+    "exp2_cc": 13
+  }
+}

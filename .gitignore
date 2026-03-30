@@ -19,3 +19,9 @@ build/
 
 # Git worktrees
 .worktrees/
+
+# Emulator artifacts
+emulator/fs/
+emulator/rp2040js-circuitpython/
+emulator/*.uf2
+emulator/*.log

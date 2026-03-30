@@ -187,6 +187,23 @@ Send CC to the switch on its CC Number with value 0 or 127 to set button state:
 - **Guitar Rig / Helix Native** — Effect on/off with LED confirmation
 - **Any MIDI-capable host** — Generic CC control with bidirectional sync
 
+## Testing Without Hardware
+
+Test the firmware using the **rp2040js-circuitpython** emulator without needing a physical device:
+
+```bash
+# Setup emulator (one-time)
+./emulator/setup.sh
+
+# Run automated tests
+./emulator/test.sh
+
+# Run interactively
+./emulator/run.sh
+```
+
+See [docs/emulator-setup.md](docs/emulator-setup.md) for complete documentation.
+
 ## Repository Layout
 
 | Path | Purpose |
@@ -194,6 +211,7 @@ Send CC to the switch on its CC Number with value 0 or 127 to set button state:
 | `firmware/dev/` | Active firmware (copy to device) |
 | `config-editor/` | Desktop config editor app (Tauri + Svelte) |
 | `firmware/original_helmut/` | Helmut Keller's original code (reference) |
+| `emulator/` | Emulator scripts for testing without hardware |
 | `docs/` | Hardware specs, design docs |
 | `tools/` | Helper scripts |
 

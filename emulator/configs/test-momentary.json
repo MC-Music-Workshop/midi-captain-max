@@ -1,0 +1,15 @@
+{
+  "device": "std10",
+  "buttons": [
+    {"label": "MOM1", "cc": 20, "color": "red", "mode": "momentary"},
+    {"label": "MOM2", "cc": 21, "color": "green", "mode": "momentary"},
+    {"label": "MOM3", "cc": 22, "color": "blue", "mode": "momentary"},
+    {"label": "MOM4", "cc": 23, "color": "yellow", "mode": "momentary"},
+    {"label": "MOM5", "cc": 24, "color": "cyan", "mode": "momentary"},
+    {"label": "MOM6", "cc": 25, "color": "magenta", "mode": "momentary"},
+    {"label": "MOM7", "cc": 26, "color": "orange", "mode": "momentary"},
+    {"label": "MOM8", "cc": 27, "color": "purple", "mode": "momentary"},
+    {"label": "MOM9", "cc": 28, "color": "white", "mode": "momentary"},
+    {"label": "MOM10", "cc": 29, "color": "red", "mode": "momentary"}
+  ]
+}

@@ -1,0 +1,124 @@
+name: Emulator Tests
+
+# Optional workflow to test firmware in rp2040js-circuitpython emulator
+# This is a separate workflow to keep CI fast (emulator setup takes time)
+
+on:
+  workflow_dispatch:  # Manual trigger only
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday at midnight UTC
+
+jobs:
+  emulator-test:
+    name: Test in Emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install emulator dependencies
+        run: |
+          # Clone and setup rp2040js-circuitpython
+          git clone https://github.com/wokwi/rp2040js-circuitpython.git emulator/rp2040js-circuitpython
+          cd emulator/rp2040js-circuitpython
+          npm ci
+
+      - name: Download CircuitPython firmware
+        run: |
+          # Download CircuitPython 7.3.1 UF2 for Raspberry Pi Pico
+          curl -L -o emulator/circuitpython-7.3.1.uf2 \
+            https://downloads.circuitpython.org/bin/raspberry_pi_pico/en_US/adafruit-circuitpython-raspberry_pi_pico-en_US-7.3.1.uf2
+
+      - name: Prepare firmware filesystem
+        run: |
+          # Copy firmware files to emulator filesystem
+          mkdir -p emulator/fs
+          cp -r firmware/dev/* emulator/fs/
+
+      - name: Run emulator tests
+        id: test
+        run: |
+          cd emulator/rp2040js-circuitpython
+          
+          # Run emulator with 30 second timeout
+          timeout 30 npm start -- \
+            --image=../circuitpython-7.3.1.uf2 \
+            --fs=../fs \
+            > ../test.log 2>&1 || true
+          
+          cd ..
+          
+          # Check test results
+          echo "### Emulator Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          PASSED=0
+          FAILED=0
+          
+          # Test 1: Firmware boots
+          if grep -q "MIDI CAPTAIN CUSTOM FIRMWARE" test.log; then
+            echo "✅ Firmware boot" >> $GITHUB_STEP_SUMMARY
+            PASSED=$((PASSED + 1))
+          else
+            echo "❌ Firmware boot FAILED" >> $GITHUB_STEP_SUMMARY
+            FAILED=$((FAILED + 1))
+          fi
+          
+          # Test 2: Config/device detection
+          if grep -q -E "(STD10|Mini6|Config loaded|Device detected)" test.log; then
+            echo "✅ Config/device detection" >> $GITHUB_STEP_SUMMARY
+            PASSED=$((PASSED + 1))
+          else
+            echo "❌ Config/device detection FAILED" >> $GITHUB_STEP_SUMMARY
+            FAILED=$((FAILED + 1))
+          fi
+          
+          # Test 3: No Python errors
+          if grep -q -E "(Traceback|SyntaxError|ImportError|AttributeError)" test.log; then
+            echo "❌ No Python errors FAILED" >> $GITHUB_STEP_SUMMARY
+            FAILED=$((FAILED + 1))
+          else
+            echo "✅ No Python errors" >> $GITHUB_STEP_SUMMARY
+            PASSED=$((PASSED + 1))
+          fi
+          
+          # Test 4: No crashes
+          if grep -q -E "(PANIC|HARD FAULT|Stack overflow)" test.log; then
+            echo "❌ No crashes FAILED" >> $GITHUB_STEP_SUMMARY
+            FAILED=$((FAILED + 1))
+          else
+            echo "✅ No crashes" >> $GITHUB_STEP_SUMMARY
+            PASSED=$((PASSED + 1))
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Results:** $PASSED passed, $FAILED failed" >> $GITHUB_STEP_SUMMARY
+          
+          # Exit with error if any tests failed
+          if [ $FAILED -gt 0 ]; then
+            exit 1
+          fi
+
+      - name: Upload emulator logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-logs
+          path: emulator/test.log
+          retention-days: 7
+
+      - name: Show log excerpt on failure
+        if: failure()
+        run: |
+          echo "### Emulator Log (last 100 lines)" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          tail -100 emulator/test.log >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

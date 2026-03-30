@@ -286,10 +286,28 @@ Both distribution paths must include the same set of files and write the `VERSIO
 ```
 
 ### Desktop Testing
+
+#### Unit Tests (Fast)
 - **pytest** with CircuitPython hardware mocks in `tests/mocks/`
 - Mocks cover: `board`, `digitalio`, `neopixel`, `displayio`, `busio`, `rotaryio`, `analogio`, `usb_midi`, `terminalio`
 - Tests: `test_button_state.py`, `test_config.py`, `test_colors.py`, `test_neopixel_mock.py`, `test_switch_mock.py`, `test_usb_drive_name.py`
 - Run: `pytest` from project root
+- Tests: `test_button_state.py`, `test_config.py`, `test_colors.py`, `test_neopixel_mock.py`, `test_switch_mock.py`
+- Run: `python3 -m pytest` from project root
+
+#### Emulator Tests (Integration)
+- **rp2040js-circuitpython** emulator runs actual CircuitPython firmware
+- Tests full firmware boot, config loading, device detection
+- Limitations: No visual NeoPixel/display rendering (verify via console logs)
+- Setup: `./emulator/setup.sh` (one-time)
+- Run: `./emulator/test.sh` (automated) or `./emulator/run.sh` (interactive)
+- Docs: [docs/emulator-setup.md](docs/emulator-setup.md)
+- CI: `.github/workflows/emulator-test.yml` (manual/weekly)
+
+**Testing Levels**:
+1. **Unit tests** (fast) — Test individual functions/classes with mocks
+2. **Emulator tests** (medium) — Test full firmware integration without hardware
+3. **Hardware tests** (final) — Deploy to device, verify LEDs/display/MIDI
 
 ### Rust Tests (Config Editor)
 Unit tests for the Tauri backend live in `config-editor/src-tauri/src/` (in `config.rs` and `device.rs`).
@@ -380,6 +398,7 @@ Track features, bugs, and future work via [GitHub Issues](https://github.com/MC-
 - [x] Per-button flash duration (PC types)
 - [x] Custom USB drive naming (`usb_drive_name` in config + GUI field)
 - [x] Dev vs Performance mode (`dev_mode` in config + GUI checkbox)
+- [x] Emulator testing setup (rp2040js-circuitpython)
 
 ### Future
 - [ ] CI workflow DRY: `Setup Node.js` + `Install frontend dependencies` duplicated between `build-config-editor-macos` and `build-config-editor-windows` — could be a composite action
@@ -659,8 +678,13 @@ if enable_usb_drive:
 | `tools/deploy.sh` | Dev deploy to device (rsync, VERSION, device detection) |
 | `docs/hardware-reference.md` | Verified hardware specs, auto-detection docs |
 | `docs/screen-cheatsheet.md` | Serial console (screen) usage guide |
+| `docs/emulator-setup.md` | Emulator setup guide (rp2040js-circuitpython) |
 | `docs/plans/2026-01-23-custom-firmware-design.md` | Full design document |
 | `.github/workflows/ci.yml` | CI: lint, syntax check (CP 7.x guards), build firmware zip |
+| `emulator/setup.sh` | Download and configure emulator (one-time) |
+| `emulator/run.sh` | Run firmware interactively in emulator |
+| `emulator/test.sh` | Automated emulator tests |
+| `.github/workflows/emulator-test.yml` | Emulator integration tests (manual/weekly) |
 | `.github/workflows/release.yml` | Create GitHub Release on version tag |
 | `config-editor/src/routes/+page.svelte` | App shell: device selector, save/reload/reset |
 | `config-editor/src/lib/formStore.ts` | Form state, undo/redo, `updateField`, `normalizeConfig`, `loadConfig` |

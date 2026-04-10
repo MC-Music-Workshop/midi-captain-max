@@ -6,8 +6,8 @@
     {"label": "BOOM", "cc": 20, "color": "green"},
     {"label": "MUTE", "cc": 21, "color": "blue"},
     {"label": "ONCE", "cc": 22, "color": "yellow"},
-    {"label": "RECORD", "cc": 23, "color": "red"},
-    {"label": "PLAY/STOP", "cc": 24, "color": "cyan"},
-    {"label": "DIRECTION", "cc": 25, "color": "white"}
+    {"label": "REC", "cc": 23, "color": "red"},
+    {"label": "PLAY", "cc": 24, "color": "cyan"},
+    {"label": "DIR", "cc": 25, "color": "white"}
   ]
 }

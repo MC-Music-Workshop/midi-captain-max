@@ -1,0 +1,375 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/mcascone/midi-captain-max/config.schema.json",
+  "title": "MIDI Captain Config",
+  "description": "Configuration for Paint Audio MIDI Captain custom firmware. This schema is the single source of truth for the config format — TypeScript types are generated from it, Rust structs are validated against it, and Python firmware uses it as reference.",
+  "type": "object",
+  "required": ["buttons"],
+  "properties": {
+    "device": {
+      "type": "string",
+      "enum": ["std10", "mini6", "nano4", "duo2", "one1"],
+      "default": "std10",
+      "description": "Device model. Determines button count and feature availability (encoder/expression are STD10-only)."
+    },
+    "global_channel": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 15,
+      "default": 0,
+      "description": "Default MIDI channel for all components. Stored as 0-15, displayed as 1-16 in UI."
+    },
+    "usb_drive_name": {
+      "type": "string",
+      "maxLength": 11,
+      "pattern": "^[A-Z0-9_]+$",
+      "default": "MIDICAPTAIN",
+      "description": "USB drive volume label. FAT32 compatible: uppercase alphanumeric + underscore, max 11 chars."
+    },
+    "dev_mode": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, USB drive mounts on every boot. When false (default), requires holding Switch 1 during boot."
+    },
+    "buttons": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/ButtonConfig" },
+      "description": "Button configurations. Array length must match device type: std10=10, mini6=6, nano4=4, duo2=2, one1=1."
+    },
+    "encoder": {
+      "$ref": "#/definitions/EncoderConfig",
+      "description": "Rotary encoder configuration. Only supported on STD10."
+    },
+    "expression": {
+      "$ref": "#/definitions/ExpressionPedals",
+      "description": "Expression pedal configurations. Only supported on STD10."
+    },
+    "display": {
+      "$ref": "#/definitions/DisplayConfig",
+      "description": "Display and text rendering settings."
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "ButtonColor": {
+      "type": "string",
+      "enum": ["red", "green", "blue", "yellow", "cyan", "magenta", "orange", "purple", "white"]
+    },
+    "ButtonMode": {
+      "type": "string",
+      "enum": ["toggle", "momentary"],
+      "default": "toggle"
+    },
+    "OffMode": {
+      "type": "string",
+      "enum": ["dim", "off"],
+      "default": "dim",
+      "description": "LED behavior when button is off. 'dim' = reduced brightness, 'off' = extinguished."
+    },
+    "MessageType": {
+      "type": "string",
+      "enum": ["cc", "note", "pc", "pc_inc", "pc_dec"],
+      "default": "cc"
+    },
+    "TextSize": {
+      "type": "string",
+      "enum": ["small", "medium", "large"],
+      "default": "medium"
+    },
+    "Polarity": {
+      "type": "string",
+      "enum": ["normal", "inverted"],
+      "default": "normal",
+      "description": "'normal' = forward sweep 0→127, 'inverted' = reverse 127→0."
+    },
+    "MidiByte": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 127,
+      "description": "Standard MIDI byte value (0-127)."
+    },
+    "MidiChannel": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 15,
+      "description": "MIDI channel. Stored as 0-15, displayed as 1-16 in UI."
+    },
+    "StateOverride": {
+      "type": "object",
+      "description": "Per-state overrides applied when cycling through keytimes. All fields optional — only specified fields override the base button config.",
+      "properties": {
+        "cc":          { "$ref": "#/definitions/MidiByte" },
+        "cc_on":       { "$ref": "#/definitions/MidiByte" },
+        "cc_off":      { "$ref": "#/definitions/MidiByte" },
+        "note":        { "$ref": "#/definitions/MidiByte" },
+        "velocity_on": { "$ref": "#/definitions/MidiByte" },
+        "velocity_off": { "$ref": "#/definitions/MidiByte" },
+        "program":     { "$ref": "#/definitions/MidiByte" },
+        "pc_step": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 127
+        },
+        "color":       { "$ref": "#/definitions/ButtonColor" },
+        "label": {
+          "type": "string",
+          "maxLength": 6,
+          "pattern": "^[\\w \\-]+$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ButtonConfig": {
+      "type": "object",
+      "required": ["label", "color"],
+      "properties": {
+        "label": {
+          "type": "string",
+          "maxLength": 6,
+          "pattern": "^[\\w \\-]+$",
+          "description": "Display label. Max 6 chars, alphanumeric + space + hyphen."
+        },
+        "color": {
+          "$ref": "#/definitions/ButtonColor",
+          "description": "LED color for this button."
+        },
+        "type": {
+          "$ref": "#/definitions/MessageType",
+          "description": "MIDI message type. Determines which fields apply. Default: 'cc'."
+        },
+        "mode": {
+          "$ref": "#/definitions/ButtonMode",
+          "description": "Button behavior. 'toggle' = latching on/off, 'momentary' = on while held. Default: 'toggle'."
+        },
+        "off_mode": {
+          "$ref": "#/definitions/OffMode",
+          "description": "LED behavior when button is off. Default: 'dim'."
+        },
+        "channel": {
+          "$ref": "#/definitions/MidiChannel",
+          "description": "Per-button MIDI channel override. Inherits global_channel if omitted."
+        },
+        "cc": {
+          "$ref": "#/definitions/MidiByte",
+          "description": "CC number. Used when type='cc'. Default: 20 + button index."
+        },
+        "cc_on": {
+          "$ref": "#/definitions/MidiByte",
+          "description": "CC value sent when button is pressed (ON). Default: 127."
+        },
+        "cc_off": {
+          "$ref": "#/definitions/MidiByte",
+          "description": "CC value sent when button is released (OFF). Default: 0."
+        },
+        "note": {
+          "$ref": "#/definitions/MidiByte",
+          "description": "MIDI note number. Used when type='note'. Default: 60 (Middle C)."
+        },
+        "velocity_on": {
+          "$ref": "#/definitions/MidiByte",
+          "description": "Note velocity when pressed. Used when type='note'. Default: 127."
+        },
+        "velocity_off": {
+          "$ref": "#/definitions/MidiByte",
+          "description": "Note velocity when released (Note Off). Used when type='note'. Default: 0."
+        },
+        "program": {
+          "$ref": "#/definitions/MidiByte",
+          "description": "Program number. Used when type='pc'. Default: 0."
+        },
+        "pc_step": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 127,
+          "default": 1,
+          "description": "Step size for program change increment/decrement. Used when type='pc_inc' or 'pc_dec'."
+        },
+        "flash_ms": {
+          "type": "integer",
+          "minimum": 50,
+          "maximum": 5000,
+          "default": 200,
+          "description": "LED flash duration in milliseconds for PC feedback."
+        },
+        "keytimes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 99,
+          "default": 1,
+          "description": "Number of states to cycle through on press. 1 = no cycling."
+        },
+        "states": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/StateOverride" },
+          "description": "Per-state overrides. Array length should match keytimes value."
+        }
+      },
+      "additionalProperties": false
+    },
+    "EncoderPush": {
+      "type": "object",
+      "required": ["enabled", "cc", "label"],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable encoder push button."
+        },
+        "cc": {
+          "$ref": "#/definitions/MidiByte",
+          "default": 14,
+          "description": "CC number for push button."
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 8,
+          "default": "PUSH",
+          "description": "Display label. Max 8 chars."
+        },
+        "mode": {
+          "$ref": "#/definitions/ButtonMode",
+          "description": "Button behavior. Default: 'momentary'."
+        },
+        "channel": {
+          "$ref": "#/definitions/MidiChannel",
+          "description": "Per-push MIDI channel override. Inherits encoder channel or global_channel if omitted."
+        },
+        "cc_on": {
+          "$ref": "#/definitions/MidiByte",
+          "description": "CC value when button ON. Default: 127."
+        },
+        "cc_off": {
+          "$ref": "#/definitions/MidiByte",
+          "description": "CC value when button OFF. Default: 0."
+        }
+      },
+      "additionalProperties": false
+    },
+    "EncoderConfig": {
+      "type": "object",
+      "required": ["enabled", "cc", "label"],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable rotary encoder."
+        },
+        "cc": {
+          "$ref": "#/definitions/MidiByte",
+          "default": 11,
+          "description": "CC number sent on rotation."
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 8,
+          "default": "ENC",
+          "description": "Display label. Max 8 chars."
+        },
+        "min": {
+          "$ref": "#/definitions/MidiByte",
+          "default": 0,
+          "description": "Minimum encoder value."
+        },
+        "max": {
+          "$ref": "#/definitions/MidiByte",
+          "default": 127,
+          "description": "Maximum encoder value. Must be >= min."
+        },
+        "initial": {
+          "$ref": "#/definitions/MidiByte",
+          "default": 64,
+          "description": "Starting position. Must be between min and max."
+        },
+        "steps": {
+          "type": ["integer", "null"],
+          "default": null,
+          "description": "Number of discrete steps. null = continuous rotation."
+        },
+        "channel": {
+          "$ref": "#/definitions/MidiChannel",
+          "description": "Per-encoder MIDI channel override. Inherits global_channel if omitted."
+        },
+        "push": {
+          "$ref": "#/definitions/EncoderPush",
+          "description": "Encoder push button configuration."
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExpressionConfig": {
+      "type": "object",
+      "required": ["enabled", "cc", "label"],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable this expression pedal."
+        },
+        "cc": {
+          "$ref": "#/definitions/MidiByte",
+          "description": "CC number sent on pedal movement."
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 8,
+          "description": "Display label. Max 8 chars."
+        },
+        "min": {
+          "$ref": "#/definitions/MidiByte",
+          "default": 0,
+          "description": "Minimum output value."
+        },
+        "max": {
+          "$ref": "#/definitions/MidiByte",
+          "default": 127,
+          "description": "Maximum output value. Must be >= min."
+        },
+        "polarity": {
+          "$ref": "#/definitions/Polarity",
+          "description": "Sweep direction. Default: 'normal'."
+        },
+        "threshold": {
+          "$ref": "#/definitions/MidiByte",
+          "default": 2,
+          "description": "Deadzone threshold. Only report value changes >= this amount."
+        },
+        "channel": {
+          "$ref": "#/definitions/MidiChannel",
+          "description": "Per-pedal MIDI channel override. Inherits global_channel if omitted."
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExpressionPedals": {
+      "type": "object",
+      "required": ["exp1", "exp2"],
+      "properties": {
+        "exp1": {
+          "$ref": "#/definitions/ExpressionConfig"
+        },
+        "exp2": {
+          "$ref": "#/definitions/ExpressionConfig"
+        }
+      },
+      "additionalProperties": false
+    },
+    "DisplayConfig": {
+      "type": "object",
+      "properties": {
+        "button_text_size": {
+          "$ref": "#/definitions/TextSize",
+          "description": "Button label text size."
+        },
+        "status_text_size": {
+          "$ref": "#/definitions/TextSize",
+          "description": "Status display text size."
+        },
+        "expression_text_size": {
+          "$ref": "#/definitions/TextSize",
+          "description": "Expression pedal text size."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

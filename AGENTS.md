@@ -629,13 +629,18 @@ Save button → saveToDevice()
 - `"perUser"` (default): installs to `AppData` — deep, hard to find
 - `"both"`: prompts user to choose per-machine (Program Files) or per-user, defaulting to Program Files
 
-### Critical: Rust ↔ TypeScript Type Sync
+### Critical: Schema-Driven Config Types
 
-**Serde silently drops unknown fields** — if a field exists in TypeScript but not in the Rust struct, it is deserialized away and the re-serialized output omits it. No error, no warning. This is how all multi-type button fields (`type`, `note`, `velocity_on`, `velocity_off`, `program`, `pc_step`, `keytimes`, `states`), `display`, `usb_drive_name`, and `dev_mode` were silently stripped on save in earlier versions.
+**Single source of truth**: `config.schema.json` (JSON Schema draft-07) at the repo root defines every config field, type, constraint, and default. When adding or changing a config field:
 
-**Rule**: whenever you add a field to `types.ts`, add the matching field to the Rust `ButtonConfig`/`MidiCaptainConfig` struct in `config.rs` with `#[serde(skip_serializing_if = "Option::is_none")]`.
+1. **Edit `config.schema.json`** — this is the only place where the config format is defined
+2. **Regenerate TypeScript types**: `cd config-editor && npm run generate:types` — produces `src/lib/types.generated.ts`
+3. **Update the Rust struct** in `config-editor/src-tauri/src/config.rs` — add the matching field with `#[serde(skip_serializing_if = "Option::is_none")]`
+4. **Update Python firmware** in `firmware/dev/core/config.py` if the field is used at runtime
 
-**Detection**: add a round-trip test in `config.rs` that parses JSON containing the field and asserts the field survives re-serialization. See existing `test_roundtrip_*` tests.
+**CI validates** that all `firmware/dev/config*.json` files pass the schema, and that `types.generated.ts` is up to date.
+
+**Serde still silently drops unknown fields** — if a field exists in TypeScript but not in the Rust struct, it is deserialized away and the re-serialized output omits it. Round-trip tests in `config.rs` catch this. The schema is the reference the Rust structs are held against.
 
 ### Config Normalization
 
@@ -659,13 +664,14 @@ Save button → saveToDevice()
 
 ### Validation Notes
 
-Client-side validation (`validation.ts`) must match server-side Rust validation (`config.rs`). Known gaps that were fixed:
-- Button/encoder/expression **channel** fields (0-15): now validated in both
-- **Encoder push** button: was entirely unvalidated in TypeScript
-- **Expression pedal min/max range**: was missing in TypeScript
-- **Encoder initial** value: must be within min/max range
-- **Button label max**: 6 chars in UI/TypeScript, was incorrectly 8 in Rust (now fixed to 6)
-- **Encoder/expression labels**: max 8 chars (Rust), not validated in TypeScript (acceptable — UI has maxlength inputs)
+`config.schema.json` is the canonical reference for all constraints. Client-side validation (`validation.ts`) and server-side Rust validation (`config.rs`) should both match the schema. Key constraints:
+- **Button labels**: max 6 chars, pattern `[\w \-]+`
+- **Encoder/expression labels**: max 8 chars
+- **Channels**: 0-15 (displayed 1-16)
+- **MIDI bytes** (cc, note, program, velocity, etc.): 0-127
+- **pc_step**: 1-127
+- **keytimes**: 1-99
+- **flash_ms**: 50-5000
 
 ### `mode` vs `off_mode` Per Button Type
 
@@ -677,44 +683,7 @@ From firmware `code.py`:
 
 ## Config JSON Schema
 
-Full button config fields:
-```json
-{
-  "label": "string (max 6 chars)",
-  "color": "red|green|blue|yellow|cyan|magenta|orange|purple|white",
-  "type": "cc|note|pc|pc_inc|pc_dec",
-  "mode": "toggle|momentary",
-  "off_mode": "dim|off",
-  "channel": 0,
-  "cc": 0,
-  "cc_on": 127,
-  "cc_off": 0,
-  "note": 60,
-  "velocity_on": 127,
-  "velocity_off": 0,
-  "program": 0,
-  "pc_step": 1,
-  "flash_ms": 200,
-  "keytimes": 3,
-  "states": [
-    { "cc": 1, "cc_on": 127, "color": "red", "label": "ONE" }
-  ]
-}
-```
-
-Top-level config fields:
-```json
-{
-  "device": "std10|mini6|nano4|duo2|one1",
-  "global_channel": 0,
-  "usb_drive_name": "MIDICAPTAIN",
-  "dev_mode": false,
-  "buttons": [...],
-  "encoder": { "enabled": true, "cc": 11, "label": "ENC", "min": 0, "max": 127, "initial": 64, "steps": null, "channel": 0, "push": { "enabled": true, "cc": 14, "label": "PUSH", "mode": "toggle|momentary", "cc_on": 127, "cc_off": 0, "channel": 0 } },
-  "expression": { "exp1": { "enabled": true, "cc": 12, "label": "EXP1", "min": 0, "max": 127, "polarity": "normal|inverted", "threshold": 2, "channel": 0 }, "exp2": {...} },
-  "display": { "button_text_size": "small|medium|large", "status_text_size": "small|medium|large", "expression_text_size": "small|medium|large" }
-}
-```
+The config format is fully defined in [`config.schema.json`](config.schema.json) (JSON Schema draft-07). This is the single source of truth — see "Schema-Driven Config Types" above for the workflow when adding fields.
 
 **`usb_drive_name`** — label applied to the FAT32 volume when USB is enabled. Defaults to `"MIDICAPTAIN"`. Configurable in the GUI "Device Settings" section. Validation rules (enforced by `validate_usb_drive_name()` in `core/config.py`): max 11 chars, uppercase alphanumeric + underscore only, auto-uppercased, special chars stripped, empty/all-invalid falls back to `"MIDICAPTAIN"`.
 

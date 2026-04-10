@@ -14,8 +14,8 @@
     {"label": "PATCH3", "type": "pc",     "program": 2,  "color": "magenta"},
     {"label": "PATCH4", "type": "pc",     "program": 3,  "color": "white"},
     {"label": "PATCH5", "type": "pc",     "program": 4,  "color": "orange"},
-    {"label": "PC+",    "type": "pc_inc", "pc_step": 1,  "color": "orange"},
-    {"label": "PC-",    "type": "pc_dec", "pc_step": 1,  "color": "purple"}
+    {"label": "PC UP",  "type": "pc_inc", "pc_step": 1,  "color": "orange"},
+    {"label": "PC DN",  "type": "pc_dec", "pc_step": 1,  "color": "purple"}
   ],
   "encoder": {
     "enabled": true,

@@ -7,5 +7,8 @@ ruff>=0.14.0
 # Testing with hardware mocks
 pytest>=8.0.0
 
+# JSON Schema validation for config tests
+jsonschema>=4.0.0
+
 # Optional: Adafruit Blinka for more realistic hardware simulation
 # adafruit-blinka>=8.0.0

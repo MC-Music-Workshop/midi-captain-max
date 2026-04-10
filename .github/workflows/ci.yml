@@ -98,15 +98,6 @@ jobs:
           cache: npm
           cache-dependency-path: config-editor/package-lock.json
 
-      - name: Validate config files against schema
-        run: |
-          npm install -g ajv-cli@5
-          echo "Validating firmware config files..."
-          for f in firmware/dev/config*.json; do
-            echo "  $f"
-            ajv validate -s config.schema.json -d "$f"
-          done
-
       - name: Check generated types are up to date
         run: |
           cd config-editor

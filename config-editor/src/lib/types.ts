@@ -1,9 +1,15 @@
 // Config types — generated from config.schema.json
 // Re-exported here for backwards compatibility. Run `npm run generate:types` to regenerate.
-export type {
-  MIDICaptainConfig as MidiCaptainConfig,
+import type {
+  MIDICaptainConfig,
   ButtonConfig,
   ButtonColor,
+  ExpressionConfig,
+} from './types.generated';
+
+export type { MIDICaptainConfig as MidiCaptainConfig };
+export type { ButtonConfig, ButtonColor };
+export type {
   StateOverride,
   EncoderConfig,
   EncoderPush,
@@ -12,11 +18,12 @@ export type {
   DisplayConfig,
 } from './types.generated';
 
-export type ButtonMode = 'toggle' | 'momentary';
-export type OffMode = 'dim' | 'off';
-export type MessageType = 'cc' | 'note' | 'pc' | 'pc_inc' | 'pc_dec';
-export type Polarity = 'normal' | 'inverted';
-export type DeviceType = 'std10' | 'mini6' | 'nano4' | 'duo2' | 'one1';
+// Derived from generated types — no manual sync needed
+export type ButtonMode = NonNullable<ButtonConfig['mode']>;
+export type OffMode = NonNullable<ButtonConfig['off_mode']>;
+export type MessageType = NonNullable<ButtonConfig['type']>;
+export type Polarity = NonNullable<ExpressionConfig['polarity']>;
+export type DeviceType = NonNullable<MIDICaptainConfig['device']>;
 
 export interface DetectedDevice {
   name: string;
@@ -31,7 +38,7 @@ export interface ConfigError {
 }
 
 // Color mapping for UI
-export const BUTTON_COLORS: Record<import('./types.generated').ButtonColor, string> = {
+export const BUTTON_COLORS: Record<ButtonColor, string> = {
   red: '#ff0000',
   green: '#00ff00',
   blue: '#0000ff',

@@ -594,14 +594,16 @@ Save button → saveToDevice()
 | `config-editor/src/routes/+page.svelte` | App shell: device selector, save/reload/reset, ⌘S shortcut |
 | `config-editor/src/lib/formStore.ts` | Form state, undo/redo history (50 items), `updateField`, `normalizeConfig`, `loadConfig` |
 | `config-editor/src/lib/stores.ts` | UI state: devices, selectedDevice, hasUnsavedChanges, isLoading |
-| `config-editor/src/lib/types.ts` | TypeScript interfaces — must stay in sync with Rust structs |
+| `config.schema.json` | JSON Schema (draft-07) — single source of truth for the config format |
+| `config-editor/src/lib/types.generated.ts` | Auto-generated TypeScript types from `config.schema.json` (run `npm run generate:types`) |
+| `config-editor/src/lib/types.ts` | Re-exports generated types + UI-only types (`DetectedDevice`, `ConfigError`, `BUTTON_COLORS`) |
 | `config-editor/src/lib/validation.ts` | Client-side validators; `validateConfig()` called before every save |
 | `config-editor/src/lib/api.ts` | Tauri `invoke()` wrappers for all IPC calls |
 | `config-editor/src/lib/components/ConfigForm.svelte` | Toolbar (Undo/Redo/View JSON/Save), keyboard shortcuts |
 | `config-editor/src/lib/components/ButtonRow.svelte` | Per-button fields; uses `onUpdate` callback prop |
 | `config-editor/src/lib/components/ButtonsSection.svelte` | Iterates buttons, wires `handleButtonUpdate → updateField` |
 | `config-editor/src/lib/components/DisplaySection.svelte` | Display text size settings |
-| `config-editor/src-tauri/src/config.rs` | Rust config structs + validation; must mirror `types.ts` |
+| `config-editor/src-tauri/src/config.rs` | Rust config structs + validation; must mirror `config.schema.json` |
 | `config-editor/src-tauri/src/commands.rs` | Tauri commands: read/write/validate config, restart device, path security |
 | `config-editor/src-tauri/src/device.rs` | USB device detection and watcher (cross-platform) |
 
@@ -830,11 +832,13 @@ if enable_usb_drive:
 | `.github/workflows/release.yml` | Create GitHub Release on version tag |
 | `config-editor/src/routes/+page.svelte` | App shell: device selector, save/reload/reset |
 | `config-editor/src/lib/formStore.ts` | Form state, undo/redo, `updateField`, `normalizeConfig`, `loadConfig` |
-| `config-editor/src/lib/types.ts` | TypeScript config interfaces — must stay in sync with Rust structs |
+| `config.schema.json` | JSON Schema (draft-07) — single source of truth for config format |
+| `config-editor/src/lib/types.generated.ts` | Auto-generated TypeScript types from schema (`npm run generate:types`) |
+| `config-editor/src/lib/types.ts` | Re-exports generated types + UI-only types (`DetectedDevice`, `ConfigError`, `BUTTON_COLORS`) |
 | `config-editor/src/lib/validation.ts` | Client-side validation; must mirror Rust validation in `config.rs` |
 | `config-editor/src/lib/components/ButtonRow.svelte` | Per-button form row; `onUpdate` callback prop |
 | `config-editor/src/lib/components/DeviceSection.svelte` | Device type, global channel, USB drive name, and dev mode fields |
-| `config-editor/src-tauri/src/config.rs` | Rust config structs + validation + round-trip tests |
+| `config-editor/src-tauri/src/config.rs` | Rust config structs + validation + round-trip tests; must mirror `config.schema.json` |
 | `config-editor/src-tauri/src/commands.rs` | Tauri IPC commands: read/write/validate, path security |
 | `config-editor/src-tauri/src/device.rs` | USB device detection and hot-plug watcher |
 
@@ -869,6 +873,7 @@ GitHub's "Rebase and merge" UI option **rewrites commit SHAs** even when a fast-
 - **CI triggers**: branch pushes + tag pushes (`v*`). Tags needed for clean version injection.
 - **Release triggers**: tag pushes only (`v*`). Creates draft releases.
 - **Artifact flow**: CI uploads (`actions/upload-artifact@v7`), release downloads (`actions/download-artifact@v7`). These are different actions — don't confuse them (easy mistake).
+- **Config validation triggers**: pushes/PRs touching `config.schema.json`, `firmware/dev/config*.json`, or `types.generated.ts`. Validates configs against schema and checks generated types are fresh.
 - **Firmware VERSION patching**: Release workflow patches `/VERSION` inside the firmware zip with the clean tag, since the CI-built VERSION contains a `git describe` string.
 - **Linux CI deps**: `libudev-dev` required by the `serialport` crate. Cached via `awalsh128/cache-apt-pkgs-action`.
 

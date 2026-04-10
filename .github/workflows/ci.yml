@@ -92,6 +92,34 @@ jobs:
         run: |
           python -m pytest tests/ -v --tb=short
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          cache: npm
+          cache-dependency-path: config-editor/package-lock.json
+
+      - name: Validate config files against schema
+        run: |
+          npm install -g ajv-cli@5
+          echo "Validating firmware config files..."
+          for f in firmware/dev/config*.json; do
+            echo "  $f"
+            ajv validate -s config.schema.json -d "$f"
+          done
+
+      - name: Check generated types are up to date
+        run: |
+          cd config-editor
+          npm ci
+          npm run generate:types
+          if ! git diff --quiet src/lib/types.generated.ts; then
+            echo "ERROR: types.generated.ts is out of date with config.schema.json"
+            echo "Run 'cd config-editor && npm run generate:types' and commit the result."
+            git diff src/lib/types.generated.ts
+            exit 1
+          fi
+          echo "types.generated.ts is up to date."
+
   test-config-editor-rust:
     name: Test Config Editor (Rust)
     needs: lint

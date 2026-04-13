@@ -54,7 +54,7 @@
       <input 
         type="checkbox" 
         checked={pedal.enabled}
-        on:change={handleCheckbox}
+        onchange={handleCheckbox}
       />
       <span>{name}</span>
     </label>
@@ -69,7 +69,7 @@
             type="text" 
             value={pedal.label}
             maxlength="6"
-            on:blur={(e) => onUpdate('label', (e.target as HTMLInputElement).value)}
+            onblur={(e) => onUpdate('label', (e.target as HTMLInputElement).value)}
           />
         </label>
 
@@ -82,7 +82,7 @@
             max="16"
             placeholder={effectiveChannel.toString()}
             title={pedal.channel !== undefined ? `MIDI Ch ${effectiveChannel}` : `Using global: ${effectiveChannel}`}
-            on:blur={handleChannelChange}
+            onblur={handleChannelChange}
           />
         </label>
 
@@ -93,7 +93,7 @@
             value={pedal.cc}
             min="0"
             max="127"
-            on:blur={(e) => handleNumberInput('cc', e)}
+            onblur={(e) => handleNumberInput('cc', e)}
           />
         </label>
         
@@ -101,7 +101,7 @@
           <span class="field-label">Polarity:</span>
           <select 
             value={pedal.polarity || 'normal'}
-            on:change={(e) => handleSelect('polarity', e)}
+            onchange={(e) => handleSelect('polarity', e)}
           >
             <option value="normal">Normal</option>
             <option value="inverted">Inverted</option>
@@ -118,7 +118,7 @@
             min="0"
             max="127"
             placeholder="0"
-            on:blur={(e) => handleNumberInput('min', e)}
+            onblur={(e) => handleNumberInput('min', e)}
           />
         </label>
         
@@ -130,7 +130,7 @@
             min="0"
             max="127"
             placeholder="127"
-            on:blur={(e) => handleNumberInput('max', e)}
+            onblur={(e) => handleNumberInput('max', e)}
           />
         </label>
         
@@ -142,7 +142,7 @@
             min="0"
             max="127"
             placeholder="5"
-            on:blur={(e) => handleNumberInput('threshold', e)}
+            onblur={(e) => handleNumberInput('threshold', e)}
           />
         </label>
       </div>

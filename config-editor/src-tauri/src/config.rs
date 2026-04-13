@@ -640,6 +640,122 @@ mod tests {
         assert_eq!(config2.dev_mode, Some(true));
     }
 
+    /// Round-trip every shipped firmware config file: parse → serialize → parse,
+    /// asserting that no fields present in the original JSON are dropped during
+    /// the trip through MidiCaptainConfig. This catches the "Rust struct missing
+    /// a field" bug for every config file at once, instead of needing a new
+    /// per-feature test for each addition.
+    #[test]
+    fn test_roundtrip_all_shipped_configs() {
+        use std::fs;
+        use std::path::PathBuf;
+
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let firmware_dev = PathBuf::from(manifest_dir)
+            .join("..")
+            .join("..")
+            .join("firmware")
+            .join("dev");
+
+        let entries = fs::read_dir(&firmware_dev)
+            .expect("firmware/dev not found");
+
+        let mut checked = 0;
+        for entry in entries {
+            let path = entry.unwrap().path();
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+            if !name.starts_with("config") || !name.ends_with(".json") {
+                continue;
+            }
+
+            let source = fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read {}: {}", name, e));
+
+            let original: serde_json::Value = serde_json::from_str(&source)
+                .unwrap_or_else(|e| panic!("parse {} as Value: {}", name, e));
+
+            let typed: MidiCaptainConfig = serde_json::from_str(&source)
+                .unwrap_or_else(|e| panic!("parse {} as MidiCaptainConfig: {}", name, e));
+
+            let reserialized = serde_json::to_value(&typed)
+                .unwrap_or_else(|e| panic!("serialize {}: {}", name, e));
+
+            assert_no_keys_dropped(&original, &reserialized, &name, "");
+            checked += 1;
+        }
+        assert!(checked > 0, "expected to check at least one config file");
+    }
+
+    /// Fields that are intentionally stripped on serialize when they match
+    /// their default value. (key_name, default_value_when_dropped)
+    const ALLOWED_DEFAULT_DROPS: &[(&str, &str)] = &[
+        ("type", "cc"),
+        ("off_mode", "dim"),
+    ];
+
+    fn is_allowed_default_drop(key: &str, value: &serde_json::Value) -> bool {
+        ALLOWED_DEFAULT_DROPS
+            .iter()
+            .any(|(k, v)| *k == key && value.as_str() == Some(*v))
+    }
+
+    /// Recursively assert every key in `original` exists in `reserialized` with
+    /// an equal value. Extra keys in `reserialized` are tolerated (Rust may emit
+    /// fields the JSON didn't have, e.g., from defaults). Known default-value
+    /// drops (see ALLOWED_DEFAULT_DROPS) are also tolerated.
+    fn assert_no_keys_dropped(
+        original: &serde_json::Value,
+        reserialized: &serde_json::Value,
+        file: &str,
+        path: &str,
+    ) {
+        match original {
+            serde_json::Value::Object(orig_map) => {
+                let reser_map = reserialized.as_object().unwrap_or_else(|| {
+                    panic!("{}{}: expected object, got {:?}", file, path, reserialized)
+                });
+                for (k, v) in orig_map {
+                    let child_path = format!("{}.{}", path, k);
+                    let reser_v = match reser_map.get(k) {
+                        Some(v) => v,
+                        None => {
+                            if is_allowed_default_drop(k, v) {
+                                continue;
+                            }
+                            panic!(
+                                "{}{}: field '{}' (value: {}) was silently dropped during round-trip — Rust struct likely missing this field",
+                                file, path, k, v
+                            );
+                        }
+                    };
+                    assert_no_keys_dropped(v, reser_v, file, &child_path);
+                }
+            }
+            serde_json::Value::Array(orig_arr) => {
+                let reser_arr = reserialized.as_array().unwrap_or_else(|| {
+                    panic!("{}{}: expected array, got {:?}", file, path, reserialized)
+                });
+                assert_eq!(
+                    orig_arr.len(),
+                    reser_arr.len(),
+                    "{}{}: array length changed",
+                    file, path
+                );
+                for (i, (a, b)) in orig_arr.iter().zip(reser_arr.iter()).enumerate() {
+                    let child_path = format!("{}[{}]", path, i);
+                    assert_no_keys_dropped(a, b, file, &child_path);
+                }
+            }
+            _ => {
+                assert_eq!(
+                    original, reserialized,
+                    "{}{}: value changed during round-trip",
+                    file, path
+                );
+            }
+        }
+    }
+
     #[test]
     fn test_dev_mode_defaults_absent_when_false() {
         // When dev_mode is false (or absent), it should not appear in serialised output

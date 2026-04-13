@@ -25,6 +25,7 @@
   // Event listener cleanup functions
   let unlistenConnect: (() => void) | undefined;
   let unlistenDisconnect: (() => void) | undefined;
+  let keydownHandler: ((e: KeyboardEvent) => void) | undefined;
   
   onMount(async () => {
     try {
@@ -104,8 +105,8 @@
         await selectDevice($devices[0]);
       }
       
-      // Add keyboard shortcut handler (⌘S to save)
-      const handleKeydown = async (e: KeyboardEvent) => {
+      // Add keyboard shortcut handler (⌘S to save). Cleanup runs in onDestroy.
+      keydownHandler = async (e: KeyboardEvent) => {
         if (e.metaKey && e.key === 's') {
           e.preventDefault();
           if ($selectedDevice && $hasUnsavedChanges) {
@@ -113,13 +114,7 @@
           }
         }
       };
-      
-      document.addEventListener('keydown', handleKeydown);
-      
-      // Clean up keyboard listener
-      return () => {
-        document.removeEventListener('keydown', handleKeydown);
-      };
+      document.addEventListener('keydown', keydownHandler);
     } catch (e: any) {
       $statusMessage = `Error initializing: ${e.message || e}`;
     }
@@ -129,6 +124,9 @@
     // Clean up event listeners to prevent memory leaks
     unlistenConnect?.();
     unlistenDisconnect?.();
+    if (keydownHandler) {
+      document.removeEventListener('keydown', keydownHandler);
+    }
   });
   
   async function selectDevice(device: DetectedDevice) {
@@ -298,10 +296,6 @@
     }
   }
 
-  function handleEditorChange(newValue: string) {
-    editorContent = newValue;
-    $hasUnsavedChanges = newValue !== $currentConfigRaw;
-  }
 </script>
 
 <main>

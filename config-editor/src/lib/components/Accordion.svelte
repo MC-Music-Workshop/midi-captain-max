@@ -10,7 +10,10 @@
   }
   
   let { title, defaultOpen = true, disabled = false, message, children }: Props = $props();
-  
+
+  // Intentional: defaultOpen seeds the initial state, then user toggles take over.
+  // We don't want to reset to defaultOpen if the prop happens to change later.
+  // svelte-ignore state_referenced_locally
   let isOpen = $state(defaultOpen);
   
   function toggle() {

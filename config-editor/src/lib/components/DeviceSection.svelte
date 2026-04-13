@@ -164,18 +164,6 @@
     font-size: 0.875rem;
   }
 
-  .input-text {
-    max-width: 200px;
-    padding: 0.5rem;
-    border: 1px solid var(--border-color, #ccc);
-    border-radius: 4px;
-    font-size: 0.875rem;
-    font-family: monospace;
-    text-transform: uppercase;
-    background: var(--bg-primary, white);
-    color: var(--text-primary, inherit);
-  }
-  
   .channel-input-group {
     display: flex;
     align-items: center;

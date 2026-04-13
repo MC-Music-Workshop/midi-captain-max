@@ -350,6 +350,30 @@ Update ALL of these files (missed items caused real bugs across DUO2/ONE1 work):
 
 ## Testing Strategy
 
+### Running All Tests
+
+From the repo root, this sweep runs every test suite and the type-freshness check in one go:
+
+```bash
+python3 -m pytest tests/ && \
+  (cd config-editor/src-tauri && cargo test) && \
+  (cd config-editor && npm run check && npm run generate:types) && \
+  git diff --quiet config-editor/src/lib/types.generated.ts && \
+  echo "ALL GREEN"
+```
+
+Individual suites:
+
+```bash
+python3 -m pytest tests/                                    # 232 Python tests
+python3 -m pytest tests/test_schema.py -v                   # schema validation only
+cd config-editor/src-tauri && cargo test                    # 32 Rust tests
+cd config-editor && npm run check                           # TypeScript / Svelte
+cd config-editor && npm run generate:types                  # regenerate types from schema
+```
+
+The `generate:types` step is also enforced in CI: if `types.generated.ts` differs after running it, the build fails with instructions to commit the regenerated file.
+
 ### On-Device Testing
 - Copy code to MIDICAPTAIN volume, observe behavior via serial console
 - Use `screen` with auto-reconnect loop for serial monitoring. See docs/screen-cheatsheet.md for usage tips.
@@ -389,8 +413,12 @@ Device config files (`config*.json`) are included dynamically via glob in both p
 ### Desktop Testing (Unit)
 - **pytest** with CircuitPython hardware mocks in `tests/mocks/`
 - Mocks cover: `board`, `digitalio`, `neopixel`, `displayio`, `busio`, `rotaryio`, `analogio`, `usb_midi`, `terminalio`
-- Tests: `test_button_state.py`, `test_config.py`, `test_colors.py`, `test_neopixel_mock.py`, `test_switch_mock.py`, `test_usb_drive_name.py`
-- Run: `pytest` from project root
+- Firmware behavior tests: `test_button_state.py`, `test_config.py`, `test_colors.py`, `test_neopixel_mock.py`, `test_switch_mock.py`, `test_usb_drive_name.py`
+- Schema-driven tests (require `jsonschema` from `requirements-dev.txt`):
+  - `test_schema.py` — validates all shipped configs against `config.schema.json` plus negative tests for every constraint type
+  - `test_config_cross_fields.py` — rules JSON Schema can't express (button count vs device, encoder/expression device support, min/max/initial relationships, states/keytimes alignment)
+  - `test_python_schema_sync.py` — AST-walks `core/config.py` to catch firmware reading fields not defined in the schema; also asserts `STATE_OVERRIDE_FIELDS` and `VALID_TYPES` match the schema
+- Run: `python3 -m pytest tests/` from repo root
 
 ### Emulator Testing (Wokwi)
 
@@ -446,7 +474,7 @@ NeoPixel/display visual rendering (code runs, no visual output), GP23/24/25 butt
 - **`rp2040js-circuitpython` is a dead end** — has no CLI argument parsing, no `--image`/`--fs` flags, no filesystem injection. PR #33 was based on non-existent features.
 
 ### Rust Tests (Config Editor)
-Unit tests for the Tauri backend live in `config-editor/src-tauri/src/` (in `config.rs` and `device.rs`).
+Unit tests for the Tauri backend live in `config-editor/src-tauri/src/` (in `config.rs` and `device.rs`). Notably, `test_roundtrip_all_shipped_configs` parses every `firmware/dev/config*.json` file as both `serde_json::Value` and `MidiCaptainConfig`, then asserts every key survives serialize → deserialize through the typed struct. This catches "Rust struct missing a field" silent data loss for any new shipped config without needing a per-feature test.
 
 **Requires GTK system libraries.** Install once per machine before running:
 

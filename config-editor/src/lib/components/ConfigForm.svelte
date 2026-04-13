@@ -41,7 +41,13 @@
   // Keyboard shortcuts
   function handleKeydown(event: KeyboardEvent) {
     const isCmd = event.metaKey || event.ctrlKey;
-    
+
+    if (event.key === 'Escape' && showJsonModal) {
+      event.preventDefault();
+      closeJsonModal();
+      return;
+    }
+
     if (isCmd && event.key === 'z') {
       event.preventDefault();
       if (event.shiftKey && $canRedo) {
@@ -110,13 +116,27 @@
   </div>
 </div>
 
-<!-- JSON Modal -->
+<!-- JSON Modal. Backdrop click closes; Escape also closes (see handleKeydown). -->
 {#if showJsonModal}
-  <div class="modal-backdrop" onclick={closeJsonModal}>
-    <div class="modal-content" onclick={(e) => e.stopPropagation()}>
+  <div
+    class="modal-backdrop"
+    role="presentation"
+    tabindex="-1"
+    onclick={closeJsonModal}
+    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') closeJsonModal(); }}
+  >
+    <div
+      class="modal-content"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="json-modal-title"
+      tabindex="-1"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+    >
       <div class="modal-header">
-        <h2>Current Configuration (JSON)</h2>
-        <button class="close-btn" onclick={closeJsonModal}>✕</button>
+        <h2 id="json-modal-title">Current Configuration (JSON)</h2>
+        <button class="close-btn" onclick={closeJsonModal} aria-label="Close">✕</button>
       </div>
       <div class="modal-body">
         <pre class="json-display">{jsonText}</pre>

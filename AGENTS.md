@@ -701,11 +701,29 @@ Save button → saveToDevice()
 - **keytimes**: 1-99
 - **flash_ms**: 50-5000
 
+**Cross-field rules** that JSON Schema can't express (enforced by Rust + verified by `tests/test_config_cross_fields.py`):
+- Button array length must match device type (std10=10, mini6=6, nano4=4, duo2=2, one1=1)
+- Encoder and expression are STD10-only
+- `encoder.initial` must be in `[encoder.min, encoder.max]`
+- `expression.max >= expression.min`
+- `states.length` should match `keytimes` when `states` is present
+
 ### `mode` vs `off_mode` Per Button Type
 
 From firmware `code.py`:
 - **`mode` (toggle/momentary)**: used by CC and Note types only. PC types only fire on `pressed`, so mode is irrelevant. GUI shows Switch Mode only for `isCC || isNote`.
 - **`off_mode` (dim/off)**: LED appearance when button is "off" — applies to all types. GUI always shows it.
+
+### Accessibility Conventions
+
+The config editor is held to **0 svelte-check warnings**. When adding form controls:
+
+- Every `<label>` must associate with its control. Use `<label for="x">…</label>` paired with `id="x"` on the input. The wrap-style `<label>…<input/></label>` is also fine.
+- For multi-instance components (rendered N times, like `ButtonRow`), derive unique IDs from the prop index. `ButtonRow` exposes `fieldId(field)` and `stateFieldId(si, field)` helpers — keep using them when adding fields.
+- Use Svelte 5 event syntax: `onclick`, `onblur`, `onchange` — never `on:click` etc.
+- Modal dialogs need `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `tabindex="-1"`, and an Escape key handler.
+- Backdrops with click handlers need `role="presentation"` + `tabindex="-1"` + an `onkeydown` handler (Enter/Space to activate).
+- If a `$state` variable intentionally captures a prop's initial value (like `Accordion.svelte`'s `defaultOpen`), document the intent and use `// svelte-ignore state_referenced_locally`.
 
 ---
 

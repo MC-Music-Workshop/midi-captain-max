@@ -78,9 +78,10 @@
       
       {#if encoder.enabled}
         <div class="field-row">
-          <label>Label:</label>
-          <input 
-            type="text" 
+          <label for="encoder-label">Label:</label>
+          <input
+            id="encoder-label"
+            type="text"
             value={encoder.label}
             onblur={(e) => handleField('label', e)}
             maxlength="6"
@@ -89,9 +90,10 @@
         </div>
 
         <div class="field-row">
-          <label>Channel:</label>
-          <input 
-            type="number" 
+          <label for="encoder-channel">Channel:</label>
+          <input
+            id="encoder-channel"
+            type="number"
             value={displayChannel !== undefined ? displayChannel : ''}
             onblur={(e) => handleChannelChange('channel', e)}
             min="1"
@@ -103,9 +105,10 @@
         </div>
 
         <div class="field-row">
-          <label>CC:</label>
-          <input 
-            type="number" 
+          <label for="encoder-cc">CC:</label>
+          <input
+            id="encoder-cc"
+            type="number"
             class:error={!!ccError}
             value={encoder.cc}
             onblur={(e) => handleField('cc', e)}
@@ -119,9 +122,10 @@
         </div>
 
         <div class="field-row">
-          <label>Min:</label>
-          <input 
-            type="number" 
+          <label for="encoder-min">Min:</label>
+          <input
+            id="encoder-min"
+            type="number"
             value={encoder.min ?? 0}
             onblur={(e) => handleField('min', e)}
             min="0"
@@ -129,11 +133,12 @@
             disabled={isDisabled}
           />
         </div>
-        
+
         <div class="field-row">
-          <label>Max:</label>
-          <input 
-            type="number" 
+          <label for="encoder-max">Max:</label>
+          <input
+            id="encoder-max"
+            type="number"
             value={encoder.max ?? 127}
             onblur={(e) => handleField('max', e)}
             min="0"
@@ -141,11 +146,12 @@
             disabled={isDisabled}
           />
         </div>
-        
+
         <div class="field-row">
-          <label>Initial:</label>
-          <input 
-            type="number" 
+          <label for="encoder-initial">Initial:</label>
+          <input
+            id="encoder-initial"
+            type="number"
             value={encoder.initial ?? 64}
             onblur={(e) => handleField('initial', e)}
             min="0"
@@ -170,9 +176,10 @@
         
         {#if encoder.push?.enabled}
           <div class="field-row">
-            <label>Label:</label>
-            <input 
-              type="text" 
+            <label for="encoder-push-label">Label:</label>
+            <input
+              id="encoder-push-label"
+              type="text"
               value={encoder.push.label}
               onblur={(e) => handleField('push.label', e)}
               maxlength="6"
@@ -180,9 +187,10 @@
             />
           </div>
           <div class="field-row">
-            <label>Channel:</label>
-            <input 
-              type="number" 
+            <label for="encoder-push-channel">Channel:</label>
+            <input
+              id="encoder-push-channel"
+              type="number"
               value={displayPushChannel !== undefined ? displayPushChannel : ''}
               onblur={(e) => handleChannelChange('push.channel', e)}
               min="1"
@@ -194,9 +202,10 @@
           </div>
 
           <div class="field-row">
-            <label>CC:</label>
-            <input 
-              type="number" 
+            <label for="encoder-push-cc">CC:</label>
+            <input
+              id="encoder-push-cc"
+              type="number"
               class:error={!!pushCCError}
               value={encoder.push.cc}
               onblur={(e) => handleField('push.cc', e)}
@@ -208,10 +217,11 @@
               <span class="error-text">{pushCCError}</span>
             {/if}
           </div>
-          
+
           <div class="field-row">
-            <label>Mode:</label>
-            <select 
+            <label for="encoder-push-mode">Mode:</label>
+            <select
+              id="encoder-push-mode"
               value={encoder.push.mode || 'momentary'}
               onchange={(e) => handleField('push.mode', e)}
               disabled={isDisabled}
@@ -220,11 +230,12 @@
               <option value="momentary">Momentary</option>
             </select>
           </div>
-          
+
           <div class="field-row">
-            <label>ON Value:</label>
-            <input 
-              type="number" 
+            <label for="encoder-push-cc-on">ON Value:</label>
+            <input
+              id="encoder-push-cc-on"
+              type="number"
               value={encoder.push.cc_on !== undefined ? encoder.push.cc_on : ''}
               onblur={(e) => handleField('push.cc_on', e)}
               min="0"
@@ -233,11 +244,12 @@
               disabled={isDisabled}
             />
           </div>
-          
+
           <div class="field-row">
-            <label>OFF Value:</label>
-            <input 
-              type="number" 
+            <label for="encoder-push-cc-off">OFF Value:</label>
+            <input
+              id="encoder-push-cc-off"
+              type="number"
               value={encoder.push.cc_off !== undefined ? encoder.push.cc_off : ''}
               onblur={(e) => handleField('push.cc_off', e)}
               min="0"

@@ -16,8 +16,9 @@
 <Accordion title="Display Settings" defaultOpen={!isDisabled} disabled={isDisabled} {message}>
   <div class="display-section">
     <div class="field-row">
-      <label>Button text size:</label>
+      <label for="display-button-text-size">Button text size:</label>
       <select
+        id="display-button-text-size"
         value={display?.button_text_size ?? 'medium'}
         onchange={(e) => handleField('button_text_size', e)}
       >
@@ -28,8 +29,9 @@
     </div>
 
     <div class="field-row">
-      <label>Status text size:</label>
+      <label for="display-status-text-size">Status text size:</label>
       <select
+        id="display-status-text-size"
         value={display?.status_text_size ?? 'medium'}
         onchange={(e) => handleField('status_text_size', e)}
       >
@@ -40,8 +42,9 @@
     </div>
 
     <div class="field-row">
-      <label>Expression text size:</label>
+      <label for="display-expression-text-size">Expression text size:</label>
       <select
+        id="display-expression-text-size"
         value={display?.expression_text_size ?? 'medium'}
         onchange={(e) => handleField('expression_text_size', e)}
       >

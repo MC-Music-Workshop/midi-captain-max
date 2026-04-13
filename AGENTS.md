@@ -259,6 +259,20 @@ For historical context on reverse engineering, see [docs/midicaptain_reverse_eng
 - ST7789 240×240 display (same params as STD10/Mini6)
 - No encoder or expression inputs
 
+### DUO2 (2-switch)
+- 6 NeoPixels (2 switches × 3 LEDs) on GP7
+- 2 switch inputs: GP11 (KEY0, bottom), GP9 (KEY1, top)
+- 4 DIP switches on GP0–GP3 for mode/page selection
+- **No ST7789 display.** Instead a 3-digit 7-segment LCD driven via UART (GP4 TX, GP5 RX, 9600 baud) using a proprietary frame protocol: `[0xA5, seg1, seg2, seg3, 0x5A]` sent 3× with 40ms inter-frame delay. See `firmware/dev/devices/duo2.py` for the encoding.
+- No encoder or expression inputs
+
+### ONE1 (1-switch)
+- 3 NeoPixels (1 switch × 3 LEDs) on GP7
+- 1 switch input: GP11 (KEY0)
+- 2 DIP switches on GP2–GP3 for mode/page selection
+- Same UART segmented LCD as DUO2 (GP4/GP5, 9600 baud, identical 5-byte frame protocol)
+- No encoder or expression inputs
+
 ### 5-pin DIN MIDI
 
 - **TX pin**: `board.GP16`, **RX pin**: `board.GP17`, **baud**: `31250`, **timeout**: `0.003`
@@ -572,7 +586,8 @@ Track features, bugs, and future work via [GitHub Issues](https://github.com/MC-
 - [ ] Release workflow DRY: find/rename/warn pattern in `Prepare release assets` repeats 3× (DMG, MSI, NSIS) — could be a shell function
 - [ ] Windows Signing Cert
 - [x] NANO4 device support (4-switch variant) — hardware probed 2026-04-01, device module + firmware + config editor
-- [ ] Support for 1/2-switch variants
+- [x] DUO2 device support (2-switch variant) — UART segmented LCD reverse-engineered, device module + firmware + config editor
+- [x] ONE1 device support (1-switch variant) — same UART display protocol as DUO2, device module + firmware + config editor
 - [ ] Custom display layouts
 - [ ] SysEx protocol documentation
 - [ ] Keytimes / multi-press cycling
@@ -735,7 +750,7 @@ The config format is fully defined in [`config.schema.json`](config.schema.json)
 
 Tooling support for custom names:
 - **`deploy.sh`** reads `usb_drive_name` from `config.json`, `config-one1.json`, `config-duo2.json`, `config-mini6.json`, and `config-nano4.json` and adds them to the mount-point search. Candidate order: `CIRCUITPY`, `MIDICAPTAIN`, then any `usb_drive_name` values found in local configs. Checked under `/Volumes/`, `/media/$USER/`, `/run/media/$USER/`.
-- **GUI config editor** detects devices by volume name *and* config content. Known names (`CIRCUITPY`, `MIDICAPTAIN`) are always accepted. Custom-named volumes are accepted only when the config.json inside them (a) has `"device": "std10"` or `"mini6"`, and (b) the `usb_drive_name` in that config matches the actual volume name (case-insensitive). This cross-check prevents a stray config.json on an unrelated volume from being treated as a device. The same cross-check applies in `validate_device_path()` (path security gate in `commands.rs`).
+- **GUI config editor** detects devices by volume name *and* config content. Known names (`CIRCUITPY`, `MIDICAPTAIN`) are always accepted. Custom-named volumes are accepted only when the config.json inside them (a) has a known `"device"` value (`"std10"`, `"mini6"`, `"nano4"`, `"duo2"`, or `"one1"`), and (b) the `usb_drive_name` in that config matches the actual volume name (case-insensitive). This cross-check prevents a stray config.json on an unrelated volume from being treated as a device. The same cross-check applies in `validate_device_path()` (path security gate in `commands.rs`).
 
 **`dev_mode`** — boolean controlling USB drive mount behaviour at boot:
 
@@ -864,9 +879,11 @@ if enable_usb_drive:
 | `firmware/dev/core/config.py` | Config loading; `get_usb_drive_name()`, `validate_usb_drive_name()`, `get_dev_mode()`, `get_display_config()`; `STATE_OVERRIDE_FIELDS` |
 | `firmware/dev/core/button.py` | `ButtonState` class: toggle/momentary mode, keytimes cycling |
 | `firmware/dev/core/colors.py` | Color palette and `get_off_color()` utilities |
-| `firmware/dev/devices/std10.py` | STD10 hardware constants |
-| `firmware/dev/devices/mini6.py` | Mini6 hardware constants |
-| `firmware/dev/devices/nano4.py` | NANO4 hardware constants |
+| `firmware/dev/devices/std10.py` | STD10 hardware constants (10 switches, encoder, expression, ST7789 display) |
+| `firmware/dev/devices/mini6.py` | Mini6 hardware constants (6 switches, ST7789 display) |
+| `firmware/dev/devices/nano4.py` | NANO4 hardware constants (4 switches, ST7789 display) |
+| `firmware/dev/devices/duo2.py` | DUO2 hardware constants (2 switches, DIP switches, UART segmented LCD) |
+| `firmware/dev/devices/one1.py` | ONE1 hardware constants (1 switch, DIP switches, UART segmented LCD) |
 | `firmware/original_helmut/code.py` | Helmut's original firmware (reference only, DO NOT MODIFY) |
 | `tools/deploy.sh` | Dev deploy to device (rsync, VERSION, device detection) |
 | `docs/hardware-reference.md` | Verified hardware specs, auto-detection docs |

@@ -352,15 +352,13 @@ Update ALL of these files (missed items caused real bugs across DUO2/ONE1 work):
 
 ### Running All Tests
 
-From the repo root, this sweep runs every test suite and the type-freshness check in one go:
+From the repo root, run every test suite and the type-freshness check in one go:
 
 ```bash
-python3 -m pytest tests/ && \
-  (cd config-editor/src-tauri && cargo test) && \
-  (cd config-editor && npm run check && npm run generate:types) && \
-  git diff --quiet config-editor/src/lib/types.generated.ts && \
-  echo "ALL GREEN"
+./tools/test-all.sh
 ```
+
+This runs pytest, cargo test, svelte-check, regenerates types from the schema, and fails if `types.generated.ts` ended up out of date.
 
 Individual suites:
 

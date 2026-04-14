@@ -1,13 +1,13 @@
 // Config types — generated from config.schema.json
 // Re-exported here for backwards compatibility. Run `npm run generate:types` to regenerate.
 import type {
-  MIDICaptainMAXConfig,
+  MIDICaptainConfig,
   ButtonConfig,
   ButtonColor,
   ExpressionConfig,
 } from './types.generated';
 
-export type { MIDICaptainMAXConfig as MidiCaptainConfig };
+export type { MIDICaptainConfig as MidiCaptainConfig };
 export type { ButtonConfig, ButtonColor };
 export type {
   StateOverride,
@@ -23,7 +23,7 @@ export type ButtonMode = NonNullable<ButtonConfig['mode']>;
 export type OffMode = NonNullable<ButtonConfig['off_mode']>;
 export type MessageType = NonNullable<ButtonConfig['type']>;
 export type Polarity = NonNullable<ExpressionConfig['polarity']>;
-export type DeviceType = NonNullable<MIDICaptainMAXConfig['device']>;
+export type DeviceType = NonNullable<MIDICaptainConfig['device']>;
 
 export interface DetectedDevice {
   name: string;

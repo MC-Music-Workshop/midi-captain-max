@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/mcascone/midi-captain-max/config.schema.json",
-  "title": "MIDI Captain Config",
-  "description": "Configuration for Paint Audio MIDI Captain custom firmware. This schema is the single source of truth for the config format — TypeScript types are generated from it, Rust structs are validated against it, and Python firmware uses it as reference.",
+  "title": "MIDI Captain MAX Config",
+  "description": "Configuration for Paint Audio MIDI Captain MAX custom firmware. This schema is the single source of truth for the config format — TypeScript types are generated from it, Rust structs are validated against it, and Python firmware uses it as reference.",
   "type": "object",
   "required": ["buttons"],
   "properties": {

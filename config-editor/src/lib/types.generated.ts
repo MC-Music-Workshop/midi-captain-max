@@ -11,9 +11,9 @@ export type MidiByte = number;
 export type ButtonColor = "red" | "green" | "blue" | "yellow" | "cyan" | "magenta" | "orange" | "purple" | "white";
 
 /**
- * Configuration for Paint Audio MIDI Captain custom firmware. This schema is the single source of truth for the config format — TypeScript types are generated from it, Rust structs are validated against it, and Python firmware uses it as reference.
+ * Configuration for Paint Audio MIDI Captain MAX custom firmware. This schema is the single source of truth for the config format — TypeScript types are generated from it, Rust structs are validated against it, and Python firmware uses it as reference.
  */
-export interface MIDICaptainConfig {
+export interface MIDICaptainMAXConfig {
   /**
    * Device model. Determines button count and feature availability (encoder/expression are STD10-only).
    */

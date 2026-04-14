@@ -934,7 +934,7 @@ GitHub's "Rebase and merge" UI option **rewrites commit SHAs** even when a fast-
 - **CI triggers**: branch pushes + tag pushes (`v*`). Tags needed for clean version injection.
 - **Release triggers**: tag pushes only (`v*`). Creates draft releases.
 - **Artifact flow**: CI uploads (`actions/upload-artifact@v7`), release downloads (`actions/download-artifact@v7`). These are different actions — don't confuse them (easy mistake).
-- **Config validation**: The `lint` job validates all `firmware/dev/config*.json` files against `config.schema.json` (via `ajv`) and checks that `types.generated.ts` is up to date.
+- **Config validation**: The `lint` job validates all `firmware/dev/config*.json` files against `config.schema.json` (via `pytest` + `jsonschema`) and checks that `types.generated.ts` is up to date.
 - **Firmware VERSION patching**: Release workflow patches `/VERSION` inside the firmware zip with the clean tag, since the CI-built VERSION contains a `git describe` string.
 - **Linux CI deps**: `libudev-dev` required by the `serialport` crate. Cached via `awalsh128/cache-apt-pkgs-action`.
 

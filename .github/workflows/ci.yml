@@ -98,7 +98,7 @@ jobs:
           cache: npm
           cache-dependency-path: config-editor/package-lock.json
 
-      - name: Check generated types are up to date
+      - name: Check generated types and TypeScript
         run: |
           cd config-editor
           npm ci
@@ -110,6 +110,7 @@ jobs:
             exit 1
           fi
           echo "types.generated.ts is up to date."
+          npm run check
 
   test-config-editor-rust:
     name: Test Config Editor (Rust)

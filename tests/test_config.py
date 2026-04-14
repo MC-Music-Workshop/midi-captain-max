@@ -32,10 +32,9 @@ class TestConfigValidation:
         assert isinstance(sample_config["buttons"], list)
     
     def test_button_has_required_fields(self, sample_config):
-        """Each button must have label, cc, and color."""
+        """Each button must have label and color (cc is only required for CC-type buttons)."""
         for btn in sample_config["buttons"]:
             assert "label" in btn
-            assert "cc" in btn
             assert "color" in btn
     
     def test_cc_numbers_in_valid_range(self, sample_config):

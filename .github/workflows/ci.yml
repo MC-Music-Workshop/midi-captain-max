@@ -226,11 +226,24 @@ jobs:
     name: Build Config Editor (macOS)
     runs-on: macos-latest
     timeout-minutes: 30
-    needs: lint
+    needs: [lint, build-zip]
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v6
+
+      - name: Download firmware zip
+        uses: actions/download-artifact@v7
+        with:
+          name: firmware-zip
+          path: ci-artifacts/firmware-zip
+
+      - name: Stage firmware into Config Editor resources
+        shell: bash
+        run: |
+          mkdir -p config-editor/src-tauri/resources/firmware
+          unzip -o ci-artifacts/firmware-zip/*.zip -d config-editor/src-tauri/resources/firmware/
+          ls -la config-editor/src-tauri/resources/firmware/
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -345,11 +358,24 @@ jobs:
     name: Build Config Editor (Windows)
     runs-on: windows-latest
     timeout-minutes: 30
-    needs: lint
+    needs: [lint, build-zip]
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v6
+
+      - name: Download firmware zip
+        uses: actions/download-artifact@v7
+        with:
+          name: firmware-zip
+          path: ci-artifacts/firmware-zip
+
+      - name: Stage firmware into Config Editor resources
+        shell: bash
+        run: |
+          mkdir -p config-editor/src-tauri/resources/firmware
+          unzip -o ci-artifacts/firmware-zip/*.zip -d config-editor/src-tauri/resources/firmware/
+          ls -la config-editor/src-tauri/resources/firmware/
 
       - name: Setup Node.js
         uses: actions/setup-node@v6

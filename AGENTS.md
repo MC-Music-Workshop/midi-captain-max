@@ -157,6 +157,7 @@ All code in `firmware/original_helmut/` is authored by **Helmut Keller** and mus
   - Uses `requirements-dev.txt` for dependencies
   - Builds Config Editor for macOS and Windows (Tauri + SvelteKit)
   - **Tag trigger is critical**: CI must run on tag push so `git describe` sees the tag and bakes the correct version into artifacts. Without this, artifacts get the pre-tag version (e.g., `1.8.0-rc1` instead of `1.8.0`).
+  - **Docs-only PRs can't satisfy branch protection.** `ci.yml` uses `paths-ignore: ["**/*.md", "docs/**"]`, so docs-only changes run zero jobs. Branch protection's "required checks must pass" therefore stays unreported and the PR cannot auto-merge. Merge with `gh pr merge --admin` (reversible via revert). Long-term fix: promote the required status checks to an always-running "gate" job that short-circuits for docs-only.
 - **Release workflow** (`.github/workflows/release.yml`): Triggered by `v*` tags
   - Downloads artifacts from the CI run for the same commit (by SHA)
   - Polls for up to 30 minutes waiting for CI to complete (tag push triggers both workflows simultaneously)
@@ -405,9 +406,10 @@ When changing `boot.py`, `usb_drive_name`, or `dev_mode`, verify on physical har
 
 Use `tools/deploy.sh` for dev deploys (handles ordering, sync, and device detection).
 
-Both distribution paths must include the same set of files and write the `VERSION` file. If you add a new directory under `firmware/dev/`, you must add it to **both** of these:
+All distribution paths must include the same set of files and write the `VERSION` file. If you add a new directory under `firmware/dev/`, you must add it to **all** of these:
 1. `tools/deploy.sh` — dev deploy via rsync (also writes `VERSION` to device and local `firmware/dev/`)
 2. `.github/workflows/ci.yml` — firmware zip (`build-zip` job, writes `VERSION` from lint job output)
+3. `config-editor/src-tauri/resources/firmware/` — bundled into Config Editor app at CI build time via the `firmware-zip` artifact; for local dev runs use `tools/bundle-firmware-for-dev.sh`
 
 **`tools/deploy.ps1`** is the Windows PowerShell equivalent of `deploy.sh`. Both scripts must stay at feature parity — when adding device types, config files, flags, or changing deploy logic, update **both** scripts. The ps1 uses `[ValidateSet()]` for device type validation and `Sync-File`/`Sync-Directory` helpers instead of rsync.
 

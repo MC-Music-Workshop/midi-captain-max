@@ -232,18 +232,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Download firmware zip
-        uses: actions/download-artifact@v7
-        with:
-          name: firmware-zip
-          path: ci-artifacts/firmware-zip
-
-      - name: Stage firmware into Config Editor resources
-        shell: bash
-        run: |
-          mkdir -p config-editor/src-tauri/resources/firmware
-          unzip -o ci-artifacts/firmware-zip/*.zip -d config-editor/src-tauri/resources/firmware/
-          ls -la config-editor/src-tauri/resources/firmware/
+      - name: Stage firmware for Config Editor
+        uses: ./.github/actions/stage-firmware-for-editor
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -364,18 +354,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Download firmware zip
-        uses: actions/download-artifact@v7
-        with:
-          name: firmware-zip
-          path: ci-artifacts/firmware-zip
-
-      - name: Stage firmware into Config Editor resources
-        shell: bash
-        run: |
-          mkdir -p config-editor/src-tauri/resources/firmware
-          unzip -o ci-artifacts/firmware-zip/*.zip -d config-editor/src-tauri/resources/firmware/
-          ls -la config-editor/src-tauri/resources/firmware/
+      - name: Stage firmware for Config Editor
+        uses: ./.github/actions/stage-firmware-for-editor
 
       - name: Setup Node.js
         uses: actions/setup-node@v6

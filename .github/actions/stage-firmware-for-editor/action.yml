@@ -1,5 +1,5 @@
 name: Stage firmware for Config Editor
-description: Download the firmware-zip artifact produced by build-zip and extract it into the Tauri resources directory so the Config Editor bundle ships with firmware.
+description: Downloads the firmware-zip artifact and unpacks it into the Tauri resources directory.
 
 runs:
   using: composite

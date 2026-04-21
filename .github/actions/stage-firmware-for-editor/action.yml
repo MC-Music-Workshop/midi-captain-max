@@ -19,6 +19,18 @@ runs:
 
     - name: Stage firmware into Config Editor resources
       shell: bash
+      env:
+        # With `archive: false` on upload, the artifact's basename *is* the
+        # filename. download-artifact's layout for that case is not obvious, so
+        # use `find` and fail loudly if nothing is present.
+        VERSION: ${{ inputs.version }}
       run: |
-        unzip -o ci-artifacts/firmware-zip/*.zip -d config-editor/src-tauri/resources/firmware/
+        set -x
+        ls -laR ci-artifacts/firmware-zip
+        ZIP="$(find ci-artifacts/firmware-zip -type f -name '*.zip' | head -1)"
+        if [[ -z "$ZIP" ]]; then
+          echo "::error::No .zip file found under ci-artifacts/firmware-zip (looking for midicaptain-firmware-${VERSION}.zip)"
+          exit 1
+        fi
+        unzip -o "$ZIP" -d config-editor/src-tauri/resources/firmware/
         ls -la config-editor/src-tauri/resources/firmware/

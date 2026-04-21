@@ -1,5 +1,5 @@
 name: Stage firmware for Config Editor
-description: Downloads the firmware-zip artifact and unpacks it into the Tauri resources directory.
+description: Downloads the firmware-zip artifact straight into the Tauri resources directory.
 
 inputs:
   version:
@@ -9,28 +9,17 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Download firmware zip
+    - name: Download firmware into Tauri resources
       uses: actions/download-artifact@v7
       with:
-        # build-zip uploads with `archive: false`, so the artifact name is the
-        # literal filename (`action.yml#52`): `midicaptain-firmware-<ver>.zip`.
+        # build-zip uploaded with `archive: false`, so the artifact name is the
+        # literal filename (`upload-artifact/action.yml#52`):
+        # `midicaptain-firmware-<ver>.zip`. download-artifact then auto-extracts
+        # that zip's *contents* into `path` — exactly what we need, no
+        # explicit unzip step required.
         name: midicaptain-firmware-${{ inputs.version }}.zip
-        path: ci-artifacts/firmware-zip
+        path: config-editor/src-tauri/resources/firmware
 
-    - name: Stage firmware into Config Editor resources
+    - name: Confirm firmware contents
       shell: bash
-      env:
-        # With `archive: false` on upload, the artifact's basename *is* the
-        # filename. download-artifact's layout for that case is not obvious, so
-        # use `find` and fail loudly if nothing is present.
-        VERSION: ${{ inputs.version }}
-      run: |
-        set -x
-        ls -laR ci-artifacts/firmware-zip
-        ZIP="$(find ci-artifacts/firmware-zip -type f -name '*.zip' | head -1)"
-        if [[ -z "$ZIP" ]]; then
-          echo "::error::No .zip file found under ci-artifacts/firmware-zip (looking for midicaptain-firmware-${VERSION}.zip)"
-          exit 1
-        fi
-        unzip -o "$ZIP" -d config-editor/src-tauri/resources/firmware/
-        ls -la config-editor/src-tauri/resources/firmware/
+      run: ls -la config-editor/src-tauri/resources/firmware/

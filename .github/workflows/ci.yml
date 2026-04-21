@@ -221,6 +221,8 @@ jobs:
           name: firmware-zip
           path: dist/*.zip
           retention-days: 90
+          # The payload is already a zip — skip re-compressing.
+          compression-level: 0
 
   build-config-editor-macos:
     name: Build Config Editor (macOS)

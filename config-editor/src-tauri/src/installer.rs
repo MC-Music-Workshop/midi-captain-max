@@ -17,11 +17,18 @@ use crate::config::DeviceType;
 use serde::Serialize;
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use tauri::{command, AppHandle, Manager};
 
 /// Bundled filename of the default config template for this device type.
 /// Kept here rather than on `DeviceType` itself so the config crate stays
 /// unaware of firmware-installer filesystem conventions.
+///
+/// Note: `Std10` returns `"config.json"` — that filename serves double duty
+/// as both the Std10 template in the bundle *and* the active-config slot on
+/// every device. The reference-config loop below skips the active device's
+/// template to avoid a double-write that would otherwise be a no-op for
+/// Std10 but still a wasted sync on other devices.
 fn config_source_name(dt: DeviceType) -> &'static str {
     match dt {
         DeviceType::Std10 => "config.json",
@@ -31,6 +38,11 @@ fn config_source_name(dt: DeviceType) -> &'static str {
         DeviceType::One1 => "config-one1.json",
     }
 }
+
+/// Single-install lock: prevents a concurrent `install_firmware` invocation
+/// (e.g. double-click, or two tabs of the same app) from interleaving writes
+/// to the same device.
+static INSTALL_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Serialize)]
 pub struct InstallReport {
@@ -164,15 +176,20 @@ pub fn install_firmware_from(
         files_copied += 1;
     }
 
-    // Reference configs for every supported device, except the active one
-    // (already copied above when not preserving).
+    // Reference configs for every non-Std10 device, so users can see the
+    // templates for other devices alongside their active config. Std10 is
+    // skipped because its template filename is `config.json` — the active
+    // slot, not a reference slot. Copying it here would clobber the active
+    // config we just wrote (critical when device_type != Std10).
+    //
+    // For a non-Std10 active device (e.g. Mini6), we *do* re-copy the same
+    // bytes to `config-mini6.json` as a reference. Same content, different
+    // filename; a minor redundant write that matches deploy.sh's behavior.
     for dt in DeviceType::ALL {
-        let name = config_source_name(*dt);
-        // Skip std10's "config.json" — that's the active-config slot, not a
-        // reference slot.
         if *dt == DeviceType::Std10 {
             continue;
         }
+        let name = config_source_name(*dt);
         let src = firmware_src.join(name);
         if src.exists() {
             copy_file_synced(&src, &device_path.join(name))?;
@@ -206,12 +223,20 @@ pub fn install_firmware_from(
 }
 
 /// Tauri command: install bundled firmware onto the connected device.
+///
+/// A process-wide `try_lock` guards against the double-click / re-entrant
+/// case. A second invocation while one is in flight returns an error rather
+/// than blocking — the UI should disable the button during install, and the
+/// lock is a belt-and-braces backstop.
 #[command]
 pub fn install_firmware(
     app: AppHandle,
     device_path: String,
     reset_config: bool,
 ) -> Result<InstallReport, ConfigError> {
+    let _guard = INSTALL_LOCK.try_lock().map_err(|_| {
+        ConfigError::msg("A firmware install is already in progress on this app instance.")
+    })?;
     validate_device_path(&device_path)?;
     let device = PathBuf::from(&device_path);
     verify_device_connected(&device)?;
@@ -323,14 +348,33 @@ mod tests {
 
         install_firmware_from(bundle.path(), device.path(), false).unwrap();
 
-        // Every non-std10 device's template should land on the device as a reference.
+        // Every non-active device's template should land on the device as a reference.
         for dt in DeviceType::ALL {
             if *dt == DeviceType::Std10 {
-                continue;
+                continue; // active device in this test
             }
             let name = config_source_name(*dt);
             assert!(device.path().join(name).exists(), "reference config {} missing", name);
         }
+    }
+
+    #[test]
+    fn std10_template_never_clobbers_non_std10_active_config() {
+        // Regression guard: Std10's template filename is `config.json`, the
+        // same filename as the active-config slot. If the reference-config
+        // loop copied Std10's template, it would overwrite the Mini6 active
+        // config we just wrote. Symptom if the skip breaks: device's
+        // config.json ends up with `"device":"std10"` on a Mini6 device.
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        seed_device(device.path(), "mini6");
+
+        install_firmware_from(bundle.path(), device.path(), true).unwrap();
+
+        let active = fs::read_to_string(device.path().join("config.json")).unwrap();
+        assert!(active.contains(r#""device":"mini6""#), "active config must remain the Mini6 template, got: {}", active);
+        assert!(!active.contains(r#""device":"std10""#), "Std10 template must not clobber the active slot");
     }
 
     #[test]

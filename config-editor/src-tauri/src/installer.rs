@@ -12,45 +12,23 @@
 //! Per-file `sync_all()` on the write handle ensures bytes reach USB flash
 //! before the function returns, matching `commands::write_sync`.
 
-use crate::commands::{
-    validate_device_path, verify_device_connected, write_sync, ConfigError,
-};
+use crate::commands::{validate_device_path, verify_device_connected, ConfigError};
+use crate::config::DeviceType;
 use serde::Serialize;
-use std::fs;
+use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
 use tauri::{command, AppHandle, Manager};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum DeviceType {
-    Std10,
-    Mini6,
-    Nano4,
-    Duo2,
-    One1,
-}
-
-impl DeviceType {
-    /// Bundled filename of the default config for this device type.
-    fn config_source_name(self) -> &'static str {
-        match self {
-            DeviceType::Std10 => "config.json",
-            DeviceType::Mini6 => "config-mini6.json",
-            DeviceType::Nano4 => "config-nano4.json",
-            DeviceType::Duo2 => "config-duo2.json",
-            DeviceType::One1 => "config-one1.json",
-        }
-    }
-
-    fn parse(s: &str) -> Option<Self> {
-        match s {
-            "std10" => Some(DeviceType::Std10),
-            "mini6" => Some(DeviceType::Mini6),
-            "nano4" => Some(DeviceType::Nano4),
-            "duo2" => Some(DeviceType::Duo2),
-            "one1" => Some(DeviceType::One1),
-            _ => None,
-        }
+/// Bundled filename of the default config template for this device type.
+/// Kept here rather than on `DeviceType` itself so the config crate stays
+/// unaware of firmware-installer filesystem conventions.
+fn config_source_name(dt: DeviceType) -> &'static str {
+    match dt {
+        DeviceType::Std10 => "config.json",
+        DeviceType::Mini6 => "config-mini6.json",
+        DeviceType::Nano4 => "config-nano4.json",
+        DeviceType::Duo2 => "config-duo2.json",
+        DeviceType::One1 => "config-one1.json",
     }
 }
 
@@ -89,18 +67,26 @@ fn detect_device_type(device_root: &Path) -> Option<DeviceType> {
     let contents = fs::read_to_string(&config_path).ok()?;
     let value: serde_json::Value = serde_json::from_str(&contents).ok()?;
     let dev = value.get("device").and_then(|v| v.as_str())?;
-    DeviceType::parse(dev)
+    DeviceType::from_name(dev)
 }
 
-/// Copy a single file, syncing the write to physical storage before returning.
+/// Stream-copy `src` to `dst`, then fsync the write handle before it drops.
+/// Avoids buffering the whole file in memory while still guaranteeing the
+/// bytes reach physical storage (same durability contract as `write_sync`).
 fn copy_file_synced(src: &Path, dst: &Path) -> Result<(), ConfigError> {
     if let Some(parent) = dst.parent() {
         fs::create_dir_all(parent)?;
     }
-    let data = fs::read(src).map_err(|e| ConfigError::msg(format!(
-        "Failed to read {}: {}", src.display(), e
-    )))?;
-    write_sync(dst, &data)?;
+    let mut reader = File::open(src).map_err(|e| {
+        ConfigError::msg(format!("Failed to open {}: {}", src.display(), e))
+    })?;
+    let mut writer = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(dst)?;
+    std::io::copy(&mut reader, &mut writer)?;
+    writer.sync_all()?;
     Ok(())
 }
 
@@ -128,15 +114,6 @@ fn copy_dir_synced(src: &Path, dst: &Path) -> Result<usize, ConfigError> {
     }
     Ok(count)
 }
-
-/// Reference configs deploy.sh pushes alongside the active `config.json`
-/// so every device type's template is available on the device for inspection.
-const REFERENCE_CONFIGS: &[&str] = &[
-    "config-one1.json",
-    "config-duo2.json",
-    "config-mini6.json",
-    "config-nano4.json",
-];
 
 /// Pure installer: takes resolved source and destination paths, no Tauri
 /// context. Callable from tests with tempdirs.
@@ -166,14 +143,12 @@ pub fn install_firmware_from(
 
     let mut files_copied = 0usize;
 
-    // 1. boot.py
     copy_file_synced(
         &firmware_src.join("boot.py"),
         &device_path.join("boot.py"),
     )?;
     files_copied += 1;
 
-    // 2. Core modules, device definitions, fonts, libraries — wipe + copy.
     for subdir in &["core", "devices", "fonts", "lib"] {
         let src_dir = firmware_src.join(subdir);
         if src_dir.exists() {
@@ -181,17 +156,23 @@ pub fn install_firmware_from(
         }
     }
 
-    // 3. config.json — preserve unless caller opts in to reset.
     let active_config = device_path.join("config.json");
     let config_preserved = active_config.exists() && !reset_config;
     if !config_preserved {
-        let src_config = firmware_src.join(device_type.config_source_name());
+        let src_config = firmware_src.join(config_source_name(device_type));
         copy_file_synced(&src_config, &active_config)?;
         files_copied += 1;
     }
 
-    // 4. Reference configs for every supported device.
-    for name in REFERENCE_CONFIGS {
+    // Reference configs for every supported device, except the active one
+    // (already copied above when not preserving).
+    for dt in DeviceType::ALL {
+        let name = config_source_name(*dt);
+        // Skip std10's "config.json" — that's the active-config slot, not a
+        // reference slot.
+        if *dt == DeviceType::Std10 {
+            continue;
+        }
         let src = firmware_src.join(name);
         if src.exists() {
             copy_file_synced(&src, &device_path.join(name))?;
@@ -199,22 +180,21 @@ pub fn install_firmware_from(
         }
     }
 
-    // 5. code.py LAST.
+    // code.py LAST — everything else is in place before the device reloads.
     copy_file_synced(
         &firmware_src.join("code.py"),
         &device_path.join("code.py"),
     )?;
     files_copied += 1;
 
-    // 6. VERSION.
     let version_src = firmware_src.join("VERSION");
-    let version = if version_src.exists() {
-        let v = fs::read_to_string(&version_src)?.trim().to_string();
-        copy_file_synced(&version_src, &device_path.join("VERSION"))?;
-        files_copied += 1;
-        v
-    } else {
-        "dev".to_string()
+    let version = match fs::read_to_string(&version_src) {
+        Ok(contents) => {
+            copy_file_synced(&version_src, &device_path.join("VERSION"))?;
+            files_copied += 1;
+            contents.trim().to_string()
+        }
+        Err(_) => "dev".to_string(),
     };
 
     Ok(InstallReport {
@@ -248,7 +228,7 @@ mod tests {
         fs::write(dir.join("boot.py"), b"# boot").unwrap();
         fs::write(dir.join("code.py"), b"# code").unwrap();
         fs::write(dir.join("config.json"), br#"{"device":"std10","from":"bundle"}"#).unwrap();
-        fs::write(dir.join("config-mini6.json"), br#"{"device":"mini6"}"#).unwrap();
+        fs::write(dir.join("config-mini6.json"), br#"{"device":"mini6","from":"bundle"}"#).unwrap();
         fs::write(dir.join("config-nano4.json"), br#"{"device":"nano4"}"#).unwrap();
         fs::write(dir.join("config-duo2.json"), br#"{"device":"duo2"}"#).unwrap();
         fs::write(dir.join("config-one1.json"), br#"{"device":"one1"}"#).unwrap();
@@ -318,28 +298,20 @@ mod tests {
     }
 
     #[test]
-    fn mini6_device_gets_mini6_default_config_on_fresh_install() {
+    fn mini6_device_gets_mini6_default_config_on_reset() {
         let bundle = TempDir::new().unwrap();
         let device = TempDir::new().unwrap();
         make_bundle(bundle.path());
-        // Seed a mini6 config, then delete it so detect_device_type falls back —
-        // simulating "device had config.json but user removed it". The test is
-        // really about: when we DO install a fresh config.json, is it the mini6 one?
-        seed_device(device.path(), "mini6");
-        let user_config = device.path().join("config.json");
-        // Detect type from user config first, then remove it to force fresh install.
-        let expected = detect_device_type(device.path()).unwrap();
-        assert_eq!(expected, DeviceType::Mini6);
-        fs::remove_file(&user_config).unwrap();
-        // Re-seed to let install succeed (detect needs a device)
         seed_device(device.path(), "mini6");
 
         let report = install_firmware_from(bundle.path(), device.path(), true).unwrap();
+
         assert_eq!(report.device_type, DeviceType::Mini6);
         let installed = fs::read_to_string(device.path().join("config.json")).unwrap();
-        // Bundled mini6 config contains `"device":"mini6"` and no `"custom"` field.
+        // The mini6 bundled config has `"from":"bundle"`; the seeded user config did not.
         assert!(installed.contains(r#""device":"mini6""#));
-        assert!(!installed.contains("custom"));
+        assert!(installed.contains(r#""from":"bundle""#), "should be the bundled mini6 template, not the user seed");
+        assert!(!installed.contains("user-edit"));
     }
 
     #[test]
@@ -351,7 +323,12 @@ mod tests {
 
         install_firmware_from(bundle.path(), device.path(), false).unwrap();
 
-        for name in REFERENCE_CONFIGS {
+        // Every non-std10 device's template should land on the device as a reference.
+        for dt in DeviceType::ALL {
+            if *dt == DeviceType::Std10 {
+                continue;
+            }
+            let name = config_source_name(*dt);
             assert!(device.path().join(name).exists(), "reference config {} missing", name);
         }
     }
@@ -363,7 +340,6 @@ mod tests {
         make_bundle(bundle.path());
         seed_device(device.path(), "std10");
 
-        // Simulate an older installation with a .mpy that's no longer in the bundle.
         fs::create_dir(device.path().join("core")).unwrap();
         fs::write(device.path().join("core/stale.mpy"), b"old").unwrap();
 
@@ -382,8 +358,8 @@ mod tests {
         fs::remove_file(bundle.path().join("boot.py")).unwrap();
 
         let err = install_firmware_from(bundle.path(), device.path(), false).unwrap_err();
-        assert!(err.message.contains("boot.py"), "error message should mention the missing file, got: {}", err.message);
-        // code.py on device should not have been written
+        assert!(err.message.contains("boot.py"), "error should mention the missing file, got: {}", err.message);
+        // No writes should have happened.
         assert!(!device.path().join("code.py").exists());
     }
 
@@ -400,14 +376,10 @@ mod tests {
     }
 
     #[test]
-    fn code_py_written_last() {
-        // If code.py exists on device before other files are copied, and the
-        // install fails midway, the device could try to import missing modules
-        // from core/. Verify ordering by staging a failure in the bundle after
-        // boot.py but before code.py. We do this by removing code.py from the
-        // bundle AFTER pre-flight. (Pre-flight catches it, so this test can't
-        // directly observe the order.) Instead, just assert code.py and VERSION
-        // modification times are >= boot.py's in a normal run.
+    fn code_py_mtime_at_or_after_boot_py() {
+        // Weak but real: if `code.py` were written before `boot.py`, a mid-install
+        // crash could leave a device that boots into incomplete firmware. Mtime
+        // comparison is coarse (filesystem resolution) but catches gross order swaps.
         let bundle = TempDir::new().unwrap();
         let device = TempDir::new().unwrap();
         make_bundle(bundle.path());
@@ -423,6 +395,6 @@ mod tests {
             .unwrap()
             .modified()
             .unwrap();
-        assert!(code_mtime >= boot_mtime, "code.py must be written at or after boot.py");
+        assert!(code_mtime >= boot_mtime);
     }
 }

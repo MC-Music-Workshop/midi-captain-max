@@ -205,7 +205,7 @@ pub struct ExpressionPedals {
 }
 
 /// Device type
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum DeviceType {
     #[default]
@@ -214,6 +214,30 @@ pub enum DeviceType {
     Nano4,
     Duo2,
     One1,
+}
+
+impl DeviceType {
+    /// All supported device types, in a stable order.
+    pub const ALL: &'static [DeviceType] = &[
+        DeviceType::Std10,
+        DeviceType::Mini6,
+        DeviceType::Nano4,
+        DeviceType::Duo2,
+        DeviceType::One1,
+    ];
+
+    /// Parse the lowercase wire-format name used in `config.json`.
+    /// Returns `None` for unknown device names — callers decide how strict to be.
+    pub fn from_name(s: &str) -> Option<Self> {
+        match s {
+            "std10" => Some(DeviceType::Std10),
+            "mini6" => Some(DeviceType::Mini6),
+            "nano4" => Some(DeviceType::Nano4),
+            "duo2" => Some(DeviceType::Duo2),
+            "one1" => Some(DeviceType::One1),
+            _ => None,
+        }
+    }
 }
 
 /// Display text size settings

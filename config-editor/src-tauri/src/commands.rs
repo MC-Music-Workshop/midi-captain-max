@@ -76,6 +76,15 @@ pub struct ConfigError {
     pub details: Option<Vec<String>>,
 }
 
+impl ConfigError {
+    pub(crate) fn msg(msg: impl Into<String>) -> Self {
+        ConfigError {
+            message: msg.into(),
+            details: None,
+        }
+    }
+}
+
 impl From<std::io::Error> for ConfigError {
     fn from(e: std::io::Error) -> Self {
         ConfigError {
@@ -103,7 +112,7 @@ impl From<serde_json::Error> for ConfigError {
 ///    `usb_drive_name` matches the actual volume name (case-insensitive).
 ///    This limits the surface: an arbitrary volume won't pass validation
 ///    just because someone placed a config.json on it.
-fn validate_device_path(path: &str) -> Result<(), ConfigError> {
+pub(crate) fn validate_device_path(path: &str) -> Result<(), ConfigError> {
     let path = Path::new(path);
 
     // Canonicalize to resolve any .. or symlinks
@@ -201,7 +210,7 @@ fn get_volume_path(path: &Path) -> Option<PathBuf> {
 }
 
 /// Verify the device is still mounted before writing
-fn verify_device_connected(path: &Path) -> Result<(), ConfigError> {
+pub(crate) fn verify_device_connected(path: &Path) -> Result<(), ConfigError> {
     if let Some(volume_path) = get_volume_path(path) {
         if !is_volume_mounted(&volume_path) {
             return Err(ConfigError {
@@ -220,7 +229,7 @@ fn verify_device_connected(path: &Path) -> Result<(), ConfigError> {
 /// cycle immediately after save can race the flush and the device boots with
 /// stale data. Keeping the write handle open for `sync_all` before drop
 /// ensures the data reaches the device's flash.
-fn write_sync(path: &Path, data: &[u8]) -> Result<(), std::io::Error> {
+pub(crate) fn write_sync(path: &Path, data: &[u8]) -> Result<(), std::io::Error> {
     let mut file = OpenOptions::new().write(true).create(true).truncate(true).open(path)?;
     file.write_all(data)?;
     file.sync_all()?;

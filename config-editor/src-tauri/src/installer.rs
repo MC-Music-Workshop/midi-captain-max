@@ -333,14 +333,20 @@ pub fn install_firmware_from(
     let mut files_copied = 0usize;
     let mut files_skipped = 0usize;
     let mut files_deleted = 0usize;
+    // Final manifest reflects what actually ends up on the device, not the
+    // full bundle. Built up as ops execute so it can't disagree with reality.
+    let mut final_manifest: BTreeMap<String, String> = BTreeMap::new();
 
     for (idx, op) in plan.iter().enumerate() {
         let current = idx + 1;
         match op {
             Op::Copy { rel, src, dst } => {
-                let bundle_hex = bundle_manifest.get(rel);
+                let bundle_hex = bundle_manifest.get(rel).cloned();
                 let device_hex = device_manifest.get(rel);
-                let same_hash = matches!((bundle_hex, device_hex), (Some(a), Some(b)) if a == b);
+                let same_hash = matches!(
+                    (bundle_hex.as_ref(), device_hex),
+                    (Some(a), Some(b)) if a == b
+                );
                 if same_hash && dst.exists() {
                     files_skipped += 1;
                     progress(InstallProgress {
@@ -359,6 +365,9 @@ pub fn install_firmware_from(
                         file: rel.clone(),
                     });
                 }
+                if let Some(hex) = bundle_hex {
+                    final_manifest.insert(rel.clone(), hex);
+                }
             }
             Op::Delete { rel, dst } => {
                 if dst.exists() {
@@ -375,7 +384,15 @@ pub fn install_firmware_from(
         }
     }
 
-    write_device_manifest(device_path, &bundle_manifest)?;
+    // Preserved config.json is on the device but not in the plan; hash the
+    // actual on-device bytes so the manifest reflects what's there.
+    if config_preserved {
+        if let Ok(hex) = hash_file(&active_config) {
+            final_manifest.insert("config.json".to_string(), hex);
+        }
+    }
+
+    write_device_manifest(device_path, &final_manifest)?;
     progress(InstallProgress {
         phase: InstallPhase::Manifest,
         current: total,
@@ -721,6 +738,59 @@ mod tests {
                 assert_eq!(p.total, first.total);
             }
         }
+    }
+
+    #[test]
+    fn manifest_excludes_bundle_files_not_in_plan() {
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        // Add a bundle file that isn't part of the install plan.
+        fs::write(
+            bundle.path().join("config-example-extra.json"),
+            br#"{"device":"std10","kind":"example"}"#,
+        )
+        .unwrap();
+        seed_device(device.path(), "std10");
+
+        install(bundle.path(), device.path(), false);
+
+        let manifest = fs::read_to_string(device.path().join("firmware.md5")).unwrap();
+        assert!(
+            !manifest.contains("config-example-extra.json"),
+            "manifest must only list files actually installed, got:\n{}",
+            manifest
+        );
+        assert!(manifest.contains("boot.py"));
+        assert!(manifest.contains("config.json"), "preserved config.json must be in manifest");
+    }
+
+    #[test]
+    fn manifest_preserved_config_uses_device_bytes_hash() {
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        seed_device(device.path(), "std10");
+
+        install(bundle.path(), device.path(), false);
+
+        // Compute hash of bundle's std10 template vs. the actual device config.
+        let bundle_hash = hash_file(&bundle.path().join("config.json")).unwrap();
+        let device_hash = hash_file(&device.path().join("config.json")).unwrap();
+        assert_ne!(
+            bundle_hash, device_hash,
+            "test premise: seeded user config differs from bundle template"
+        );
+
+        let manifest = fs::read_to_string(device.path().join("firmware.md5")).unwrap();
+        assert!(manifest.contains(&device_hash), "manifest should record device-bytes hash for preserved config.json");
+        // Find the config.json line specifically — bundle hash must not appear next to config.json.
+        let config_line = manifest
+            .lines()
+            .find(|l| l.ends_with("  config.json"))
+            .expect("config.json line in manifest");
+        assert!(config_line.starts_with(&device_hash));
+        assert!(!config_line.starts_with(&bundle_hash));
     }
 
     #[test]

@@ -376,35 +376,65 @@ fn find_device_serial_port(_device_path: &Path) -> Result<String, ConfigError> {
     }
 }
 
-/// Soft-reboot a CircuitPython device by sending Ctrl-C + Ctrl-D over serial.
-///
-/// Ctrl-C interrupts the running program, Ctrl-D triggers a soft reload
-/// that re-reads config.json and restarts code.py. The USB drive stays
-/// mounted throughout — no eject or power cycle needed.
-#[command]
-pub fn restart_device(path: String) -> Result<(), ConfigError> {
-    validate_device_path(&path)?;
-
-    let path_obj = Path::new(&path);
-    verify_device_connected(path_obj)?;
-
-    let serial_port = find_device_serial_port(path_obj)?;
-
-    let mut port = serialport::new(&serial_port, 115200)
+fn open_device_serial(path: &Path) -> Result<Box<dyn serialport::SerialPort>, ConfigError> {
+    let serial_port = find_device_serial_port(path)?;
+    serialport::new(&serial_port, 115200)
         .timeout(Duration::from_secs(2))
         .open()
         .map_err(|e| ConfigError {
             message: format!("Failed to open serial port {}: {}", serial_port, e),
             details: None,
-        })?;
+        })
+}
+
+/// Halt the running `code.py` and disable CircuitPython's auto-reload watcher
+/// for the rest of the session. Used as an installer pre-flight: without this,
+/// CP soft-reboots while the installer is still writing files, briefly remounts
+/// `CIRCUITPY` read-only, and the final manifest write blocks indefinitely.
+///
+/// Sequence:
+///   1. Ctrl-C — interrupt the running program, drop to REPL.
+///   2. `import supervisor; supervisor.runtime.autoreload = False`.
+///
+/// The autoreload-off setting reverts on next hard reset; we re-enable a
+/// clean reload at end of install with `soft_reboot_via_serial`.
+pub(crate) fn halt_and_disable_autoreload(path: &Path) -> Result<(), ConfigError> {
+    let mut port = open_device_serial(path)?;
+
+    // Ctrl-C: interrupt running program.
+    port.write_all(&[0x03]).map_err(|e| ConfigError {
+        message: format!("Failed to send interrupt: {}", e),
+        details: None,
+    })?;
+    std::thread::sleep(Duration::from_millis(500));
+
+    // Disable autoreload for the rest of the REPL session.
+    let cmd = b"import supervisor\rsupervisor.runtime.autoreload = False\r";
+    port.write_all(cmd).map_err(|e| ConfigError {
+        message: format!("Failed to send autoreload-off command: {}", e),
+        details: None,
+    })?;
+    port.flush().map_err(|e| ConfigError {
+        message: format!("Failed to flush serial port: {}", e),
+        details: None,
+    })?;
+
+    // Give CP a beat to process the command before we start writing files.
+    std::thread::sleep(Duration::from_millis(300));
+
+    Ok(())
+}
+
+/// Soft-reboot a CircuitPython device by sending Ctrl-C + Ctrl-D over serial.
+/// Ctrl-D resets supervisor state, including re-enabling autoreload.
+pub(crate) fn soft_reboot_via_serial(path: &Path) -> Result<(), ConfigError> {
+    let mut port = open_device_serial(path)?;
 
     // Ctrl-C: interrupt running program, drop to REPL
     port.write_all(&[0x03]).map_err(|e| ConfigError {
         message: format!("Failed to send interrupt: {}", e),
         details: None,
     })?;
-
-    // Wait for CircuitPython to stop the program and initialize the REPL
     std::thread::sleep(Duration::from_millis(500));
 
     // Ctrl-D: soft reload — restarts code.py with new config
@@ -417,11 +447,22 @@ pub fn restart_device(path: String) -> Result<(), ConfigError> {
         message: format!("Failed to flush serial port: {}", e),
         details: None,
     })?;
-
-    // Brief pause before closing so the byte is fully transmitted
     std::thread::sleep(Duration::from_millis(100));
 
     Ok(())
+}
+
+/// Soft-reboot a CircuitPython device by sending Ctrl-C + Ctrl-D over serial.
+///
+/// Ctrl-C interrupts the running program, Ctrl-D triggers a soft reload
+/// that re-reads config.json and restarts code.py. The USB drive stays
+/// mounted throughout — no eject or power cycle needed.
+#[command]
+pub fn restart_device(path: String) -> Result<(), ConfigError> {
+    validate_device_path(&path)?;
+    let path_obj = Path::new(&path);
+    verify_device_connected(path_obj)?;
+    soft_reboot_via_serial(path_obj)
 }
 
 /// Safely eject/unmount the device volume.

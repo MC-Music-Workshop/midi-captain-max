@@ -17,7 +17,10 @@
 //! device has a `firmware.md5` from a prior install, files whose hash matches
 //! the bundle are skipped. Stale files inside managed subdirs are deleted.
 
-use crate::commands::{validate_device_path, verify_device_connected, ConfigError};
+use crate::commands::{
+    halt_and_disable_autoreload, soft_reboot_via_serial, validate_device_path,
+    verify_device_connected, ConfigError,
+};
 use crate::config::DeviceType;
 use md5::{Digest, Md5};
 use serde::Serialize;
@@ -464,6 +467,18 @@ pub fn install_firmware_from(
 /// blocking-pool thread. A sync `#[command]` would peg Tauri's IPC thread for
 /// the duration of the install (visible as a beach ball / unresponsive UI),
 /// and would also stall the Channel that feeds progress events back to JS.
+///
+/// Wraps the pure installer with two serial-port operations:
+///
+/// 1. **Pre-flight halt**: send Ctrl-C + `supervisor.runtime.autoreload = False`
+///    so CircuitPython doesn't soft-reboot mid-install. Without this, CP
+///    detects file changes, schedules a reload, briefly remounts CIRCUITPY
+///    read-only, and the final manifest write blocks indefinitely — the
+///    "never reaches Done phase" symptom.
+///
+/// 2. **Post-install soft reboot**: send Ctrl-C + Ctrl-D so the freshly
+///    installed firmware loads cleanly. Best-effort: a failure here doesn't
+///    invalidate a successful install (user can power-cycle).
 #[command]
 pub async fn install_firmware(
     app: AppHandle,
@@ -480,10 +495,19 @@ pub async fn install_firmware(
         let _guard = INSTALL_LOCK.try_lock().map_err(|_| {
             ConfigError::msg("A firmware install is already in progress on this app instance.")
         })?;
+
+        halt_and_disable_autoreload(&device)?;
+
         let mut emit = |p: InstallProgress| {
             let _ = on_progress.send(p);
         };
-        install_firmware_from(&firmware_src, &device, reset_config, &mut emit)
+        let report = install_firmware_from(&firmware_src, &device, reset_config, &mut emit)?;
+
+        // Best-effort: a soft-reboot failure here is non-fatal — the firmware
+        // is already on disk, user can power-cycle. We swallow the error.
+        let _ = soft_reboot_via_serial(&device);
+
+        Ok(report)
     })
     .await
     .map_err(|e| ConfigError::msg(format!("Install task panicked: {e}")))?

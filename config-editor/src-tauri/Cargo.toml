@@ -30,6 +30,8 @@ serde_json = "1"
 notify = "6"
 dirs = "5"
 serialport = "4"
+md-5 = "0.10"
+hex = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["fileapi", "winbase", "winnt", "minwindef"] }

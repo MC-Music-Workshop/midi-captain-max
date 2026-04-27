@@ -3,32 +3,37 @@
 //!
 //! Ordering mirrors `tools/deploy.sh`:
 //! 1. boot.py (keeps autoreload disabled on an existing install)
-//! 2. core/, devices/, fonts/, lib/ — directories replace their targets wholesale
+//! 2. core/, devices/, fonts/, lib/ — files copied per-file; stale files removed
 //! 3. config.json — only if missing or reset_config=true
 //! 4. config-<device>.json reference configs
 //! 5. code.py (LAST, so all imports are in place before the device reloads)
 //! 6. VERSION
+//! 7. firmware.md5 — manifest of installed bytes, used for incremental updates
 //!
 //! Per-file `sync_all()` on the write handle ensures bytes reach USB flash
 //! before the function returns, matching `commands::write_sync`.
+//!
+//! Incremental updates: bundle manifest is computed at install time. If the
+//! device has a `firmware.md5` from a prior install, files whose hash matches
+//! the bundle are skipped. Stale files inside managed subdirs are deleted.
 
 use crate::commands::{validate_device_path, verify_device_connected, ConfigError};
 use crate::config::DeviceType;
+use md5::{Digest, Md5};
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use tauri::ipc::Channel;
 use tauri::{command, AppHandle, Manager};
 
+/// Subdirectories the installer fully manages — stale files inside these are
+/// deleted to mirror `deploy.sh`'s `rsync --delete` semantics.
+const MANAGED_DIRS: &[&str] = &["core", "devices", "fonts", "lib"];
+
 /// Bundled filename of the default config template for this device type.
-/// Kept here rather than on `DeviceType` itself so the config crate stays
-/// unaware of firmware-installer filesystem conventions.
-///
-/// Note: `Std10` returns `"config.json"` — that filename serves double duty
-/// as both the Std10 template in the bundle *and* the active-config slot on
-/// every device. The reference-config loop below skips the active device's
-/// template to avoid a double-write that would otherwise be a no-op for
-/// Std10 but still a wasted sync on other devices.
 fn config_source_name(dt: DeviceType) -> &'static str {
     match dt {
         DeviceType::Std10 => "config.json",
@@ -39,23 +44,41 @@ fn config_source_name(dt: DeviceType) -> &'static str {
     }
 }
 
-/// Single-install lock: prevents a concurrent `install_firmware` invocation
-/// (e.g. double-click, or two tabs of the same app) from interleaving writes
-/// to the same device.
 static INSTALL_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Serialize)]
 pub struct InstallReport {
     pub device_type: DeviceType,
     pub files_copied: usize,
+    pub files_skipped: usize,
+    pub files_deleted: usize,
     pub version: String,
     pub config_preserved: bool,
 }
 
-/// Resolve the bundled firmware directory inside the Tauri app resources.
-/// Phase 1 wires `config-editor/src-tauri/resources/firmware/**/*` into the
-/// bundle; the `resources/` glob prefix is preserved in the built layout, so
-/// the runtime path is `<resource_dir>/resources/firmware`.
+/// Streaming progress event. Sent for every planned op (copy or delete),
+/// including ops that turn into no-op skips. `current` and `total` count ops,
+/// not bytes.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallProgress {
+    pub phase: InstallPhase,
+    pub current: usize,
+    pub total: usize,
+    pub file: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum InstallPhase {
+    Planning,
+    Copy,
+    Skip,
+    Delete,
+    Manifest,
+    Done,
+}
+
 fn bundled_firmware_dir(app: &AppHandle) -> Result<PathBuf, ConfigError> {
     let resource_dir = app
         .path()
@@ -71,9 +94,6 @@ fn bundled_firmware_dir(app: &AppHandle) -> Result<PathBuf, ConfigError> {
     Ok(firmware_dir)
 }
 
-/// Read `<device_root>/config.json` and parse the `device` field.
-/// Returns `None` if the config is missing, unreadable, or declares an
-/// unknown device type.
 fn detect_device_type(device_root: &Path) -> Option<DeviceType> {
     let config_path = device_root.join("config.json");
     let contents = fs::read_to_string(&config_path).ok()?;
@@ -82,9 +102,6 @@ fn detect_device_type(device_root: &Path) -> Option<DeviceType> {
     DeviceType::from_name(dev)
 }
 
-/// Stream-copy `src` to `dst`, then fsync the write handle before it drops.
-/// Avoids buffering the whole file in memory while still guaranteeing the
-/// bytes reach physical storage (same durability contract as `write_sync`).
 fn copy_file_synced(src: &Path, dst: &Path) -> Result<(), ConfigError> {
     if let Some(parent) = dst.parent() {
         fs::create_dir_all(parent)?;
@@ -102,39 +119,183 @@ fn copy_file_synced(src: &Path, dst: &Path) -> Result<(), ConfigError> {
     Ok(())
 }
 
-/// Wipe `dst` and re-populate it from `src` (recursive). Returns file count.
-///
-/// The wipe-first policy mirrors `deploy.sh`'s `rsync --delete` semantics —
-/// prevents stale `.py` / `.mpy` pairs from coexisting on the device and
-/// triggering `ImportError` on the wrong module form being loaded.
-fn copy_dir_synced(src: &Path, dst: &Path) -> Result<usize, ConfigError> {
-    if dst.exists() {
-        fs::remove_dir_all(dst)?;
-    }
-    fs::create_dir_all(dst)?;
-    let mut count = 0;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let path = entry.path();
-        let target = dst.join(entry.file_name());
-        if path.is_dir() {
-            count += copy_dir_synced(&path, &target)?;
-        } else {
-            copy_file_synced(&path, &target)?;
-            count += 1;
-        }
-    }
-    Ok(count)
+/// Compute md5 of a file as lowercase hex.
+fn hash_file(path: &Path) -> Result<String, ConfigError> {
+    let mut f = File::open(path)
+        .map_err(|e| ConfigError::msg(format!("Failed to open {}: {}", path.display(), e)))?;
+    let mut hasher = Md5::new();
+    std::io::copy(&mut f, &mut hasher)?;
+    Ok(hex::encode(hasher.finalize()))
 }
 
-/// Pure installer: takes resolved source and destination paths, no Tauri
-/// context. Callable from tests with tempdirs.
+/// Walk `root` recursively, returning relative-path → md5-hex map. Paths use
+/// forward slashes for cross-platform manifest stability.
+fn compute_manifest(root: &Path) -> Result<BTreeMap<String, String>, ConfigError> {
+    let mut out = BTreeMap::new();
+    walk(root, root, &mut out)?;
+    Ok(out)
+}
+
+fn walk(
+    root: &Path,
+    dir: &Path,
+    out: &mut BTreeMap<String, String>,
+) -> Result<(), ConfigError> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            walk(root, &path, out)?;
+        } else {
+            // Skip the manifest itself if present in bundle.
+            if path.file_name().map(|n| n == "firmware.md5").unwrap_or(false) {
+                continue;
+            }
+            let rel = path
+                .strip_prefix(root)
+                .map_err(|e| ConfigError::msg(format!("strip_prefix failed: {e}")))?
+                .to_string_lossy()
+                .replace('\\', "/");
+            out.insert(rel, hash_file(&path)?);
+        }
+    }
+    Ok(())
+}
+
+/// Read device's `firmware.md5`. Accepts md5sum format (`<hex>  <relpath>`)
+/// with optional leading `./` and any whitespace separation. Missing or
+/// unparseable file yields an empty map (forces full install).
+fn read_device_manifest(device_root: &Path) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    let path = device_root.join("firmware.md5");
+    let Ok(file) = File::open(&path) else {
+        return out;
+    };
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let mut parts = line.splitn(2, char::is_whitespace);
+        let Some(hex) = parts.next() else { continue };
+        let Some(rest) = parts.next() else { continue };
+        let rel = rest.trim_start().trim_start_matches("./").to_string();
+        if !hex.is_empty() && !rel.is_empty() {
+            out.insert(rel, hex.to_lowercase());
+        }
+    }
+    out
+}
+
+fn write_device_manifest(
+    device_root: &Path,
+    manifest: &BTreeMap<String, String>,
+) -> Result<(), ConfigError> {
+    let path = device_root.join("firmware.md5");
+    let mut writer = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&path)?;
+    use std::io::Write as _;
+    for (rel, hex) in manifest {
+        writeln!(writer, "{}  {}", hex, rel)?;
+    }
+    writer.sync_all()?;
+    Ok(())
+}
+
+#[derive(Debug)]
+enum Op {
+    Copy { rel: String, src: PathBuf, dst: PathBuf },
+    Delete { rel: String, dst: PathBuf },
+}
+
+/// Build the ordered op list for the install. Top-level files always copy
+/// (skip decision happens later via manifest compare). Managed subdirs add
+/// per-file copies plus stale-file deletes.
+fn build_plan(
+    firmware_src: &Path,
+    device_path: &Path,
+    device_type: DeviceType,
+    config_preserved: bool,
+) -> Result<Vec<Op>, ConfigError> {
+    let mut ops: Vec<Op> = Vec::new();
+
+    let push_copy = |ops: &mut Vec<Op>, rel: &str| {
+        ops.push(Op::Copy {
+            rel: rel.to_string(),
+            src: firmware_src.join(rel),
+            dst: device_path.join(rel),
+        });
+    };
+
+    push_copy(&mut ops, "boot.py");
+
+    for subdir in MANAGED_DIRS {
+        let bundle_sub = firmware_src.join(subdir);
+        if bundle_sub.exists() {
+            let mut bundle_files = BTreeMap::new();
+            walk(&bundle_sub, &bundle_sub, &mut bundle_files)?;
+            for rel_in_sub in bundle_files.keys() {
+                let rel = format!("{}/{}", subdir, rel_in_sub);
+                push_copy(&mut ops, &rel);
+            }
+        }
+        // Stale-delete: any file under device's subdir that bundle doesn't have.
+        let device_sub = device_path.join(subdir);
+        if device_sub.exists() {
+            let mut device_files = BTreeMap::new();
+            walk(&device_sub, &device_sub, &mut device_files).ok();
+            for rel_in_sub in device_files.keys() {
+                let bundle_file = bundle_sub.join(rel_in_sub);
+                if !bundle_file.exists() {
+                    let rel = format!("{}/{}", subdir, rel_in_sub);
+                    ops.push(Op::Delete {
+                        rel: rel.clone(),
+                        dst: device_path.join(&rel),
+                    });
+                }
+            }
+        }
+    }
+
+    if !config_preserved {
+        let bundled = config_source_name(device_type);
+        ops.push(Op::Copy {
+            rel: "config.json".to_string(),
+            src: firmware_src.join(bundled),
+            dst: device_path.join("config.json"),
+        });
+    }
+
+    for dt in DeviceType::ALL {
+        if *dt == DeviceType::Std10 {
+            continue;
+        }
+        let name = config_source_name(*dt);
+        if firmware_src.join(name).exists() {
+            push_copy(&mut ops, name);
+        }
+    }
+
+    push_copy(&mut ops, "code.py");
+
+    if firmware_src.join("VERSION").exists() {
+        push_copy(&mut ops, "VERSION");
+    }
+
+    Ok(ops)
+}
+
+/// Pure installer. `progress` is invoked for every op (copy/skip/delete) plus
+/// a final `Manifest` and `Done` event.
 pub fn install_firmware_from(
     firmware_src: &Path,
     device_path: &Path,
     reset_config: bool,
+    progress: &mut dyn FnMut(InstallProgress),
 ) -> Result<InstallReport, ConfigError> {
-    // Pre-flight: refuse to start writing if any required source file is missing.
     for required in &["boot.py", "code.py"] {
         let p = firmware_src.join(required);
         if !p.exists() {
@@ -153,86 +314,104 @@ pub fn install_firmware_from(
         )
     })?;
 
-    let mut files_copied = 0usize;
+    progress(InstallProgress {
+        phase: InstallPhase::Planning,
+        current: 0,
+        total: 0,
+        file: "computing manifest".to_string(),
+    });
 
-    copy_file_synced(
-        &firmware_src.join("boot.py"),
-        &device_path.join("boot.py"),
-    )?;
-    files_copied += 1;
-
-    for subdir in &["core", "devices", "fonts", "lib"] {
-        let src_dir = firmware_src.join(subdir);
-        if src_dir.exists() {
-            files_copied += copy_dir_synced(&src_dir, &device_path.join(subdir))?;
-        }
-    }
+    let bundle_manifest = compute_manifest(firmware_src)?;
+    let device_manifest = read_device_manifest(device_path);
 
     let active_config = device_path.join("config.json");
     let config_preserved = active_config.exists() && !reset_config;
-    if !config_preserved {
-        let src_config = firmware_src.join(config_source_name(device_type));
-        copy_file_synced(&src_config, &active_config)?;
-        files_copied += 1;
+
+    let plan = build_plan(firmware_src, device_path, device_type, config_preserved)?;
+    let total = plan.len();
+
+    let mut files_copied = 0usize;
+    let mut files_skipped = 0usize;
+    let mut files_deleted = 0usize;
+
+    for (idx, op) in plan.iter().enumerate() {
+        let current = idx + 1;
+        match op {
+            Op::Copy { rel, src, dst } => {
+                let bundle_hex = bundle_manifest.get(rel);
+                let device_hex = device_manifest.get(rel);
+                let same_hash = matches!((bundle_hex, device_hex), (Some(a), Some(b)) if a == b);
+                if same_hash && dst.exists() {
+                    files_skipped += 1;
+                    progress(InstallProgress {
+                        phase: InstallPhase::Skip,
+                        current,
+                        total,
+                        file: rel.clone(),
+                    });
+                } else {
+                    copy_file_synced(src, dst)?;
+                    files_copied += 1;
+                    progress(InstallProgress {
+                        phase: InstallPhase::Copy,
+                        current,
+                        total,
+                        file: rel.clone(),
+                    });
+                }
+            }
+            Op::Delete { rel, dst } => {
+                if dst.exists() {
+                    fs::remove_file(dst)?;
+                    files_deleted += 1;
+                }
+                progress(InstallProgress {
+                    phase: InstallPhase::Delete,
+                    current,
+                    total,
+                    file: rel.clone(),
+                });
+            }
+        }
     }
 
-    // Reference configs for every non-Std10 device, so users can see the
-    // templates for other devices alongside their active config. Std10 is
-    // skipped because its template filename is `config.json` — the active
-    // slot, not a reference slot. Copying it here would clobber the active
-    // config we just wrote (critical when device_type != Std10).
-    //
-    // For a non-Std10 active device (e.g. Mini6), we *do* re-copy the same
-    // bytes to `config-mini6.json` as a reference. Same content, different
-    // filename; a minor redundant write that matches deploy.sh's behavior.
-    for dt in DeviceType::ALL {
-        if *dt == DeviceType::Std10 {
-            continue;
-        }
-        let name = config_source_name(*dt);
-        let src = firmware_src.join(name);
-        if src.exists() {
-            copy_file_synced(&src, &device_path.join(name))?;
-            files_copied += 1;
-        }
-    }
+    write_device_manifest(device_path, &bundle_manifest)?;
+    progress(InstallProgress {
+        phase: InstallPhase::Manifest,
+        current: total,
+        total,
+        file: "firmware.md5".to_string(),
+    });
 
-    // code.py LAST — everything else is in place before the device reloads.
-    copy_file_synced(
-        &firmware_src.join("code.py"),
-        &device_path.join("code.py"),
-    )?;
-    files_copied += 1;
+    let version = fs::read_to_string(firmware_src.join("VERSION"))
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|_| "dev".to_string());
 
-    let version_src = firmware_src.join("VERSION");
-    let version = match fs::read_to_string(&version_src) {
-        Ok(contents) => {
-            copy_file_synced(&version_src, &device_path.join("VERSION"))?;
-            files_copied += 1;
-            contents.trim().to_string()
-        }
-        Err(_) => "dev".to_string(),
-    };
+    progress(InstallProgress {
+        phase: InstallPhase::Done,
+        current: total,
+        total,
+        file: String::new(),
+    });
 
     Ok(InstallReport {
         device_type,
         files_copied,
+        files_skipped,
+        files_deleted,
         version,
         config_preserved,
     })
 }
 
 /// Tauri command: install bundled firmware onto the connected device.
-///
-/// A process-wide `try_lock` guards against the double-click / re-entrant
-/// case. A second invocation while one is in flight returns an error rather
-/// than blocking — the UI should disable the button during install, and the
-/// lock is a belt-and-braces backstop.
+/// `on_progress` receives streaming `InstallProgress` events.
 #[command]
 pub fn install_firmware(
     app: AppHandle,
     device_path: String,
     reset_config: bool,
+    on_progress: Channel<InstallProgress>,
 ) -> Result<InstallReport, ConfigError> {
     let _guard = INSTALL_LOCK.try_lock().map_err(|_| {
         ConfigError::msg("A firmware install is already in progress on this app instance.")
@@ -241,7 +420,10 @@ pub fn install_firmware(
     let device = PathBuf::from(&device_path);
     verify_device_connected(&device)?;
     let firmware_src = bundled_firmware_dir(&app)?;
-    install_firmware_from(&firmware_src, &device, reset_config)
+    let mut emit = |p: InstallProgress| {
+        let _ = on_progress.send(p);
+    };
+    install_firmware_from(&firmware_src, &device, reset_config, &mut emit)
 }
 
 #[cfg(test)]
@@ -282,6 +464,11 @@ mod tests {
         .unwrap();
     }
 
+    fn install(bundle: &Path, device: &Path, reset: bool) -> InstallReport {
+        let mut sink = |_p: InstallProgress| {};
+        install_firmware_from(bundle, device, reset, &mut sink).unwrap()
+    }
+
     #[test]
     fn device_type_detected_from_device_config() {
         let bundle = TempDir::new().unwrap();
@@ -289,7 +476,7 @@ mod tests {
         make_bundle(bundle.path());
         seed_device(device.path(), "mini6");
 
-        let report = install_firmware_from(bundle.path(), device.path(), false).unwrap();
+        let report = install(bundle.path(), device.path(), false);
         assert_eq!(report.device_type, DeviceType::Mini6);
     }
 
@@ -300,7 +487,7 @@ mod tests {
         make_bundle(bundle.path());
         seed_device(device.path(), "std10");
 
-        let report = install_firmware_from(bundle.path(), device.path(), false).unwrap();
+        let report = install(bundle.path(), device.path(), false);
 
         assert!(report.config_preserved);
         let cfg = fs::read_to_string(device.path().join("config.json")).unwrap();
@@ -314,7 +501,7 @@ mod tests {
         make_bundle(bundle.path());
         seed_device(device.path(), "std10");
 
-        let report = install_firmware_from(bundle.path(), device.path(), true).unwrap();
+        let report = install(bundle.path(), device.path(), true);
 
         assert!(!report.config_preserved);
         let cfg = fs::read_to_string(device.path().join("config.json")).unwrap();
@@ -329,13 +516,12 @@ mod tests {
         make_bundle(bundle.path());
         seed_device(device.path(), "mini6");
 
-        let report = install_firmware_from(bundle.path(), device.path(), true).unwrap();
+        let report = install(bundle.path(), device.path(), true);
 
         assert_eq!(report.device_type, DeviceType::Mini6);
         let installed = fs::read_to_string(device.path().join("config.json")).unwrap();
-        // The mini6 bundled config has `"from":"bundle"`; the seeded user config did not.
         assert!(installed.contains(r#""device":"mini6""#));
-        assert!(installed.contains(r#""from":"bundle""#), "should be the bundled mini6 template, not the user seed");
+        assert!(installed.contains(r#""from":"bundle""#));
         assert!(!installed.contains("user-edit"));
     }
 
@@ -346,12 +532,11 @@ mod tests {
         make_bundle(bundle.path());
         seed_device(device.path(), "std10");
 
-        install_firmware_from(bundle.path(), device.path(), false).unwrap();
+        install(bundle.path(), device.path(), false);
 
-        // Every non-active device's template should land on the device as a reference.
         for dt in DeviceType::ALL {
             if *dt == DeviceType::Std10 {
-                continue; // active device in this test
+                continue;
             }
             let name = config_source_name(*dt);
             assert!(device.path().join(name).exists(), "reference config {} missing", name);
@@ -360,21 +545,16 @@ mod tests {
 
     #[test]
     fn std10_template_never_clobbers_non_std10_active_config() {
-        // Regression guard: Std10's template filename is `config.json`, the
-        // same filename as the active-config slot. If the reference-config
-        // loop copied Std10's template, it would overwrite the Mini6 active
-        // config we just wrote. Symptom if the skip breaks: device's
-        // config.json ends up with `"device":"std10"` on a Mini6 device.
         let bundle = TempDir::new().unwrap();
         let device = TempDir::new().unwrap();
         make_bundle(bundle.path());
         seed_device(device.path(), "mini6");
 
-        install_firmware_from(bundle.path(), device.path(), true).unwrap();
+        install(bundle.path(), device.path(), true);
 
         let active = fs::read_to_string(device.path().join("config.json")).unwrap();
-        assert!(active.contains(r#""device":"mini6""#), "active config must remain the Mini6 template, got: {}", active);
-        assert!(!active.contains(r#""device":"std10""#), "Std10 template must not clobber the active slot");
+        assert!(active.contains(r#""device":"mini6""#), "got: {}", active);
+        assert!(!active.contains(r#""device":"std10""#));
     }
 
     #[test]
@@ -387,10 +567,11 @@ mod tests {
         fs::create_dir(device.path().join("core")).unwrap();
         fs::write(device.path().join("core/stale.mpy"), b"old").unwrap();
 
-        install_firmware_from(bundle.path(), device.path(), false).unwrap();
+        let report = install(bundle.path(), device.path(), false);
 
-        assert!(!device.path().join("core/stale.mpy").exists(), "stale file must be removed");
-        assert!(device.path().join("core/config.py").exists(), "new file must be present");
+        assert!(!device.path().join("core/stale.mpy").exists());
+        assert!(device.path().join("core/config.py").exists());
+        assert!(report.files_deleted >= 1);
     }
 
     #[test]
@@ -401,9 +582,9 @@ mod tests {
         seed_device(device.path(), "std10");
         fs::remove_file(bundle.path().join("boot.py")).unwrap();
 
-        let err = install_firmware_from(bundle.path(), device.path(), false).unwrap_err();
-        assert!(err.message.contains("boot.py"), "error should mention the missing file, got: {}", err.message);
-        // No writes should have happened.
+        let mut sink = |_p: InstallProgress| {};
+        let err = install_firmware_from(bundle.path(), device.path(), false, &mut sink).unwrap_err();
+        assert!(err.message.contains("boot.py"), "got: {}", err.message);
         assert!(!device.path().join("code.py").exists());
     }
 
@@ -414,22 +595,20 @@ mod tests {
         make_bundle(bundle.path());
         fs::write(device.path().join("config.json"), br#"{"device":"unknown"}"#).unwrap();
 
-        let err = install_firmware_from(bundle.path(), device.path(), false).unwrap_err();
+        let mut sink = |_p: InstallProgress| {};
+        let err = install_firmware_from(bundle.path(), device.path(), false, &mut sink).unwrap_err();
         assert!(err.message.to_lowercase().contains("device type"));
         assert!(!device.path().join("boot.py").exists());
     }
 
     #[test]
     fn code_py_mtime_at_or_after_boot_py() {
-        // Weak but real: if `code.py` were written before `boot.py`, a mid-install
-        // crash could leave a device that boots into incomplete firmware. Mtime
-        // comparison is coarse (filesystem resolution) but catches gross order swaps.
         let bundle = TempDir::new().unwrap();
         let device = TempDir::new().unwrap();
         make_bundle(bundle.path());
         seed_device(device.path(), "std10");
 
-        install_firmware_from(bundle.path(), device.path(), false).unwrap();
+        install(bundle.path(), device.path(), false);
 
         let boot_mtime = fs::metadata(device.path().join("boot.py"))
             .unwrap()
@@ -440,5 +619,140 @@ mod tests {
             .modified()
             .unwrap();
         assert!(code_mtime >= boot_mtime);
+    }
+
+    // ---- Phase 2b additions ----
+
+    #[test]
+    fn manifest_written_after_install() {
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        seed_device(device.path(), "std10");
+
+        install(bundle.path(), device.path(), false);
+
+        let manifest_path = device.path().join("firmware.md5");
+        assert!(manifest_path.exists(), "firmware.md5 must be written");
+        let contents = fs::read_to_string(&manifest_path).unwrap();
+        assert!(contents.contains("boot.py"));
+        assert!(contents.contains("code.py"));
+        assert!(contents.contains("core/config.py"));
+        // Two-space md5sum format
+        for line in contents.lines() {
+            assert!(line.contains("  "), "line should be md5sum-format: {}", line);
+        }
+    }
+
+    #[test]
+    fn incremental_skips_unchanged_files() {
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        seed_device(device.path(), "std10");
+
+        // First install populates manifest.
+        let r1 = install(bundle.path(), device.path(), false);
+        assert!(r1.files_copied > 0);
+        assert_eq!(r1.files_skipped, 0);
+
+        // Second install: nothing changed in bundle → all files skip.
+        let r2 = install(bundle.path(), device.path(), false);
+        assert!(r2.files_skipped > 0, "expected skips, got {:?}", r2);
+        // boot.py/code.py/configs/version + core/devices/fonts/lib all skip.
+        assert_eq!(r2.files_copied, 0, "no copies expected on no-op reinstall");
+    }
+
+    #[test]
+    fn incremental_copies_changed_files_only() {
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        seed_device(device.path(), "std10");
+
+        install(bundle.path(), device.path(), false);
+
+        // Mutate one bundle file.
+        fs::write(bundle.path().join("core/button.py"), b"# updated").unwrap();
+
+        let r2 = install(bundle.path(), device.path(), false);
+        assert_eq!(r2.files_copied, 1, "only changed file should copy, got {:?}", r2);
+        assert!(r2.files_skipped > 0);
+
+        let installed = fs::read(device.path().join("core/button.py")).unwrap();
+        assert_eq!(installed, b"# updated");
+    }
+
+    #[test]
+    fn progress_events_fire_in_order() {
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        seed_device(device.path(), "std10");
+
+        let mut events: Vec<InstallProgress> = Vec::new();
+        {
+            let mut sink = |p: InstallProgress| events.push(p);
+            install_firmware_from(bundle.path(), device.path(), false, &mut sink).unwrap();
+        }
+
+        assert!(matches!(events.first().unwrap().phase, InstallPhase::Planning));
+        assert!(matches!(events.last().unwrap().phase, InstallPhase::Done));
+
+        let manifest_seen = events
+            .iter()
+            .any(|p| matches!(p.phase, InstallPhase::Manifest));
+        assert!(manifest_seen, "manifest event must fire");
+
+        // current monotonic among in-plan ops.
+        let in_plan: Vec<_> = events
+            .iter()
+            .filter(|p| matches!(
+                p.phase,
+                InstallPhase::Copy | InstallPhase::Skip | InstallPhase::Delete
+            ))
+            .collect();
+        for w in in_plan.windows(2) {
+            assert!(w[1].current >= w[0].current, "current must be monotonic");
+        }
+        // All in-plan ops share the same total.
+        if let Some(first) = in_plan.first() {
+            for p in &in_plan {
+                assert_eq!(p.total, first.total);
+            }
+        }
+    }
+
+    #[test]
+    fn manifest_roundtrip_skips_after_external_rewrite() {
+        // Hand-craft a manifest and verify reads parse it.
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        seed_device(device.path(), "std10");
+
+        // Compute bundle manifest, write it to device pre-install, also copy
+        // every bundle file onto the device with matching bytes. Now first
+        // install should be a full no-op-skip.
+        let bm = compute_manifest(bundle.path()).unwrap();
+        for rel in bm.keys() {
+            let src = bundle.path().join(rel);
+            let dst = device.path().join(rel);
+            if let Some(parent) = dst.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+            fs::copy(&src, &dst).unwrap();
+        }
+        // Overwrite device config.json with the seeded user edit again, but
+        // its hash now differs from the bundle template — so the active
+        // config copy step is gated by `config_preserved`, not the manifest.
+        seed_device(device.path(), "std10");
+        write_device_manifest(device.path(), &bm).unwrap();
+
+        let r = install(bundle.path(), device.path(), false);
+        // config.json is preserved (config_preserved=true), so it isn't in the plan.
+        // Every other file matches → all skips.
+        assert_eq!(r.files_copied, 0);
+        assert!(r.files_skipped > 0);
     }
 }

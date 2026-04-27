@@ -423,24 +423,34 @@ pub fn install_firmware_from(
 
 /// Tauri command: install bundled firmware onto the connected device.
 /// `on_progress` receives streaming `InstallProgress` events.
+///
+/// `async` + `spawn_blocking` offloads the per-file `sync_all()` storm to a
+/// blocking-pool thread. A sync `#[command]` would peg Tauri's IPC thread for
+/// the duration of the install (visible as a beach ball / unresponsive UI),
+/// and would also stall the Channel that feeds progress events back to JS.
 #[command]
-pub fn install_firmware(
+pub async fn install_firmware(
     app: AppHandle,
     device_path: String,
     reset_config: bool,
     on_progress: Channel<InstallProgress>,
 ) -> Result<InstallReport, ConfigError> {
-    let _guard = INSTALL_LOCK.try_lock().map_err(|_| {
-        ConfigError::msg("A firmware install is already in progress on this app instance.")
-    })?;
     validate_device_path(&device_path)?;
     let device = PathBuf::from(&device_path);
     verify_device_connected(&device)?;
     let firmware_src = bundled_firmware_dir(&app)?;
-    let mut emit = |p: InstallProgress| {
-        let _ = on_progress.send(p);
-    };
-    install_firmware_from(&firmware_src, &device, reset_config, &mut emit)
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = INSTALL_LOCK.try_lock().map_err(|_| {
+            ConfigError::msg("A firmware install is already in progress on this app instance.")
+        })?;
+        let mut emit = |p: InstallProgress| {
+            let _ = on_progress.send(p);
+        };
+        install_firmware_from(&firmware_src, &device, reset_config, &mut emit)
+    })
+    .await
+    .map_err(|e| ConfigError::msg(format!("Install task panicked: {e}")))?
 }
 
 #[cfg(test)]

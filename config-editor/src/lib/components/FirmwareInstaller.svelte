@@ -1,7 +1,12 @@
 <script lang="ts">
   import { ask, message } from '@tauri-apps/plugin-dialog';
-  import { installFirmware } from '$lib/api';
-  import type { DetectedDevice, InstallProgress, InstallReport } from '$lib/types';
+  import { getFirmwareVersions, installFirmware } from '$lib/api';
+  import type {
+    DetectedDevice,
+    FirmwareVersions,
+    InstallProgress,
+    InstallReport,
+  } from '$lib/types';
 
   interface Props {
     device: DetectedDevice | null;
@@ -16,6 +21,32 @@
   let progress = $state<InstallProgress | null>(null);
   let report = $state<InstallReport | null>(null);
   let errorMsg = $state('');
+  let versions = $state<FirmwareVersions | null>(null);
+
+  // Re-fetch versions whenever the selected device changes or after a fresh
+  // install so the UI reflects what's actually on disk now.
+  async function refreshVersions(d: DetectedDevice | null) {
+    if (!d) {
+      versions = null;
+      return;
+    }
+    try {
+      versions = await getFirmwareVersions(d.path);
+    } catch {
+      versions = null;
+    }
+  }
+
+  $effect(() => {
+    refreshVersions(device);
+  });
+
+  let isUpgrade = $derived(
+    versions !== null && versions.device !== null && versions.device !== versions.bundled,
+  );
+  let isUpToDate = $derived(
+    versions !== null && versions.device === versions.bundled,
+  );
 
   let percent = $derived(
     progress && progress.total > 0
@@ -52,6 +83,7 @@
         progress = p;
       });
       onInstalled?.();
+      await refreshVersions(device);
     } catch (e: any) {
       errorMsg = e?.message ?? String(e);
       await message(`Firmware install failed:\n\n${errorMsg}`, { title: 'Install Failed', kind: 'error' });
@@ -75,6 +107,30 @@
 
 <section class="installer">
   <h3>Firmware Installation</h3>
+
+  {#if versions}
+    <div class="versions">
+      <div class="version-row">
+        <span class="version-label">Installed:</span>
+        {#if versions.device === null}
+          <span class="version-value oem">OEM (no VERSION file)</span>
+        {:else}
+          <span class="version-value">{versions.device}</span>
+        {/if}
+      </div>
+      <div class="version-row">
+        <span class="version-label">Available:</span>
+        <span class="version-value">{versions.bundled}</span>
+        {#if isUpToDate}
+          <span class="badge up-to-date">up to date</span>
+        {:else if isUpgrade}
+          <span class="badge upgrade">upgrade</span>
+        {:else if versions.device === null}
+          <span class="badge first-install">first install</span>
+        {/if}
+      </div>
+    </div>
+  {/if}
 
   <label class="reset-toggle">
     <input type="checkbox" bind:checked={resetConfig} disabled={installing} />
@@ -126,6 +182,60 @@
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 4px;
+  }
+
+  .versions {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 13px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .version-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .version-label {
+    color: var(--text-secondary);
+    min-width: 80px;
+  }
+
+  .version-value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text-primary);
+  }
+
+  .version-value.oem {
+    font-style: italic;
+    color: var(--text-secondary);
+    font-family: inherit;
+  }
+
+  .badge {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .badge.up-to-date {
+    background: rgba(74, 124, 78, 0.2);
+    color: var(--success);
+  }
+
+  .badge.upgrade {
+    background: rgba(240, 173, 78, 0.2);
+    color: var(--warning);
+  }
+
+  .badge.first-install {
+    background: rgba(0, 120, 212, 0.2);
+    color: var(--accent);
   }
 
   h3 {

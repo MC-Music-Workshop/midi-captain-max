@@ -401,15 +401,36 @@ fn open_device_serial(path: &Path) -> Result<Box<dyn serialport::SerialPort>, Co
 pub(crate) fn halt_and_disable_autoreload(path: &Path) -> Result<(), ConfigError> {
     let mut port = open_device_serial(path)?;
 
-    // Ctrl-C: interrupt running program.
+    // Ctrl-C: interrupt running program. CircuitPython then prints
+    // "Press any key to enter the REPL. Use CTRL-D to reload." and
+    // _consumes the next byte_ as that keypress.
     port.write_all(&[0x03]).map_err(|e| ConfigError {
         message: format!("Failed to send interrupt: {}", e),
         details: None,
     })?;
     std::thread::sleep(Duration::from_millis(500));
 
-    // Disable autoreload for the rest of the REPL session.
-    let cmd = b"import supervisor\rsupervisor.runtime.autoreload = False\r";
+    // Sacrificial CRLF — consumed as the "press any key" prompt. Without
+    // this, the first byte of our import command got eaten ("i" of
+    // "import") and CP saw `mport supervisor; ...` → SyntaxError, leaving
+    // autoreload enabled and the install hanging on manifest write.
+    port.write_all(b"\r\n").map_err(|e| ConfigError {
+        message: format!("Failed to enter REPL: {}", e),
+        details: None,
+    })?;
+    std::thread::sleep(Duration::from_millis(200));
+
+    // Disable autoreload for the rest of the REPL session. Single-line
+    // form — CP's REPL only executes a buffered line on CRLF.
+    //
+    // CP 7.x exposes the toggle as `supervisor.disable_autoreload()`
+    // (function); CP 8+ replaced it with the attribute
+    // `supervisor.runtime.autoreload = False` (the function still exists
+    // as a compat shim in some 8.x builds). The `getattr` fallback runs
+    // the function if present, otherwise pokes the attribute. Avoids
+    // multi-line try/except, which CP's line-mode REPL won't accept as
+    // one paste.
+    let cmd = b"import supervisor; getattr(supervisor, 'disable_autoreload', lambda: setattr(supervisor.runtime, 'autoreload', False))()\r\n";
     port.write_all(cmd).map_err(|e| ConfigError {
         message: format!("Failed to send autoreload-off command: {}", e),
         details: None,

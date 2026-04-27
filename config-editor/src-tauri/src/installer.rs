@@ -195,16 +195,21 @@ fn write_device_manifest(
     manifest: &BTreeMap<String, String>,
 ) -> Result<(), ConfigError> {
     let path = device_root.join("firmware.md5");
-    let mut writer = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(&path)?;
-    use std::io::Write as _;
+    // Build the full payload in memory, write in one fs::write call (open +
+    // write_all + close), no per-line writeln! and no sync_all. The manifest
+    // is purely an optimization for the next install — losing it on power
+    // loss is harmless. Earlier we ended every install with `sync_all()`
+    // here, but on a CircuitPython USB MSC volume that fsync can hang the
+    // whole install for tens of seconds while the device's serial REPL is
+    // active — visible in the GUI as "Writing manifest" never completing.
+    let mut payload = String::with_capacity(manifest.len() * 64);
     for (rel, hex) in manifest {
-        writeln!(writer, "{}  {}", hex, rel)?;
+        payload.push_str(hex);
+        payload.push_str("  ");
+        payload.push_str(rel);
+        payload.push('\n');
     }
-    writer.sync_all()?;
+    fs::write(&path, payload)?;
     Ok(())
 }
 
@@ -431,13 +436,17 @@ pub fn install_firmware_from(
         }
     }
 
-    write_device_manifest(device_path, &final_manifest)?;
+    // Fire a Manifest event _before_ the write so the UI can show "Writing
+    // manifest" while it's in flight (and so we can tell from the last-seen
+    // event whether a hang happened in the write itself or somewhere
+    // earlier).
     progress(InstallProgress {
         phase: InstallPhase::Manifest,
         current: total,
         total,
         file: "firmware.md5".to_string(),
     });
+    write_device_manifest(device_path, &final_manifest)?;
 
     let version = fs::read_to_string(firmware_src.join("VERSION"))
         .map(|s| s.trim().to_string())
@@ -457,6 +466,45 @@ pub fn install_firmware_from(
         files_deleted,
         version,
         config_preserved,
+    })
+}
+
+/// Read a firmware version from a `VERSION` file in `dir`. Returns the file's
+/// trimmed contents or `None` if the file is missing/unreadable.
+fn read_version_file(dir: &Path) -> Option<String> {
+    fs::read_to_string(dir.join("VERSION"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirmwareVersions {
+    /// Version on the device, if a `VERSION` file is present at the device
+    /// root. `None` indicates an OEM / unmanaged install — the device wasn't
+    /// flashed by us (or the file was deleted).
+    pub device: Option<String>,
+    /// Version of the firmware bundled in this app build.
+    pub bundled: String,
+}
+
+/// Tauri command: report the installed firmware version on the device and the
+/// version of the bundled firmware this app would install. Used by the UI to
+/// show "OEM" / "v1.x.y → v1.x.z" before the user clicks Install.
+#[command]
+pub fn get_firmware_versions(
+    app: AppHandle,
+    device_path: String,
+) -> Result<FirmwareVersions, ConfigError> {
+    validate_device_path(&device_path)?;
+    let device = PathBuf::from(&device_path);
+    verify_device_connected(&device)?;
+    let firmware_src = bundled_firmware_dir(&app)?;
+
+    Ok(FirmwareVersions {
+        device: read_version_file(&device),
+        bundled: read_version_file(&firmware_src).unwrap_or_else(|| "dev".to_string()),
     })
 }
 

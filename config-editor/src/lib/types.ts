@@ -46,6 +46,13 @@ export interface InstallProgress {
   file: string;
 }
 
+export interface FirmwareVersions {
+  /** Version on the device, or `null` for an OEM / unmanaged install. */
+  device: string | null;
+  /** Bundled firmware version this app would install. */
+  bundled: string;
+}
+
 export interface InstallReport {
   device_type: DeviceType;
   files_copied: number;

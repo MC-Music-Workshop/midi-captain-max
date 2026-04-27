@@ -5,6 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import type {
   MidiCaptainConfig,
   DetectedDevice,
+  FirmwareVersions,
   InstallProgress,
   InstallReport,
 } from './types';
@@ -48,6 +49,10 @@ export async function startDeviceWatcher(): Promise<void> {
 }
 
 // Firmware installer
+export async function getFirmwareVersions(devicePath: string): Promise<FirmwareVersions> {
+  return invoke('get_firmware_versions', { devicePath });
+}
+
 export async function installFirmware(
   devicePath: string,
   resetConfig: boolean,

@@ -172,20 +172,46 @@ fn read_device_manifest(device_root: &Path) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     let path = device_root.join("firmware.md5");
     let Ok(file) = File::open(&path) else {
+        // Missing manifest is the expected "first-time install" path. Log a
+        // single line so a user complaining "why does my reinstall copy
+        // everything?" can spot it in stderr.
+        eprintln!(
+            "installer: no firmware.md5 at {} — full install (no incremental skips)",
+            path.display()
+        );
         return out;
     };
+    let mut parsed = 0usize;
+    let mut skipped = 0usize;
     for line in BufReader::new(file).lines().map_while(Result::ok) {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
         let mut parts = line.splitn(2, char::is_whitespace);
-        let Some(hex) = parts.next() else { continue };
-        let Some(rest) = parts.next() else { continue };
+        let Some(hex) = parts.next() else {
+            skipped += 1;
+            continue;
+        };
+        let Some(rest) = parts.next() else {
+            skipped += 1;
+            continue;
+        };
         let rel = rest.trim_start().trim_start_matches("./").to_string();
         if !hex.is_empty() && !rel.is_empty() {
             out.insert(rel, hex.to_lowercase());
+            parsed += 1;
+        } else {
+            skipped += 1;
         }
+    }
+    if skipped > 0 {
+        eprintln!(
+            "installer: device manifest at {} parsed {} entries, skipped {} malformed lines",
+            path.display(),
+            parsed,
+            skipped
+        );
     }
     out
 }
@@ -202,7 +228,10 @@ fn write_device_manifest(
     // here, but on a CircuitPython USB MSC volume that fsync can hang the
     // whole install for tens of seconds while the device's serial REPL is
     // active — visible in the GUI as "Writing manifest" never completing.
-    let mut payload = String::with_capacity(manifest.len() * 64);
+    // 80 chars/entry: md5 hex (32) + two-space separator + path (~46). Tight
+    // paths re-allocate; long ones cap at one realloc. Avoids the
+    // `len * 64` underestimate that triggers a reallocation on every install.
+    let mut payload = String::with_capacity(manifest.len() * 80);
     for (rel, hex) in manifest {
         payload.push_str(hex);
         payload.push_str("  ");

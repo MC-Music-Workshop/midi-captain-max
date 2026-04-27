@@ -544,7 +544,18 @@ pub async fn install_firmware(
             ConfigError::msg("A firmware install is already in progress on this app instance.")
         })?;
 
-        halt_and_disable_autoreload(&device)?;
+        // Best-effort: bundled `boot.py` already calls
+        // `supervisor.disable_autoreload()` on flashed devices, so the
+        // pre-flight is redundant in steady state. Hard-failing here would
+        // also abort the install whenever another process holds the serial
+        // port (tio, screen, devtools serial console), which is too brittle.
+        // The downside on a fresh install with autoreload still on: CP may
+        // soft-reboot mid-write — but `boot.py` is the FIRST file we copy,
+        // so the autoreload-off setting takes effect before the bulk of
+        // writes. Worst case is a partial install on the very first flash;
+        // the manifest-based incremental retry on the next install fills
+        // any gaps.
+        let _ = halt_and_disable_autoreload(&device);
 
         let mut emit = |p: InstallProgress| {
             let _ = on_progress.send(p);

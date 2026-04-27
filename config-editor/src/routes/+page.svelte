@@ -18,6 +18,7 @@
   import EncoderSection from '$lib/components/EncoderSection.svelte';
   import ExpressionSection from '$lib/components/ExpressionSection.svelte';
   import DisplaySection from '$lib/components/DisplaySection.svelte';
+  import FirmwareInstaller from '$lib/components/FirmwareInstaller.svelte';
   import { loadConfig, validate, normalizeConfig, config } from '$lib/formStore';
 
   let appVersion = $state('');
@@ -334,6 +335,11 @@
         <EncoderSection />
         <ExpressionSection />
         <DisplaySection />
+        <FirmwareInstaller
+          device={$selectedDevice}
+          hasUnsavedChanges={$hasUnsavedChanges}
+          onInstalled={reloadFromDevice}
+        />
       </ConfigForm>
     {:else if $isLoading}
       <div class="loading">Loading config...</div>

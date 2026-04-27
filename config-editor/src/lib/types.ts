@@ -37,6 +37,24 @@ export interface ConfigError {
   details?: string[];
 }
 
+export type InstallPhase = 'planning' | 'copy' | 'skip' | 'delete' | 'manifest' | 'done';
+
+export interface InstallProgress {
+  phase: InstallPhase;
+  current: number;
+  total: number;
+  file: string;
+}
+
+export interface InstallReport {
+  device_type: DeviceType;
+  files_copied: number;
+  files_skipped: number;
+  files_deleted: number;
+  version: string;
+  config_preserved: boolean;
+}
+
 // Color mapping for UI
 export const BUTTON_COLORS: Record<ButtonColor, string> = {
   red: '#ff0000',

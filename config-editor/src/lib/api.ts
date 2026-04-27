@@ -1,8 +1,13 @@
 // Tauri command wrappers
 
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { MidiCaptainConfig, DetectedDevice } from './types';
+import type {
+  MidiCaptainConfig,
+  DetectedDevice,
+  InstallProgress,
+  InstallReport,
+} from './types';
 
 // Config operations
 export async function readConfig(path: string): Promise<MidiCaptainConfig> {
@@ -40,6 +45,21 @@ export async function scanDevices(): Promise<DetectedDevice[]> {
 
 export async function startDeviceWatcher(): Promise<void> {
   return invoke('start_device_watcher');
+}
+
+// Firmware installer
+export async function installFirmware(
+  devicePath: string,
+  resetConfig: boolean,
+  onProgress: (p: InstallProgress) => void,
+): Promise<InstallReport> {
+  const channel = new Channel<InstallProgress>();
+  channel.onmessage = onProgress;
+  return invoke('install_firmware', {
+    devicePath,
+    resetConfig,
+    onProgress: channel,
+  });
 }
 
 // Event listeners

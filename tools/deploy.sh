@@ -242,19 +242,20 @@ if [ "$DO_INSTALL" = true ]; then
     echo -e "${GREEN}✓ circup available${NC}"
 
     # Install each library (--path must come before the subcommand)
-    # --allow-unsupported: we target CP 7.x which circup considers EOL
+    # --allow-unsupported: we target CP 7.x which circup considers EOL.
+    #
+    # We deliberately do NOT pass `--py`. Mixing circup's `.py` source with
+    # the bundle's `.mpy` puts both forms in /lib for the same module, which
+    # is fragile: any disturbance to mtime / directory entry order can flip
+    # which form CircuitPython loads, and the `.py` form often pulls in
+    # newer-CP-only modules (e.g. `busdisplay`) that crash on CP 7.
     CIRCUP="circup --path $MOUNT_POINT --allow-unsupported"
     for lib in "${REQUIRED_LIBS[@]}"; do
         echo -n "  Installing $lib... "
-        if $CIRCUP install "$lib" --py 2>/dev/null; then
+        if $CIRCUP install "$lib" 2>/dev/null; then
             echo -e "${GREEN}✓${NC}"
         else
-            # Try without --py flag for compiled libs
-            if $CIRCUP install "$lib" 2>/dev/null; then
-                echo -e "${GREEN}✓${NC}"
-            else
-                echo -e "${YELLOW}(already installed)${NC}"
-            fi
+            echo -e "${YELLOW}(already installed)${NC}"
         fi
     done
     echo -e "${GREEN}✓ Libraries installed${NC}"

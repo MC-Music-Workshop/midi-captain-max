@@ -211,6 +211,21 @@ enum Op {
     Delete { rel: String, dst: PathBuf },
 }
 
+/// True if `rel` looks like `name.py` and the bundle contains `name.mpy`
+/// in the same parent dir, or vice versa. Used to flag stray `foo.py`
+/// alongside our bundled `foo.mpy` for deletion before write.
+fn alternate_extension_exists(
+    bundle_rels: &BTreeMap<String, String>,
+    rel: &str,
+) -> bool {
+    let alt = match rel.rsplit_once('.') {
+        Some((stem, "py")) => format!("{}.mpy", stem),
+        Some((stem, "mpy")) => format!("{}.py", stem),
+        _ => return false,
+    };
+    bundle_rels.contains_key(&alt)
+}
+
 /// Build the ordered op list for the install. Top-level files always copy
 /// (skip decision happens later via manifest compare). Managed subdirs add
 /// per-file copies plus stale-file deletes.
@@ -232,24 +247,40 @@ fn build_plan(
 
     push_copy(&mut ops, "boot.py");
 
+    // Per managed subdir: emit deletes BEFORE copies. Reasoning:
+    //
+    //  - "Same-stem dup": if bundle has `foo.mpy` and the device's same dir
+    //    has both `foo.mpy` and `foo.py`, the `.py` is a stray (typically
+    //    left by `circup install --py` from older deploy.sh runs). CP's
+    //    module-resolution rules between coexisting forms are version- and
+    //    state-dependent, and the `.py` source often pulls in modules the
+    //    runtime CP doesn't have (e.g. `busdisplay` on CP 7). Drop the
+    //    alternate-extension twin first so the device only ever resolves
+    //    against the bundled form.
+    //
+    //  - "Pure stale": any file under the device subdir that the bundle
+    //    doesn't ship in any form.
+    //
+    // Doing deletes first means a partial-install crash leaves missing libs
+    // (loud ImportError on next boot) rather than a silent fall-through to
+    // an incompatible alternate form (the failure mode we just hit).
     for subdir in MANAGED_DIRS {
         let bundle_sub = firmware_src.join(subdir);
-        if bundle_sub.exists() {
-            let mut bundle_files = BTreeMap::new();
-            walk(&bundle_sub, &bundle_sub, &mut bundle_files)?;
-            for rel_in_sub in bundle_files.keys() {
-                let rel = format!("{}/{}", subdir, rel_in_sub);
-                push_copy(&mut ops, &rel);
-            }
-        }
-        // Stale-delete: any file under device's subdir that bundle doesn't have.
         let device_sub = device_path.join(subdir);
+
+        let mut bundle_files = BTreeMap::new();
+        if bundle_sub.exists() {
+            walk(&bundle_sub, &bundle_sub, &mut bundle_files)?;
+        }
+
         if device_sub.exists() {
             let mut device_files = BTreeMap::new();
             walk(&device_sub, &device_sub, &mut device_files).ok();
             for rel_in_sub in device_files.keys() {
                 let bundle_file = bundle_sub.join(rel_in_sub);
-                if !bundle_file.exists() {
+                let in_bundle = bundle_file.exists();
+                let alt_in_bundle = alternate_extension_exists(&bundle_files, rel_in_sub);
+                if !in_bundle || alt_in_bundle {
                     let rel = format!("{}/{}", subdir, rel_in_sub);
                     ops.push(Op::Delete {
                         rel: rel.clone(),
@@ -257,6 +288,11 @@ fn build_plan(
                     });
                 }
             }
+        }
+
+        for rel_in_sub in bundle_files.keys() {
+            let rel = format!("{}/{}", subdir, rel_in_sub);
+            push_copy(&mut ops, &rel);
         }
     }
 
@@ -646,6 +682,77 @@ mod tests {
             .modified()
             .unwrap();
         assert!(code_mtime >= boot_mtime);
+    }
+
+    #[test]
+    fn same_stem_py_is_deleted_when_bundle_ships_mpy() {
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        seed_device(device.path(), "std10");
+
+        // Device has BOTH the .mpy (matching bundle) and a stray .py for the
+        // same module name — the failure mode that bricked a real device.
+        fs::create_dir_all(device.path().join("lib")).unwrap();
+        fs::write(
+            device.path().join("lib/adafruit_st7789.mpy"),
+            b"fakempy",
+        )
+        .unwrap();
+        fs::write(
+            device.path().join("lib/adafruit_st7789.py"),
+            b"raise ImportError('cp9 only')",
+        )
+        .unwrap();
+
+        let report = install(bundle.path(), device.path(), false);
+
+        assert!(
+            !device.path().join("lib/adafruit_st7789.py").exists(),
+            "stray .py twin must be removed when bundle ships the .mpy"
+        );
+        assert!(
+            device.path().join("lib/adafruit_st7789.mpy").exists(),
+            ".mpy from bundle must remain"
+        );
+        assert!(report.files_deleted >= 1);
+    }
+
+    #[test]
+    fn delete_ops_run_before_copy_ops_in_managed_dir() {
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        seed_device(device.path(), "std10");
+
+        fs::create_dir_all(device.path().join("lib")).unwrap();
+        fs::write(device.path().join("lib/adafruit_st7789.py"), b"old").unwrap();
+
+        let mut events: Vec<InstallProgress> = Vec::new();
+        {
+            let mut sink = |p: InstallProgress| events.push(p);
+            install_firmware_from(bundle.path(), device.path(), false, &mut sink).unwrap();
+        }
+
+        // For the lib subdir: the Delete event for `lib/adafruit_st7789.py`
+        // must appear before any Copy event for `lib/adafruit_st7789.mpy`.
+        let del_idx = events
+            .iter()
+            .position(|p| matches!(p.phase, InstallPhase::Delete) && p.file == "lib/adafruit_st7789.py")
+            .expect("delete event for stray .py");
+        let copy_idx = events
+            .iter()
+            .position(|p| {
+                matches!(p.phase, InstallPhase::Copy | InstallPhase::Skip)
+                    && p.file == "lib/adafruit_st7789.mpy"
+            })
+            .expect("copy/skip event for bundled .mpy");
+        assert!(
+            del_idx < copy_idx,
+            "delete must precede copy in same managed subdir (del={}, copy={})",
+            del_idx,
+            copy_idx,
+        );
     }
 
     // ---- Phase 2b additions ----

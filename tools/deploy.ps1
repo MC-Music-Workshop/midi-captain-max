@@ -175,20 +175,20 @@ if ($Install) {
 
     # Install each library
     # --path: target the device mount point
-    # --allow-unsupported: we target CP 7.x which circup considers EOL
+    # --allow-unsupported: we target CP 7.x which circup considers EOL.
+    #
+    # We deliberately do NOT pass `--py`. Mixing circup's `.py` source with
+    # the bundle's `.mpy` puts both forms in /lib for the same module, which
+    # is fragile: any disturbance to mtime / directory entry order can flip
+    # which form CircuitPython loads, and the `.py` form often pulls in
+    # newer-CP-only modules (e.g. `busdisplay`) that crash on CP 7.
     foreach ($lib in $RequiredLibs) {
         Write-Host "  Installing $lib... " -NoNewline
-        $result = & circup --path $MountPoint --allow-unsupported install $lib --py 2>&1
+        $result = & circup --path $MountPoint --allow-unsupported install $lib 2>&1
         if ($LASTEXITCODE -eq 0) {
             Write-Host "done" -ForegroundColor Green
         } else {
-            # Try without --py flag for compiled libs
-            $result = & circup --path $MountPoint --allow-unsupported install $lib 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "done" -ForegroundColor Green
-            } else {
-                Write-Host "(already installed)" -ForegroundColor Yellow
-            }
+            Write-Host "(already installed)" -ForegroundColor Yellow
         }
     }
     Write-Host "Libraries installed" -ForegroundColor Green

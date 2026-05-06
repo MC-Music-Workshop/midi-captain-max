@@ -94,11 +94,11 @@ jobs:
           ls -la ci-artifacts/
 
           # download-artifact@v7 extracts the firmware zip on download, so the
-          # artifact arrives as a directory of loose files. Patch VERSION (CI
+          # artifact arrives as a directory of loose files. Patch VERSION.txt (CI
           # built it from git-describe pre-tag), then re-zip as the release asset.
           FIRMWARE_DIR=$(find ci-artifacts -maxdepth 1 -type d -name "midicaptain-firmware-*" | head -1)
           if [ -n "$FIRMWARE_DIR" ]; then
-            echo "$VERSION" > "$FIRMWARE_DIR/VERSION"
+            echo "$VERSION" > "$FIRMWARE_DIR/VERSION.txt"
             (cd "$FIRMWARE_DIR" && zip -r "$OLDPWD/dist/midicaptain-firmware-${VERSION}.zip" .)
             echo "✓ Firmware zip: midicaptain-firmware-${VERSION}.zip" >> $GITHUB_STEP_SUMMARY
           else

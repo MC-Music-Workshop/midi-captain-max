@@ -181,7 +181,7 @@ jobs:
       - name: Write VERSION file
         run: |
           VERSION="${{ needs.lint.outputs.version }}"
-          echo "$VERSION" > firmware/dev/VERSION
+          echo "$VERSION" > firmware/dev/VERSION.txt
 
       - name: Generate firmware manifest
         run: |
@@ -212,7 +212,7 @@ jobs:
             fonts/ \
             lib/ \
             firmware.md5 \
-            VERSION \
+            VERSION.txt \
             -x "*.pyc" -x "*/__pycache__/*" -x "*/__pycache__" -x "experiments/*"
           cd ../..
           # Add deploy scripts to root of zip (using -j to strip path)

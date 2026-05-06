@@ -7,7 +7,7 @@
 //! 3. config.json — only if missing or reset_config=true
 //! 4. config-<device>.json reference configs
 //! 5. code.py (LAST, so all imports are in place before the device reloads)
-//! 6. VERSION
+//! 6. VERSION.txt
 //! 7. firmware.md5 — manifest of installed bytes, used for incremental updates
 //!
 //! Per-file `sync_all()` on the write handle ensures bytes reach USB flash
@@ -510,7 +510,7 @@ fn read_version_file(dir: &Path) -> Option<String> {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FirmwareVersions {
-    /// Version on the device, if a `VERSION` file is present at the device
+    /// Version on the device, if a `VERSION.txt` file is present at the device
     /// root. `None` indicates an OEM / unmanaged install — the device wasn't
     /// flashed by us (or the file was deleted).
     pub device: Option<String>,

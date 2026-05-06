@@ -330,7 +330,7 @@ Use `tools/deploy.sh` for dev deploys (handles ordering, sync, and device detect
 
 All distribution paths must include the same set of files and write the `VERSION.txt` file. If you add a new directory under `firmware/dev/`, you must add it to **all** of these:
 1. `tools/deploy.sh` — dev deploy via rsync (also writes `VERSION.txt` to device and local `firmware/dev/`)
-2. `.github/workflows/ci.yml` — firmware zip (`build-zip` job, writes `VERSION` from lint job output)
+2. `.github/workflows/ci.yml` — firmware zip (`build-zip` job, writes `VERSION.txt` from lint job output)
 3. `config-editor/src-tauri/resources/firmware/` — bundled into Config Editor app at CI build time via the `firmware-zip` artifact; for local dev runs use `tools/bundle-firmware-for-dev.sh`
 
 **`tools/deploy.ps1`** is the Windows PowerShell equivalent of `deploy.sh`. Both scripts must stay at feature parity — when adding device types, config files, flags, or changing deploy logic, update **both** scripts. The ps1 uses `[ValidateSet()]` for device type validation and `Sync-File`/`Sync-Directory` helpers instead of rsync.
@@ -698,7 +698,7 @@ if enable_usb_drive:
 | `firmware/dev/devices/{device}.py` | Per-device hardware constants (std10, mini6, nano4, duo2, one1) |
 | `firmware/original_helmut/code.py` | Helmut's original firmware — DO NOT MODIFY |
 | `config.schema.json` | JSON Schema (draft-07) — single source of truth for config format |
-| `tools/deploy.sh` | Dev deploy to device (rsync, VERSION, device detection) |
+| `tools/deploy.sh` | Dev deploy to device (rsync, VERSION.txt, device detection) |
 | `docs/hardware-reference.md` | Verified hardware specs, auto-detection docs |
 | `docs/plans/2026-01-23-custom-firmware-design.md` | Full design document |
 | `.github/workflows/ci.yml` | CI: lint, syntax check (CP 7.x guards), build firmware zip |
@@ -722,7 +722,7 @@ Releases use **draft releases** for pre-publish testing:
 
 **Beta tags (`v1.x.0-betaN`) are usually unnecessary** — the draft release IS the test mechanism. Only use beta tags when (a) you expect multiple test cycles before final, or (b) you want a *published* (non-draft) beta release for external testers. For solo dev, tag `v1.x.0` directly, test the draft, publish when ready.
 
-**Promoting a beta to final requires re-tagging the same commit.** Tauri binaries and the firmware `VERSION` file have the version string baked in at build time. If you tagged `v1.10.0-beta1` and want to ship as `v1.10.0`, tag the same commit as `v1.10.0` and let CI rebuild — otherwise the published artifacts will still say `1.10.0-beta1` internally.
+**Promoting a beta to final requires re-tagging the same commit.** Tauri binaries and the firmware `VERSION.txt` file have the version string baked in at build time. If you tagged `v1.10.0-beta1` and want to ship as `v1.10.0`, tag the same commit as `v1.10.0` and let CI rebuild — otherwise the published artifacts will still say `1.10.0-beta1` internally.
 
 ### Merging Release Branches
 

@@ -21,4 +21,4 @@ fresh clone, so the build never fails on an empty directory.
 
 Mirrors the `midicaptain-firmware-<version>.zip` artifact: `boot.py`, `code.py`,
 `config.json`, `config-mini6.json`, `core/`, `devices/`, `fonts/`, `lib/`,
-`firmware.md5`, `VERSION`.
+`firmware.md5`, `VERSION.txt`.

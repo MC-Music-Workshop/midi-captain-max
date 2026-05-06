@@ -67,7 +67,7 @@ The app will copy the firmware, reload the device, and update it in place.
 
 ## First Run on OEM Firmware
 
-If your MIDI Captain is still running the factory Paint Audio firmware, the Config Editor may show `OEM (no VERSION file)`.
+If your MIDI Captain is still running the factory Paint Audio firmware, the Config Editor may show `OEM (no VERSION.txt file)`.
 
 In many cases, the first install still requires a one-time bootstrap because the OEM firmware does not provide a MIDI Captain MAX `config.json` for device-type detection.
 

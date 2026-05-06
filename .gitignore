@@ -11,7 +11,7 @@ __pycache__/
 # CircuitPython / device artifacts
 boot_out.txt
 settings.toml
-firmware/dev/VERSION
+firmware/dev/VERSION.txt
 
 # Local release bundles / copied device images
 dist/

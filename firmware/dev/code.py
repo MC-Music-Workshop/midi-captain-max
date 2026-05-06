@@ -211,7 +211,7 @@ DEVICE_TYPE = DETECTED_DEVICE  # For compatibility
 
 def _read_version():
     try:
-        with open("/VERSION", "r") as f:
+        with open("/VERSION.txt", "r") as f:
             return f.read().strip()
     except Exception:
         return "dev"

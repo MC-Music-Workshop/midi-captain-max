@@ -354,8 +354,8 @@ fn build_plan(
 
     push_copy(&mut ops, "code.py");
 
-    if firmware_src.join("VERSION").exists() {
-        push_copy(&mut ops, "VERSION");
+    if firmware_src.join("VERSION.txt").exists() {
+        push_copy(&mut ops, "VERSION.txt");
     }
 
     Ok(ops)
@@ -477,7 +477,7 @@ pub fn install_firmware_from(
     });
     write_device_manifest(device_path, &final_manifest)?;
 
-    let version = fs::read_to_string(firmware_src.join("VERSION"))
+    let version = fs::read_to_string(firmware_src.join("VERSION.txt"))
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|_| "dev".to_string());
 
@@ -498,10 +498,10 @@ pub fn install_firmware_from(
     })
 }
 
-/// Read a firmware version from a `VERSION` file in `dir`. Returns the file's
+/// Read a firmware version from a `VERSION.txt` file in `dir`. Returns the file's
 /// trimmed contents or `None` if the file is missing/unreadable.
 fn read_version_file(dir: &Path) -> Option<String> {
-    fs::read_to_string(dir.join("VERSION"))
+    fs::read_to_string(dir.join("VERSION.txt"))
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
@@ -614,7 +614,7 @@ mod tests {
         fs::write(dir.join("config-nano4.json"), br#"{"device":"nano4"}"#).unwrap();
         fs::write(dir.join("config-duo2.json"), br#"{"device":"duo2"}"#).unwrap();
         fs::write(dir.join("config-one1.json"), br#"{"device":"one1"}"#).unwrap();
-        fs::write(dir.join("VERSION"), b"v0.0.0-test\n").unwrap();
+        fs::write(dir.join("VERSION.txt"), b"v0.0.0-test\n").unwrap();
 
         fs::create_dir(dir.join("core")).unwrap();
         fs::write(dir.join("core/config.py"), b"# core.config").unwrap();

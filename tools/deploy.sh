@@ -211,14 +211,14 @@ fi
 echo -e "${GREEN}✓ Device found at $MOUNT_POINT${NC}"
 
 # Show current and incoming firmware versions
-if [ -f "$MOUNT_POINT/VERSION" ]; then
-    CURRENT_VERSION=$(cat "$MOUNT_POINT/VERSION")
+if [ -f "$MOUNT_POINT/VERSION.txt" ]; then
+    CURRENT_VERSION=$(cat "$MOUNT_POINT/VERSION.txt")
     echo "  Current firmware: $CURRENT_VERSION"
 else
     echo "  Current firmware: (none)"
 fi
-if [ "$CONTEXT" = "dist" ] && [ -f "$DEV_DIR/VERSION" ]; then
-    NEW_VERSION=$(cat "$DEV_DIR/VERSION")
+if [ "$CONTEXT" = "dist" ] && [ -f "$DEV_DIR/VERSION.txt" ]; then
+    NEW_VERSION=$(cat "$DEV_DIR/VERSION.txt")
 else
     NEW_VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
 fi
@@ -452,16 +452,16 @@ sync_file "config-nano4.json" "$DEV_DIR/config-nano4.json" "$MOUNT_POINT/config-
 # 5. code.py LAST (all dependencies are now in place)
 sync_file "code.py" "$DEV_DIR/code.py" "$MOUNT_POINT/"
 
-# 6. Write VERSION file for firmware version display
-# Distributed packages include a pre-built VERSION file written by CI.
+# 6. Write VERSION.txt file for firmware version display
+# Distributed packages include a pre-built VERSION.txt file written by CI.
 # Use it directly rather than falling back to "dev" via git describe.
-if [ "$CONTEXT" = "dist" ] && [ -f "$DEV_DIR/VERSION" ]; then
-    VERSION=$(cat "$DEV_DIR/VERSION")
-    sync_file "VERSION" "$DEV_DIR/VERSION" "$MOUNT_POINT/VERSION"
+if [ "$CONTEXT" = "dist" ] && [ -f "$DEV_DIR/VERSION.txt" ]; then
+    VERSION=$(cat "$DEV_DIR/VERSION.txt")
+    sync_file "VERSION.txt" "$DEV_DIR/VERSION.txt" "$MOUNT_POINT/VERSION.txt"
 else
     VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
-    echo "$VERSION" > "$MOUNT_POINT/VERSION"
-    echo "$VERSION" > "$DEV_DIR/VERSION"
+    echo "$VERSION" > "$MOUNT_POINT/VERSION.txt"
+    echo "$VERSION" > "$DEV_DIR/VERSION.txt"
 fi
 echo "📌 Version: $VERSION"
 

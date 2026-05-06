@@ -106,4 +106,4 @@ If the drive doesn't appear at all, reinstall CircuitPython:
 | `devices/` | Hardware definitions |
 | `fonts/` | Display fonts |
 | `lib/` | CircuitPython libraries |
-| `VERSION` | Firmware version identifier |
+| `VERSION.txt` | Firmware version identifier |

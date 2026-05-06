@@ -293,7 +293,7 @@ pub struct InstallReport {
        "lib/",
        "config.json",  // Only if not preserving
        "code.py",      // LAST
-       "VERSION",
+       "VERSION.txt",
    ];
    ```
 

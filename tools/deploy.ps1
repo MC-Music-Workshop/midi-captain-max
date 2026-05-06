@@ -458,10 +458,10 @@ Sync-File -Source (Join-Path $DevDir "config-nano4.json") -Destination (Join-Pat
 Write-Host "code.py:" -ForegroundColor Cyan
 Sync-File -Source (Join-Path $DevDir "code.py") -Destination (Join-Path $MountPoint "code.py")
 
-# 6. Write VERSION file
-if ($Context -eq "dist" -and (Test-Path (Join-Path $DevDir "VERSION"))) {
-    $Version = (Get-Content (Join-Path $DevDir "VERSION") -Raw).Trim()
-    Sync-File -Source (Join-Path $DevDir "VERSION") -Destination (Join-Path $MountPoint "VERSION")
+# 6. Write VERSION.txt file
+if ($Context -eq "dist" -and (Test-Path (Join-Path $DevDir "VERSION.txt"))) {
+    $Version = (Get-Content (Join-Path $DevDir "VERSION.txt") -Raw).Trim()
+    Sync-File -Source (Join-Path $DevDir "VERSION.txt") -Destination (Join-Path $MountPoint "VERSION.txt")
 } else {
     try {
         $Version = (git describe --tags --always 2>$null)
@@ -469,8 +469,8 @@ if ($Context -eq "dist" -and (Test-Path (Join-Path $DevDir "VERSION"))) {
     } catch {
         $Version = "dev"
     }
-    $Version | Out-File -FilePath (Join-Path $MountPoint "VERSION") -Encoding utf8 -NoNewline
-    $Version | Out-File -FilePath (Join-Path $DevDir "VERSION") -Encoding utf8 -NoNewline
+    $Version | Out-File -FilePath (Join-Path $MountPoint "VERSION.txt") -Encoding utf8 -NoNewline
+    $Version | Out-File -FilePath (Join-Path $DevDir "VERSION.txt") -Encoding utf8 -NoNewline
 }
 Write-Host "Version: $Version"
 

@@ -29,12 +29,12 @@ rsync -a \
   --exclude='__pycache__/' \
   --exclude='*.pyc' \
   --exclude='.DS_Store' \
-  --exclude='VERSION' \
+  --exclude='VERSION.txt' \
   "$SRC"/ "$DEST"/
 
-# Stamp VERSION the same way deploy.sh / ci.yml do.
+# Stamp VERSION.txt the same way deploy.sh / ci.yml do.
 VERSION="$(git -C "$REPO_ROOT" describe --tags --always 2>/dev/null || echo dev)"
-echo "$VERSION" > "$DEST/VERSION"
+echo "$VERSION" > "$DEST/VERSION.txt"
 
 echo "Staged firmware version $VERSION at:"
 echo "  $DEST"

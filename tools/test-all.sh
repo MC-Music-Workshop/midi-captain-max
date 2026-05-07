@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run every test suite plus the type-freshness check.
+# Run every test suite plus the type-freshness and lint checks.
 #
 # Usage: ./tools/test-all.sh
 #
@@ -8,6 +8,8 @@
 #   - cargo test (Rust config-editor backend)
 #   - svelte-check (TypeScript type checking)
 #   - generate:types + git diff (catches stale generated types)
+#   - ruff (Python lint)
+#   - cargo clippy (Rust lint)
 
 set -eo pipefail
 
@@ -49,6 +51,14 @@ if ! git diff --quiet config-editor/src/lib/types.generated.ts; then
   echo "  git add config-editor/src/lib/types.generated.ts && git commit"
   exit 1
 fi
+
+step "ruff (Python lint)"
+ruff check firmware/ tests/
+
+step "cargo clippy (Rust lint)"
+# Warnings-only: the codebase has 2 pre-existing clippy warnings on untouched
+# code. Don't promote them to errors here — that's a separate cleanup pass.
+(cd config-editor/src-tauri && cargo clippy --lib --no-deps)
 
 echo
 echo "${GREEN}${BOLD}ALL GREEN${RESET}"

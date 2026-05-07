@@ -1,0 +1,17 @@
+[tool.ruff]
+# Match the codebase's existing layout. Tests and firmware live at known paths.
+include = ["firmware/**/*.py", "tests/**/*.py", "tools/**/*.py"]
+
+[tool.ruff.lint]
+# Globally-ignored rules. These are deliberate codebase patterns, not bugs:
+#
+# E402: module-level imports below code. firmware/dev/code.py prints a boot
+#       banner before imports so the serial console shows life immediately —
+#       valuable on a CircuitPython device that may stall during import.
+# E712: `== True` / `== False` in tests. Verbose but explicit; the test suite
+#       has hundreds of these and they're not changing.
+# F401: unused imports. Test mock packages (tests/mocks/...) intentionally
+#       re-export symbols to mirror the CircuitPython library surface.
+# F403: wildcard imports. Same — test mocks use `from .x import *` to mirror
+#       upstream CircuitPython package shapes.
+ignore = ["E402", "E712", "F401", "F403"]

@@ -100,6 +100,18 @@ cd config-editor && npm run check                # TypeScript / Svelte
 cd config-editor && npm run generate:types       # regenerate types from schema
 ```
 
+### Linting
+
+Lint is folded into `./tools/test-all.sh`, which runs `ruff` (Python) and `cargo clippy` (Rust) alongside the test suites. Run that script at the verification checkpoint — once before claiming completion or requesting review, not after every edit.
+
+`pyproject.toml` configures ruff to ignore four rules that flag deliberate codebase patterns (`E402`, `E712`, `F401`, `F403`); see the comments in that file for rationale before adding new exceptions. `cargo clippy` runs warnings-only — there are two pre-existing warnings on untouched code that should be addressed in a separate cleanup pass, not silently muted.
+
+To run lint alone (without the full test suite):
+```bash
+ruff check firmware/ tests/                                   # Python
+cd config-editor/src-tauri && cargo clippy --lib --no-deps    # Rust
+```
+
 ### Dependencies
 - **`requirements-dev.txt`**: CI/dev tools (ruff, pytest)
 - **`requirements-circuitpython.txt`**: On-device libraries for `circup install -r`

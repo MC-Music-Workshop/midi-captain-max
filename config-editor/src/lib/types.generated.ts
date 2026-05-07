@@ -60,9 +60,17 @@ export interface ButtonConfig {
    */
   type?: "cc" | "note" | "pc" | "pc_inc" | "pc_dec" | "hid";
   /**
-   * Button behavior. 'toggle' = latching LED on/off, 'momentary' = LED on while held, 'flash' = brief LED flash on press (PC types only, default for PC types). Default for CC/Note/HID: 'toggle'.
+   * Button behavior. 'toggle' = latching LED on/off, 'momentary' = LED on while held, 'flash' = brief LED flash on press (PC types only, default for PC types), 'select' = radio-group exclusivity (PC and CC only, requires select_group). Default for CC/Note/HID: 'toggle'.
    */
-  mode?: "toggle" | "momentary" | "flash";
+  mode?: "toggle" | "momentary" | "flash" | "select";
+  /**
+   * Radio-group identifier. Required when mode='select'. Pressing a select-mode button activates it and deactivates all sibling buttons sharing the same select_group. PC and CC types only.
+   */
+  select_group?: string;
+  /**
+   * Behavior when re-pressing the already-active select-group member. Default: 'resend'.
+   */
+  select_repress?: "resend" | "nothing" | "deselect";
   /**
    * LED behavior when button is off. Default: 'dim'.
    */
@@ -211,7 +219,7 @@ export interface EncoderPush {
   /**
    * Button behavior. Default: 'momentary'.
    */
-  mode?: "toggle" | "momentary" | "flash";
+  mode?: "toggle" | "momentary" | "flash" | "select";
   /**
    * Per-push MIDI channel override. Inherits encoder channel or global_channel if omitted.
    */

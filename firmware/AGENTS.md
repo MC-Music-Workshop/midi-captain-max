@@ -181,8 +181,10 @@ All outgoing MIDI goes through `midi_send(msg)` which writes to both USB and 5-p
 
 `dispatch_button(btn_num, pressed, btn_config, btn_state, channel)` branches on `message_type`:
 - `"cc"` + toggle/momentary → sends CC with `cc_on`/`cc_off` values
+- `"cc"` + select → calls `handle_cc_select_press`: sends `cc_on` (or `cc_off` on self-deselect), calls `update_select_group`
 - `"note"` + toggle/momentary → sends NoteOn/NoteOff
 - `"pc"` + pressed only → sends ProgramChange, calls `flash_pc_button`
+- `"pc"` + select → calls `handle_pc_select_press`: sends PC, calls `update_select_group`
 - `"pc_inc"` / `"pc_dec"` + pressed only → increments/decrements `pc_values[channel]`, sends PC, flashes
 - `"hid"` + pressed only → calls `dispatch_hid(...)`, flashes LED
 
@@ -192,12 +194,32 @@ Keytimes: `btn_state.advance_keytime()` is called before reading `state_cfg`, so
 
 ### PC Button LED Modes
 
-PC buttons support three LED modes (`mode` field); MIDI is always sent on press regardless:
+PC buttons support four LED modes (`mode` field); MIDI is always sent on press regardless:
 - **`flash`** (default): brief LED pulse. Uses `flash_pc_button()` + `pc_flash_timers[]`. Duration configurable via `flash_ms` (default 200ms, range 50–5000).
 - **`toggle`**: latching — `btn_state.state` flips on press, LED persists until next press.
 - **`momentary`**: LED on while held, cleared on release.
+- **`select`**: radio-group exclusivity (see Select Mode below).
 
 Flash timers store **expiry time** as `time.monotonic() + flash_ms / 1000.0` (not loop-tick counting — the main loop has no sleep so tick count is unreliable).
+
+### Select Mode (Radio Group)
+
+Select-mode buttons enforce mutual exclusivity within a named group: pressing one activates it and deactivates all sibling buttons sharing the same `select_group`. Valid only on `pc` and `cc` types; multi-keytime configs are rejected by the validator (forced single-keytime). See [docs/plans/2026-05-07-issue-43-select-mode.md](../docs/plans/2026-05-07-issue-43-select-mode.md) and Issue #43.
+
+**Config fields:**
+- `mode: "select"` — opt in.
+- `select_group: string` — required, non-empty. Buttons sharing this string form one radio group.
+- `select_repress: "resend" | "nothing" | "deselect"` — what happens when re-pressing the already-active member. Default `"resend"`. `"deselect"` is CC-only in firmware (PC value is preserved at config level but no-oped, gated on #47).
+
+**Helper:** `update_select_group(active_btn_num, group)` iterates `buttons`, sets `state` and LED for each member of the group (active button on, siblings off via each button's own `off_mode`). Writes only LEDs and `button_states` — never sends MIDI, so it's safe to call from RX paths without feedback risk.
+
+**Press handlers:** `handle_pc_select_press` and `handle_cc_select_press` send the on-message and call `update_select_group`. Repress dispatches on `select_repress`. CC `deselect` sends `cc_off` and clears the active button without re-running group exclusivity (so the group is left with no active member).
+
+**MIDI RX:** `_process_midi_msg` matches incoming PC by `(channel, program)` and CC by `(channel, cc, value == cc_on)` to a select-mode button and calls `update_select_group` (LED-only, no MIDI echo). `select_repress` is intentionally **not** consulted on RX — it governs local-press behavior only. RX is idempotent LED-and-state-only, which avoids feedback loops with hosts that echo their own messages.
+
+**Deferred to #47** (multi-message-per-press): off-message on sibling deactivation; PC `deselect` repress firmware behavior.
+
+**Future page handling:** when pages land, page-restore must repaint LEDs from `button_states[i].state` for select-mode buttons — do NOT reinit from config defaults, or latched group state is lost.
 
 ### HID Button Type
 

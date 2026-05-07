@@ -756,6 +756,86 @@ def flash_pc_button(button_idx, flash_ms=PC_FLASH_DURATION_MS):
     pc_flash_timers[button_idx - 1] = time.monotonic() + flash_ms / 1000.0
 
 
+def update_select_group(active_btn_num, group):
+    """Activate one select-mode button and deactivate its group siblings.
+
+    Iterates all buttons; for each select-mode member matching `group`,
+    sets state on iff it's the active button. LED follows via set_button_state,
+    which respects each button's own off_mode.
+
+    Writes only LED + button_states; never sends MIDI. Safe to call from RX
+    paths without infinite-loop risk.
+
+    Args:
+        active_btn_num: 1-indexed button number to activate (others in group deactivate)
+        group: select_group string identifier; empty string is a no-op
+    """
+    if not group:
+        return
+    for i, cfg in enumerate(buttons):
+        if cfg.get("mode") == "select" and cfg.get("select_group") == group:
+            on = (i + 1) == active_btn_num
+            button_states[i].state = on
+            set_button_state(i + 1, on)
+
+
+def handle_pc_select_press(btn_num, btn_config, channel):
+    """Handle a select-mode PC button activation (local press).
+
+    Sends PC and claims active membership in the select group. Honors
+    select_repress for already-active presses.
+
+    PC + select_repress="deselect" is preserved at config level but no-oped
+    in firmware (falls through to the resend path here) — gated on #47
+    multi-message support landing. Existing configs won't need migration
+    once it does.
+    """
+    btn_state = button_states[btn_num - 1]
+    program = btn_config.get("program", 0)
+    group = btn_config.get("select_group", "")
+    repress = btn_config.get("select_repress", "resend")
+
+    if btn_state.state and repress == "nothing":
+        return  # already active, suppress repeat
+
+    # Note: PC + active + repress=="deselect" reaches here too (intentional V1 no-op).
+    midi_send(ProgramChange(program), channel=channel)
+    print(f"[MIDI TX] Ch{channel+1} PC{program} (switch {btn_num}, select)")
+    update_status(f"TX PC{program}")
+    update_select_group(btn_num, group)
+
+
+def handle_cc_select_press(btn_num, btn_config, channel):
+    """Handle a select-mode CC button activation (local press).
+
+    Sends CC (cc_on for activate, cc_off for self-deselect) and updates
+    select-group LEDs. Honors select_repress for already-active presses.
+    """
+    btn_state = button_states[btn_num - 1]
+    cc = btn_config.get("cc", 0)
+    cc_on = btn_config.get("cc_on", 127)
+    cc_off = btn_config.get("cc_off", 0)
+    group = btn_config.get("select_group", "")
+    repress = btn_config.get("select_repress", "resend")
+
+    if btn_state.state and repress == "nothing":
+        return
+
+    if btn_state.state and repress == "deselect":
+        # Self-toggle off: send cc_off, this button off, group has no active member.
+        midi_send(ControlChange(cc, cc_off), channel=channel)
+        print(f"[MIDI TX] Ch{channel+1} CC{cc}={cc_off} (switch {btn_num}, select deselect)")
+        update_status(f"TX CC{cc}={cc_off}")
+        btn_state.state = False
+        set_button_state(btn_num, False)
+        return
+
+    midi_send(ControlChange(cc, cc_on), channel=channel)
+    print(f"[MIDI TX] Ch{channel+1} CC{cc}={cc_on} (switch {btn_num}, select)")
+    update_status(f"TX CC{cc}={cc_on}")
+    update_select_group(btn_num, group)
+
+
 def _expire_flash_timers(timers, now):
     """Turn off LEDs for a single flash-timer array whose expiry has passed."""
     for i in range(BUTTON_COUNT):
@@ -789,6 +869,17 @@ def _process_midi_msg(msg, source="USB"):
         print(f"[MIDI RX {source}] Ch{msg_channel+1} CC{cc}={val}")
         for i, btn_config in enumerate(buttons):
             if btn_config.get("type", "cc") == "cc" and btn_config.get("cc") == cc and btn_config.get("channel", 0) == msg_channel:
+                # Select-mode: activate this button and deactivate group siblings
+                # only when value matches cc_on. Other values are ignored to avoid
+                # false activation. update_select_group is LED/state-only, so no
+                # MIDI echo and no feedback risk. select_repress is intentionally
+                # not consulted on RX — it applies only to local presses; RX is
+                # idempotent LED-and-state-only.
+                if btn_config.get("mode") == "select":
+                    if val == btn_config.get("cc_on", 127):
+                        update_select_group(i + 1, btn_config.get("select_group", ""))
+                    update_status(f"RX CC{cc}={val}")
+                    break
                 new_state = button_states[i].on_midi_receive(val)
                 set_button_state(i + 1, new_state)
                 update_status(f"RX CC{cc}={val}")
@@ -818,6 +909,16 @@ def _process_midi_msg(msg, source="USB"):
         print(f"[MIDI RX {source}] Ch{msg_channel+1} PC{program}")
         pc_values[msg_channel] = program
         update_status(f"RX PC{program}")
+        # Select-mode: activate the matching select-mode PC button and dim its
+        # group siblings. LED/state-only (no MIDI echo), so no feedback risk.
+        # select_repress is intentionally not consulted on RX — it applies only
+        # to local presses; RX is idempotent LED-and-state-only.
+        for i, btn_config in enumerate(buttons):
+            if (btn_config.get("type") == "pc" and btn_config.get("mode") == "select"
+                    and btn_config.get("program") == program
+                    and btn_config.get("channel", 0) == msg_channel):
+                update_select_group(i + 1, btn_config.get("select_group", ""))
+                break
 
 
 def handle_midi():
@@ -866,6 +967,10 @@ def handle_switches():
             channel = btn_config.get("channel", 0)
 
             if message_type == "cc":
+                if mode == "select":
+                    if pressed:
+                        handle_cc_select_press(btn_num, btn_config, channel)
+                    continue
                 if pressed:
                     btn_state.advance_keytime()
                 state_cfg = get_button_state_config(btn_config, btn_state.get_keytime())
@@ -920,6 +1025,10 @@ def handle_switches():
                         update_status(f"TX Note{note} OFF")
 
             elif message_type == "pc":
+                if mode == "select":
+                    if pressed:
+                        handle_pc_select_press(btn_num, btn_config, channel)
+                    continue
                 if pressed:
                     btn_state.advance_keytime()
                     state_cfg = get_button_state_config(btn_config, btn_state.get_keytime())

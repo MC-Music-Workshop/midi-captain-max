@@ -104,7 +104,21 @@ def validate_button(btn, index=0, global_channel=None):
     # PC types default to "flash" (brief LED pulse); CC/Note default to "toggle"
     default_mode = "flash" if msg_type in ("pc", "pc_inc", "pc_dec") else "toggle"
     raw_mode = btn.get("mode", default_mode)
-    if raw_mode not in ("toggle", "momentary", "flash"):
+    # "select" (radio-group) is valid only on pc and cc, and only with keytimes==1.
+    # Other invalid modes (and select on disallowed types) coerce back to default.
+    if raw_mode == "select":
+        if msg_type not in ("pc", "cc") or keytimes != 1:
+            raw_mode = default_mode
+        else:
+            # Validate select_group: must be a non-empty string after trimming.
+            raw_group = btn.get("select_group")
+            if isinstance(raw_group, str):
+                raw_group = raw_group.strip()
+            else:
+                raw_group = ""
+            if not raw_group:
+                raw_mode = default_mode
+    elif raw_mode not in ("toggle", "momentary", "flash"):
         raw_mode = default_mode
 
     validated = {
@@ -116,6 +130,14 @@ def validate_button(btn, index=0, global_channel=None):
         "type": msg_type,
         "keytimes": keytimes,
     }
+
+    # Select-mode fields, only persisted when mode is "select".
+    if raw_mode == "select":
+        validated["select_group"] = btn.get("select_group", "").strip()
+        raw_repress = btn.get("select_repress", "resend")
+        if raw_repress not in ("resend", "nothing", "deselect"):
+            raw_repress = "resend"
+        validated["select_repress"] = raw_repress
 
     # Type-specific fields
     if msg_type == "cc":

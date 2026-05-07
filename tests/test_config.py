@@ -402,6 +402,146 @@ class TestButtonMessageTypes:
         assert btn["keytimes"] == 3
 
 
+class TestSelectMode:
+    """Tests for select-mode (radio-group) button configuration. See docs/plans/2026-05-07-issue-43-select-mode.md."""
+
+    # --- Acceptance: PC + CC with valid group ---
+
+    def test_pc_select_mode_with_group_accepted(self):
+        btn = validate_button({"type": "pc", "mode": "select", "select_group": "amp", "program": 5}, index=0)
+        assert btn["mode"] == "select"
+        assert btn["select_group"] == "amp"
+        assert btn["select_repress"] == "resend"  # default
+        assert btn["program"] == 5
+
+    def test_cc_select_mode_with_group_accepted(self):
+        btn = validate_button({"type": "cc", "mode": "select", "select_group": "ir", "cc": 30}, index=0)
+        assert btn["mode"] == "select"
+        assert btn["select_group"] == "ir"
+        assert btn["select_repress"] == "resend"
+
+    def test_select_group_trimmed(self):
+        """Whitespace around group name is trimmed."""
+        btn = validate_button({"type": "pc", "mode": "select", "select_group": "  amp  ", "program": 0}, index=0)
+        assert btn["select_group"] == "amp"
+
+    # --- Rejection: missing / empty group coerces mode away ---
+
+    def test_select_mode_missing_group_coerces_to_default(self):
+        """mode=select with no select_group: mode coerced back to type's default; select_* fields stripped."""
+        btn = validate_button({"type": "pc", "mode": "select", "program": 0}, index=0)
+        assert btn["mode"] == "flash"  # PC default
+        assert "select_group" not in btn
+        assert "select_repress" not in btn
+
+    def test_select_mode_empty_group_coerces_to_default(self):
+        btn = validate_button({"type": "cc", "mode": "select", "select_group": "", "cc": 20}, index=0)
+        assert btn["mode"] == "toggle"  # CC default
+        assert "select_group" not in btn
+        assert "select_repress" not in btn
+
+    def test_select_mode_whitespace_only_group_coerces_to_default(self):
+        btn = validate_button({"type": "pc", "mode": "select", "select_group": "   ", "program": 0}, index=0)
+        assert btn["mode"] == "flash"
+        assert "select_group" not in btn
+
+    def test_select_mode_non_string_group_coerces_to_default(self):
+        btn = validate_button({"type": "pc", "mode": "select", "select_group": 42, "program": 0}, index=0)
+        assert btn["mode"] == "flash"
+        assert "select_group" not in btn
+
+    # --- select_repress validation ---
+
+    def test_select_repress_default_is_resend(self):
+        btn = validate_button({"type": "pc", "mode": "select", "select_group": "g", "program": 0}, index=0)
+        assert btn["select_repress"] == "resend"
+
+    def test_select_repress_resend_accepted(self):
+        btn = validate_button({"type": "pc", "mode": "select", "select_group": "g", "select_repress": "resend", "program": 0}, index=0)
+        assert btn["select_repress"] == "resend"
+
+    def test_select_repress_nothing_accepted(self):
+        btn = validate_button({"type": "pc", "mode": "select", "select_group": "g", "select_repress": "nothing", "program": 0}, index=0)
+        assert btn["select_repress"] == "nothing"
+
+    def test_select_repress_deselect_accepted_on_cc(self):
+        btn = validate_button({"type": "cc", "mode": "select", "select_group": "g", "select_repress": "deselect", "cc": 20}, index=0)
+        assert btn["select_repress"] == "deselect"
+
+    def test_select_repress_deselect_preserved_on_pc(self):
+        """PC + deselect is preserved through validation; firmware will no-op until #47 lands."""
+        btn = validate_button({"type": "pc", "mode": "select", "select_group": "g", "select_repress": "deselect", "program": 0}, index=0)
+        assert btn["select_repress"] == "deselect"
+
+    def test_select_repress_invalid_defaults_to_resend(self):
+        btn = validate_button({"type": "pc", "mode": "select", "select_group": "g", "select_repress": "garbage", "program": 0}, index=0)
+        assert btn["select_repress"] == "resend"
+
+    # --- Rejection: select on disallowed types ---
+
+    def test_select_mode_rejected_on_pc_inc(self):
+        btn = validate_button({"type": "pc_inc", "mode": "select", "select_group": "g"}, index=0)
+        assert btn["mode"] == "flash"  # pc_inc default
+        assert "select_group" not in btn
+
+    def test_select_mode_rejected_on_pc_dec(self):
+        btn = validate_button({"type": "pc_dec", "mode": "select", "select_group": "g"}, index=0)
+        assert btn["mode"] == "flash"
+        assert "select_group" not in btn
+
+    def test_select_mode_rejected_on_note(self):
+        btn = validate_button({"type": "note", "mode": "select", "select_group": "g", "note": 60}, index=0)
+        assert btn["mode"] == "toggle"  # note default
+        assert "select_group" not in btn
+
+    def test_select_mode_rejected_on_hid(self):
+        btn = validate_button({"type": "hid", "color": "blue", "label": "K",
+                               "mode": "select", "select_group": "g", "hid_key": "A"}, index=0)
+        assert btn["mode"] == "toggle"  # hid default
+        assert "select_group" not in btn
+
+    # --- Rejection: multi-keytime + select ---
+
+    def test_select_mode_rejects_multi_keytime(self):
+        """select + keytimes>1 coerces mode back to default; select_* stripped."""
+        btn = validate_button({
+            "type": "pc",
+            "mode": "select",
+            "select_group": "g",
+            "program": 5,
+            "keytimes": 3,
+            "states": [{"program": 1}, {"program": 2}, {"program": 3}],
+        }, index=0)
+        assert btn["mode"] == "flash"
+        assert "select_group" not in btn
+        assert "select_repress" not in btn
+
+    def test_select_mode_with_keytimes_one_accepted(self):
+        """keytimes=1 (default) with select is fine."""
+        btn = validate_button({"type": "pc", "mode": "select", "select_group": "g", "program": 0, "keytimes": 1}, index=0)
+        assert btn["mode"] == "select"
+        assert btn["select_group"] == "g"
+
+    # --- Strip when mode != select ---
+
+    def test_select_group_stripped_when_mode_flash(self):
+        btn = validate_button({"type": "pc", "mode": "flash", "select_group": "g", "select_repress": "nothing", "program": 0}, index=0)
+        assert btn["mode"] == "flash"
+        assert "select_group" not in btn
+        assert "select_repress" not in btn
+
+    def test_select_group_stripped_when_mode_toggle(self):
+        btn = validate_button({"type": "cc", "mode": "toggle", "select_group": "g", "cc": 20}, index=0)
+        assert btn["mode"] == "toggle"
+        assert "select_group" not in btn
+        assert "select_repress" not in btn
+
+    def test_select_group_stripped_when_mode_momentary(self):
+        btn = validate_button({"type": "cc", "mode": "momentary", "select_group": "g", "cc": 20}, index=0)
+        assert "select_group" not in btn
+        assert "select_repress" not in btn
+
+
 class TestValidateConfig:
     """Test validate_config function from core/config.py."""
     

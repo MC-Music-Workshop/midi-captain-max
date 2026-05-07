@@ -38,9 +38,24 @@ export const config = derived(formState, $state => $state.config);
 export const isDirty = derived(formState, $state => $state.isDirty);
 export const validationErrors = derived(formState, $state => $state.validationErrors);
 export const canUndo = derived(formState, $state => $state.historyIndex > 0);
-export const canRedo = derived(formState, $state => 
+export const canRedo = derived(formState, $state =>
   $state.historyIndex < $state.history.length - 1
 );
+
+// Distinct, sorted list of select_group names already used in the config.
+// Powers the autocomplete in ButtonRow's Select-Group input so users can pick
+// an existing group rather than retype (and risk typos). Includes groups from
+// buttons that aren't currently mode==select, since the form preserves the
+// value across mode flips and we want it to remain suggestable.
+export const selectGroupNames = derived(formState, $state => {
+  const groups = new Set<string>();
+  for (const btn of $state.config.buttons) {
+    if (btn.select_group) {
+      groups.add(btn.select_group);
+    }
+  }
+  return Array.from(groups).sort();
+});
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -353,7 +368,17 @@ export function setDevice(deviceType: DeviceType) {
 function normalizeButton(btn: ButtonConfig): ButtonConfig {
   const type = btn.type ?? 'cc';
   const { cc, cc_on, cc_off, note, velocity_on, velocity_off, program, pc_step, flash_ms,
-          hid_action, hid_key, hid_modifier, hid_delay_ms, ...common } = btn;
+          hid_action, hid_key, hid_modifier, hid_delay_ms,
+          select_group, select_repress, ...common } = btn;
+
+  // Select mode (radio-group) is valid only on PC and CC. select_group/select_repress
+  // are stripped on serialize when mode != 'select' so the JSON stays clean even if
+  // the form preserved them across mode flips.
+  const isSelectMode = common.mode === 'select';
+  const selectFields = isSelectMode ? {
+    ...(select_group !== undefined && { select_group }),
+    ...(select_repress !== undefined && { select_repress }),
+  } : {};
 
   switch (type) {
     case 'cc':
@@ -362,6 +387,7 @@ function normalizeButton(btn: ButtonConfig): ButtonConfig {
         ...(cc !== undefined && { cc }),
         ...(cc_on !== undefined && { cc_on }),
         ...(cc_off !== undefined && { cc_off }),
+        ...selectFields,
       };
     case 'note':
       return {
@@ -376,6 +402,7 @@ function normalizeButton(btn: ButtonConfig): ButtonConfig {
         ...common,
         ...(program !== undefined && { program }),
         ...(pcFlashMode && flash_ms !== undefined && { flash_ms }),
+        ...selectFields,
       };
     }
     case 'pc_inc':

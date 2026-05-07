@@ -27,6 +27,17 @@ pub enum ButtonMode {
     Toggle,
     Momentary,
     Flash,
+    Select,
+}
+
+/// Behavior when re-pressing the already-active member of a select group.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SelectRepress {
+    #[default]
+    Resend,
+    Nothing,
+    Deselect,
 }
 
 /// LED behavior when button is off
@@ -143,6 +154,11 @@ pub struct ButtonConfig {
     // PC flash feedback (all PC types)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flash_ms: Option<u16>,
+    // Select-mode (radio-group) fields, used when mode == "select" (PC and CC only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub select_group: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub select_repress: Option<SelectRepress>,
     // Keytimes cycling
     #[serde(skip_serializing_if = "Option::is_none")]
     pub keytimes: Option<u8>,

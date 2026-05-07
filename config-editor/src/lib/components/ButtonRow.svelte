@@ -2,7 +2,7 @@
   import ColorSelect from './ColorSelect.svelte';
   import type { ButtonConfig, ButtonColor, ButtonMode, OffMode, MessageType } from '$lib/types';
   import { MESSAGE_TYPE_LABELS } from '$lib/types';
-  import { validationErrors, syncButtonStates } from '$lib/formStore';
+  import { validationErrors, syncButtonStates, selectGroupNames } from '$lib/formStore';
 
   interface Props {
     button: ButtonConfig;
@@ -28,6 +28,10 @@
   let isHID = $derived(msgType === 'hid');
   let isPCType = $derived(isPC || isPCIncDec);
   let showMode = $derived(isCC || isNote || isPCType || isHID);
+  // Select mode (radio group) is valid only on plain PC and CC types.
+  let canSelectMode = $derived(isPC || isCC);
+  let isSelectMode = $derived(button.mode === 'select');
+  let datalistId = $derived(`${idPrefix}-select-groups`);
 
   function handleLabelChange(e: Event) {
     const target = e.target as HTMLInputElement;
@@ -112,6 +116,17 @@
     const target = e.target as HTMLInputElement;
     const value = target.value === '' ? undefined : parseInt(target.value);
     onUpdate('flash_ms', value);
+  }
+
+  function handleSelectGroupChange(e: Event) {
+    const target = e.target as HTMLInputElement;
+    const value = target.value.trim();
+    onUpdate('select_group', value === '' ? undefined : value);
+  }
+
+  function handleSelectRepressChange(e: Event) {
+    const target = e.target as HTMLSelectElement;
+    onUpdate('select_repress', target.value);
   }
 
   function handleHidActionChange(e: Event) {
@@ -415,14 +430,56 @@
 
   {#if showMode}
     <div class="field">
-      <label class="field-label" for={fieldId('mode')}>LED Mode:</label>
+      <label class="field-label" for={fieldId('mode')}>Mode:</label>
       <select id={fieldId('mode')} class="select" value={button.mode || (isPCType ? 'flash' : 'toggle')} onchange={handleModeChange} disabled={disabled}>
         {#if isPCType}
           <option value="flash">Flash</option>
         {/if}
         <option value="toggle">Toggle</option>
         <option value="momentary">Momentary</option>
+        {#if canSelectMode}
+          <option value="select">Select</option>
+        {/if}
       </select>
+    </div>
+  {/if}
+
+  {#if canSelectMode && isSelectMode}
+    <div class="field">
+      <label class="field-label" for={fieldId('select-group')}>Select Group:</label>
+      <input
+        id={fieldId('select-group')}
+        type="text"
+        class="input-label"
+        list={datalistId}
+        value={button.select_group ?? ''}
+        onblur={handleSelectGroupChange}
+        disabled={disabled}
+        placeholder="e.g. amp"
+        title="Buttons sharing this group are mutually exclusive (radio behavior)."
+      />
+      <datalist id={datalistId}>
+        {#each $selectGroupNames as group}
+          <option value={group}></option>
+        {/each}
+      </datalist>
+    </div>
+    <div class="field">
+      <label class="field-label" for={fieldId('select-repress')}>On re-press:</label>
+      <select
+        id={fieldId('select-repress')}
+        class="select"
+        value={button.select_repress ?? 'resend'}
+        onchange={handleSelectRepressChange}
+        disabled={disabled}
+      >
+        <option value="resend">Resend</option>
+        <option value="nothing">Nothing</option>
+        <option value="deselect" disabled={isPC}>Deselect{isPC ? ' (CC only)' : ''}</option>
+      </select>
+      {#if isPC}
+        <span class="hint-text">Deselect requires multi-message support — tracked in #47.</span>
+      {/if}
     </div>
   {/if}
 
@@ -693,6 +750,13 @@
     font-size: 0.75rem;
     color: #dc3545;
     white-space: nowrap;
+    margin-top: 2px;
+  }
+
+  .hint-text {
+    font-size: 0.7rem;
+    color: #888;
+    font-style: italic;
     margin-top: 2px;
   }
 

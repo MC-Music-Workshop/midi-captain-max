@@ -45,6 +45,14 @@ export interface MIDICaptainConfig {
   encoder?: EncoderConfig;
   expression?: ExpressionPedals;
   display?: DisplayConfig;
+  /**
+   * MIDI Thru: forward messages received on USB MIDI to the 5-pin DIN output. Default true.
+   */
+  midi_thru_usb?: boolean;
+  /**
+   * MIDI Thru: forward messages received on the 5-pin DIN MIDI input to the USB MIDI output. Default true.
+   */
+  midi_thru_din?: boolean;
 }
 export interface ButtonConfig {
   /**

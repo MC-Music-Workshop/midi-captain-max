@@ -47,6 +47,16 @@
     "display": {
       "$ref": "#/definitions/DisplayConfig",
       "description": "Display and text rendering settings."
+    },
+    "midi_thru_usb": {
+      "type": "boolean",
+      "default": true,
+      "description": "MIDI Thru: forward messages received on USB MIDI to the 5-pin DIN output. Default true."
+    },
+    "midi_thru_din": {
+      "type": "boolean",
+      "default": true,
+      "description": "MIDI Thru: forward messages received on the 5-pin DIN MIDI input to the USB MIDI output. Default true."
     }
   },
   "additionalProperties": false,

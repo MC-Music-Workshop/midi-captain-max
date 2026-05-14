@@ -324,6 +324,12 @@ pub struct MidiCaptainConfig {
     /// needing to hold Switch 1.  Defaults to false (performance mode).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dev_mode: Option<bool>,
+    /// Forward USB-received MIDI messages to the 5-pin DIN output. Default: true.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub midi_thru_usb: Option<bool>,
+    /// Forward 5-pin DIN-received MIDI messages to the USB MIDI output. Default: true.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub midi_thru_din: Option<bool>,
     pub buttons: Vec<ButtonConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encoder: Option<EncoderConfig>,
@@ -720,6 +726,36 @@ mod tests {
         let reserialized = serde_json::to_string(&config).unwrap();
         let config2: MidiCaptainConfig = serde_json::from_str(&reserialized).unwrap();
         assert_eq!(config2.dev_mode, Some(true));
+    }
+
+    #[test]
+    fn test_roundtrip_midi_thru_usb() {
+        let json = r#"{
+            "buttons": [],
+            "midi_thru_usb": false
+        }"#;
+
+        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.midi_thru_usb, Some(false));
+
+        let reserialized = serde_json::to_string(&config).unwrap();
+        let config2: MidiCaptainConfig = serde_json::from_str(&reserialized).unwrap();
+        assert_eq!(config2.midi_thru_usb, Some(false));
+    }
+
+    #[test]
+    fn test_roundtrip_midi_thru_din() {
+        let json = r#"{
+            "buttons": [],
+            "midi_thru_din": false
+        }"#;
+
+        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.midi_thru_din, Some(false));
+
+        let reserialized = serde_json::to_string(&config).unwrap();
+        let config2: MidiCaptainConfig = serde_json::from_str(&reserialized).unwrap();
+        assert_eq!(config2.midi_thru_din, Some(false));
     }
 
     /// Round-trip every shipped firmware config file: parse → serialize → parse,

@@ -18,6 +18,7 @@
   import EncoderSection from '$lib/components/EncoderSection.svelte';
   import ExpressionSection from '$lib/components/ExpressionSection.svelte';
   import DisplaySection from '$lib/components/DisplaySection.svelte';
+  import MidiThruSection from '$lib/components/MidiThruSection.svelte';
   import FirmwareInstaller from '$lib/components/FirmwareInstaller.svelte';
   import { loadConfig, validate, normalizeConfig, config } from '$lib/formStore';
 
@@ -335,6 +336,7 @@
         <EncoderSection />
         <ExpressionSection />
         <DisplaySection />
+        <MidiThruSection />
         <FirmwareInstaller
           device={$selectedDevice}
           hasUnsavedChanges={$hasUnsavedChanges}

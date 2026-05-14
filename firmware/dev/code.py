@@ -39,7 +39,7 @@ from adafruit_midi.note_off import NoteOff
 
 # Import core modules (testable logic)
 from core.colors import COLORS, get_color, dim_color, rgb_to_hex, get_off_color, get_off_color_for_display
-from core.config import load_config as _load_config_from_file, validate_config, get_display_config, get_button_state_config
+from core.config import load_config as _load_config_from_file, validate_config, get_display_config, get_button_state_config, get_midi_thru_usb, get_midi_thru_din
 from core.button import Switch, ButtonState
 from core.hid import dispatch_hid
 
@@ -264,6 +264,11 @@ def load_config():
 config = load_config()
 buttons = config.get("buttons", [])
 print(f"Loaded {len(buttons)} button configs")
+
+# MIDI Thru settings (read once at boot; default True if omitted)
+MIDI_THRU_USB = get_midi_thru_usb(config)  # forward USB->DIN
+MIDI_THRU_DIN = get_midi_thru_din(config)  # forward DIN->USB
+print(f"MIDI thru: USB->DIN={MIDI_THRU_USB}, DIN->USB={MIDI_THRU_DIN}")
 
 # =============================================================================
 # Fonts
@@ -927,8 +932,8 @@ def handle_midi():
     usb_msg = midi.receive()
     if usb_msg:
         _process_midi_msg(usb_msg, source="USB")
-        # Thru: forward USB → 5-pin
-        if midi_serial is not None:
+        # Thru: forward USB -> DIN (gated by config)
+        if MIDI_THRU_USB and midi_serial is not None:
             try:
                 midi_serial.send(usb_msg)
             except Exception:
@@ -939,11 +944,12 @@ def handle_midi():
         din_msg = midi_serial.receive()
         if din_msg:
             _process_midi_msg(din_msg, source="DIN")
-            # Thru: forward 5-pin → USB
-            try:
-                midi.send(din_msg)
-            except Exception:
-                pass
+            # Thru: forward DIN -> USB (gated by config)
+            if MIDI_THRU_DIN:
+                try:
+                    midi.send(din_msg)
+                except Exception:
+                    pass
 
 
 def handle_switches():

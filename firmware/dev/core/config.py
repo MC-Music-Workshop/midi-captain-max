@@ -359,6 +359,22 @@ def get_display_config(cfg):
     }
 
 
+def get_midi_thru_usb(cfg):
+    """Whether to forward USB-received MIDI messages to the 5-pin DIN output.
+
+    Returns True if USB->DIN MIDI thru is enabled (default), False if disabled.
+    """
+    return bool(cfg.get("midi_thru_usb", True))
+
+
+def get_midi_thru_din(cfg):
+    """Whether to forward 5-pin DIN-received MIDI messages to the USB MIDI output.
+
+    Returns True if DIN->USB MIDI thru is enabled (default), False if disabled.
+    """
+    return bool(cfg.get("midi_thru_din", True))
+
+
 def get_dev_mode(cfg):
     """Extract development mode setting from config.
 

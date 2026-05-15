@@ -85,3 +85,38 @@ def get_off_color_for_display(color_rgb, off_mode="dim"):
     """
     # Always return dim color to keep labels visible on display
     return dim_color(color_rgb)
+
+
+def compute_keytimes_led_color(short_color, short_dim, long_color, long_dim):
+    """Resolve the LED color for a mode: "keytimes" button per the two-layer render rule.
+
+    Render rule (from docs/plans/2026-05-13-issue-48-press-timings.md):
+      - short.color == "off"         -> LED off (short is a kill switch)
+      - long.color set (not "off")   -> LED = long.color (decoration over primary)
+      - short.color set              -> LED = short.color
+      - else                         -> LED off
+
+    The 'dim' flag on whichever layer wins applies via dim_color() (15% brightness).
+
+    Args:
+        short_color: color name from short cycle layer, or None if unset
+        short_dim: True to render short layer at reduced brightness
+        long_color: color name from long cycle layer, or None if unset
+        long_dim: True to render long layer at reduced brightness
+
+    Returns:
+        RGB tuple (r, g, b) with values 0-255
+    """
+    if short_color == "off":
+        return COLORS["off"]
+    if long_color and long_color != "off":
+        rgb = get_color(long_color)
+        if long_dim:
+            rgb = dim_color(rgb)
+        return rgb
+    if short_color:
+        rgb = get_color(short_color)
+        if short_dim:
+            rgb = dim_color(rgb)
+        return rgb
+    return COLORS["off"]

@@ -38,9 +38,9 @@ from adafruit_midi.note_on import NoteOn
 from adafruit_midi.note_off import NoteOff
 
 # Import core modules (testable logic)
-from core.colors import COLORS, get_color, dim_color, rgb_to_hex, get_off_color, get_off_color_for_display
-from core.config import load_config as _load_config_from_file, validate_config, get_display_config, get_button_state_config
-from core.button import Switch, ButtonState
+from core.colors import COLORS, get_color, dim_color, rgb_to_hex, get_off_color, get_off_color_for_display, compute_keytimes_led_color
+from core.config import load_config as _load_config_from_file, validate_config, get_display_config, get_button_state_config, get_long_press_threshold_ms
+from core.button import Switch, ButtonState, KeytimesButtonState, dispatch_keytimes_events
 from core.hid import dispatch_hid
 
 # =============================================================================
@@ -480,6 +480,19 @@ for i in range(BUTTON_COUNT):
     mode = btn_config.get("mode", "toggle")
     keytimes = btn_config.get("keytimes", 1)
     button_states.append(ButtonState(cc=cc, mode=mode, keytimes=keytimes))
+
+# Per-button KeytimesButtonState for buttons in mode: "keytimes" (#48). None for other modes.
+# Each holds a PressTracker (timing classifier), two PressCycles (short/long), and inherited
+# color/dim/label state for LED rendering.
+keytimes_states = [None] * BUTTON_COUNT
+for i in range(BUTTON_COUNT):
+    _kt_cfg = buttons[i] if i < len(buttons) else {}
+    if _kt_cfg.get("mode") == "keytimes":
+        _kt_threshold = get_long_press_threshold_ms(config, _kt_cfg)
+        _kt_short_len = len(_kt_cfg.get("short", []))
+        _kt_long_len = len(_kt_cfg.get("long", []))
+        keytimes_states[i] = KeytimesButtonState(_kt_threshold, _kt_short_len, _kt_long_len)
+        print(f"Button {i+1}: mode=keytimes, threshold={_kt_threshold}ms, short_len={_kt_short_len}, long_len={_kt_long_len}")
 
 pc_values = [0] * 16                 # Current PC value per MIDI channel (0-15), shared across all pc_inc/pc_dec buttons
 pc_flash_timers = [0.0] * BUTTON_COUNT  # Expiry time (monotonic) for PC button flash; 0 = inactive
@@ -946,21 +959,119 @@ def handle_midi():
                 pass
 
 
+def _dispatch_keytimes_message(msg, default_channel, btn_num):
+    """Send a single Message dict (from a keytimes-mode entry) to MIDI or HID.
+
+    Routes by msg["type"]. Falls back to default_channel for the button when the
+    message itself doesn't specify a channel. Used by handle_switches() via the
+    callback passed to dispatch_keytimes_events().
+    """
+    channel = msg.get("channel", default_channel)
+    mtype = msg.get("type", "cc")
+    if mtype == "cc":
+        cc = msg.get("cc", 0)
+        val = msg.get("value", 0)
+        midi_send(ControlChange(cc, val), channel=channel)
+        print(f"[MIDI TX] Ch{channel+1} CC{cc}={val} (switch {btn_num}, keytimes)")
+        update_status(f"TX CC{cc}={val}")
+    elif mtype == "note":
+        note = msg.get("note", 60)
+        vel = msg.get("velocity", 127)
+        if vel > 0:
+            midi_send(NoteOn(note, vel), channel=channel)
+            print(f"[MIDI TX] Ch{channel+1} NoteOn{note} vel{vel} (switch {btn_num}, keytimes)")
+        else:
+            midi_send(NoteOff(note, 0), channel=channel)
+            print(f"[MIDI TX] Ch{channel+1} NoteOff{note} (switch {btn_num}, keytimes)")
+        update_status(f"TX Note{note}")
+    elif mtype == "pc":
+        program = msg.get("program", 0)
+        midi_send(ProgramChange(program), channel=channel)
+        pc_values[channel] = program
+        print(f"[MIDI TX] Ch{channel+1} PC{program} (switch {btn_num}, keytimes)")
+        update_status(f"TX PC{program}")
+    elif mtype in ("pc_inc", "pc_dec"):
+        step = msg.get("step", 1)
+        delta = step if mtype == "pc_inc" else -step
+        pc_values[channel] = clamp_pc_value(pc_values[channel] + delta)
+        midi_send(ProgramChange(pc_values[channel]), channel=channel)
+        print(f"[MIDI TX] Ch{channel+1} PC{pc_values[channel]} (switch {btn_num}, keytimes {mtype})")
+        update_status(f"TX PC{pc_values[channel]}")
+    elif mtype == "hid":
+        action = msg.get("action", "send")
+        key = msg.get("key")
+        modifier = msg.get("modifier")
+        delay_ms = msg.get("delay_ms", 50)
+        dispatch_hid(hid_keyboard, hid_mouse, action, key, modifier, delay_ms)
+        key_label = key if key else "?"
+        print(f"[HID TX] {action} {key_label} (switch {btn_num}, keytimes)")
+        update_status(f"HID {action}")
+
+
+def _render_keytimes_led(btn_num, state, btn_config):
+    """Update LED + display for a mode: "keytimes" button based on its current state.
+
+    Uses compute_keytimes_led_color() to apply the two-layer render rule. Label
+    precedence: long_label > short_label > button-level label.
+    """
+    idx = btn_num - 1
+    if idx < 0 or idx >= BUTTON_COUNT:
+        return
+
+    rgb = compute_keytimes_led_color(state.short_color, state.short_dim,
+                                     state.long_color, state.long_dim)
+
+    led_idx = switch_to_led(btn_num)
+    if led_idx is not None:
+        base = led_idx * 3
+        for j in range(3):
+            if base + j < LED_COUNT:
+                pixels[base + j] = rgb
+        pixels.show()
+
+    if HAS_TFT and idx < len(button_labels):
+        # Label precedence: long override (if non-empty) > short override > button-level label.
+        effective_label = (state.long_label or state.short_label or btn_config.get("label", ""))[:6]
+        button_labels[idx].text = effective_label
+        button_labels[idx].color = rgb_to_hex(rgb)
+        if idx < len(button_boxes):
+            _, box_palette = button_boxes[idx]
+            box_palette[1] = rgb_to_hex(rgb)
+
+
 def handle_switches():
     """Handle footswitch presses with keytimes support."""
     # STD10: index 0 is encoder push, 1-10 are footswitches
     # Mini6: indices 0-5 are footswitches (no encoder)
     start_idx = 1 if HAS_ENCODER else 0
+    now = time.monotonic()
     for i in range(start_idx, len(switches)):
         sw = switches[i]
+        btn_num = i if HAS_ENCODER else i + 1
+        idx = btn_num - 1
+        btn_config = buttons[idx] if idx < len(buttons) else {"cc": 20 + idx}
+
+        # Keytimes mode (#48): poll-driven dispatch via PressTracker. Runs every loop iteration
+        # so the long-press threshold timer fires even when the switch state is steady.
+        if btn_config.get("mode") == "keytimes":
+            kt_state = keytimes_states[idx]
+            if kt_state is None:
+                continue
+            events = kt_state.tracker.update(sw.pressed, now)
+            if events:
+                default_channel = btn_config.get("channel", 0)
+                dispatch_keytimes_events(
+                    events, kt_state, btn_config,
+                    lambda msg: _dispatch_keytimes_message(msg, default_channel, btn_num)
+                )
+                _render_keytimes_led(btn_num, kt_state, btn_config)
+            continue
+
+        # Legacy modes (toggle/momentary/flash/select): edge-triggered dispatch.
         changed, pressed = sw.changed()
 
         if changed:
-            # Convert to 1-indexed button number
-            btn_num = i if HAS_ENCODER else i + 1
-            idx = btn_num - 1
             btn_state = button_states[idx]
-            btn_config = buttons[idx] if idx < len(buttons) else {"cc": 20 + idx}
 
             message_type = btn_config.get("type", "cc")
             mode = btn_config.get("mode", "toggle")

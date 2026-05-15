@@ -2,15 +2,17 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Add OEM-parity press-timing support to footswitches — short/long press detection with independent message cycles, replacing the current `keytimes`/`states[]` shape with a cleaner two-cycle model.
+**Goal:** Add OEM-parity press-timing support to footswitches as a **new mode** (`mode: "keytimes"`) — short/long press detection with independent message cycles per button. Existing modes (`toggle`, `momentary`, `flash`, `select`) are unchanged.
 
-**Architecture:** Two independent cycles per button (`short`, `long`), each an array of entries with optional `down`/`up`/`color` sub-fields. A polling-loop threshold timer in the firmware detects when a held button transitions from "short" to "long" classification. Cycle state lives in a per-page table in RAM (per-page model is forward-compatible with #15). The schema reserves array-of-messages per slot (single-element today, multi-element later per #47).
+**Architecture:** A new button mode `keytimes` opts into a rich press-timing + multi-state cycle model: two independent cycles per button (`short`, `long`), each an array of entries with optional `down`/`up`/`color`/`dim`/`label` sub-fields. A polling-loop threshold timer in the firmware detects when a held button transitions from "short" to "long" classification. Cycle state lives in a per-page table in RAM (per-page model is forward-compatible with #15). The schema reserves array-of-messages per slot (single-element today, multi-element later per #47). Buttons in any other mode use their existing dispatch path and config shape, completely untouched.
 
 **Tech Stack:** CircuitPython firmware (Python), pytest for firmware tests, JSON schema for config validation.
 
 **Resolves:** #48 (this issue), #73 (external-contributor parity request), partially feeds #15 (pages) and #47 (multi-message).
 **Closes:** #14 (already closed as duplicate of #73).
-**Forward-links:** #15 (pages), #47 (multi-message per slot), #123 (CC ramp).
+**Forward-links:** #15 (pages), #47 (multi-message per slot), #123 (CC ramp), #125 (select-mode + keytimes compatibility).
+
+**Breaking change:** The `keytimes: N` + `states[]` fields on existing `mode: "toggle"`/`"momentary"` buttons are **removed**. They were the multi-state cycling mechanism we're replacing — anyone using them upgrades by switching the button to `mode: "keytimes"` and re-expressing the cycle in the new shape. No automatic migration; the user base is small and the new mode is a strict superset of what `keytimes` + `states[]` could do. Validator rejects `keytimes`/`states` on non-keytimes-mode buttons.
 
 ---
 
@@ -33,7 +35,11 @@ To fire a message regardless of duration:
 
 ### Cycles
 
-Each button has **two independent cycles**: `short` and `long`. Each is an array of entries. Each entry has optional `down`, `up`, and `color` sub-fields. The down/up of the same entry are paired by physical press (same as OEM's `short_dwN`/`short_upN` pairing by N).
+Each button has **two independent cycles**: `short` and `long`. Each is an array of entries. Each entry has optional `down`, `up`, `color`, `dim`, and `label` sub-fields. The down/up of the same entry are paired by physical press (same as OEM's `short_dwN`/`short_upN` pairing by N).
+
+- `color` — named color from the existing palette. `"off"` means LED dark. Missing means inherit the previous entry's value within this cycle.
+- `dim` — boolean. When true, the resolved color is rendered through `dim_color()` (15% brightness, reusing existing `core/colors.py:34`). Lets a cycle entry represent a "muted" state without introducing new color names.
+- `label` — optional text override for the TFT display. Missing or empty string means inherit from the button-level `label`. Same inherit rule across the cycle as `color`.
 
 **Advancement rule:** Per cycle, per physical press — advance by 1 if ≥1 of that cycle's events fired during the press; else don't advance.
 
@@ -78,14 +84,17 @@ In-flight cancellation is the chosen behavior. Alternatives **(b)** "press conti
 
 ### Schema Shape
 
+A button opts into the new cycle/timing model by setting `mode: "keytimes"`. The `short` and `long` arrays are valid **only** on keytimes-mode buttons; the validator rejects them elsewhere. Existing modes (`toggle`, `momentary`, `flash`, `select`) keep their current configuration shape unchanged.
+
 ```json
 {
   "label": "VERB",
+  "mode": "keytimes",
   "color": "blue",
   "long_press_threshold_ms": 500,
   "short": [
-    { "down": [{ "type": "cc", "cc": 20, "value": 127 }], "color": "white" },
-    { "down": [{ "type": "cc", "cc": 20, "value": 0   }], "color": "off"   }
+    { "down": [{ "type": "cc", "cc": 20, "value": 127 }], "color": "white", "label": "VERB+" },
+    { "down": [{ "type": "cc", "cc": 20, "value": 0   }], "color": "white", "dim": true }
   ],
   "long": [
     { "down": [{ "type": "cc", "cc": 21, "value": 127 }], "color": "blue"  },
@@ -97,6 +106,12 @@ In-flight cancellation is the chosen behavior. Alternatives **(b)** "press conti
 Each sub-action (`down`, `up`) is an **array** of message objects, even when there's only one. This reserves the shape for #47 (multi-message per slot) without future migration. Initial firmware reads index `[0]` only; later firmware iterates the full list.
 
 Message objects use the existing `type`-discriminated shape (`{type: "cc", cc, value}`, `{type: "pc", program}`, `{type: "note", note, velocity}`, `{type: "hid", action, key, modifier, delay_ms}`). This converges with the unified-message-types plan (`docs/plans/2026-03-01-unified-message-types.md`).
+
+### Other Modes (unchanged)
+
+`mode: "toggle"`, `"momentary"`, `"flash"`, and `"select"` retain their current schemas verbatim — button-level `cc`/`cc_on`/`cc_off`, `note`/`velocity_on`/`velocity_off`, `program`, `pc_step`, `hid_*` fields, `color`, `off_mode`, `channel`, `flash_ms`, `select_group`, `select_repress`. A user who just wants a stomp picks `momentary`; a latching effect uses `toggle`; rich multi-state/long-press behavior uses `keytimes`. Nothing in the new mode disturbs the simple cases.
+
+The one schema change for non-keytimes modes: the legacy `keytimes: N` + `states[]` fields are **removed** from `toggle`/`momentary` (they previously enabled multi-state cycling on those modes). That role is now exclusively `mode: "keytimes"`'s job. Validator emits a clear error on configs that try to use them outside keytimes mode.
 
 ---
 
@@ -111,6 +126,43 @@ A user's real OEM config: short-press 1 = reverb on, short-press 2 = reverb off,
 OEM does the same: `short_upX` and `longX` increment their X separately.
 
 **Rejected:** one shared cycle index across both short and long. It collapses the two-effect-per-button pattern into a single sequence, which is strictly less expressive than OEM and breaks the reverb+shimmer scenario.
+
+### Why cycle lengths are independent
+
+OEM uses a single `keytimes` count covering all four timing slots on a button (so `short_dwN`, `short_upN`, `longN`, `long_upN` all share the same N — though the short and long *counters* advance independently). The new model decouples the lengths too: `short` and `long` are independent arrays with independent lengths.
+
+The reverb+shimmer scenario above happens to use length 2 for both cycles. But a button can legitimately have `short.length == 3` and `long.length == 2` — e.g., a "Lead" footswitch where:
+
+- Tap cycles through three gain stages: Clean → Crunch → Lead → (back to Clean)
+- Hold cycles through two ambient modes: Hall reverb → Plate reverb → (back to Hall)
+
+**In the new model**, that's five entries total — three in `short`, two in `long`:
+
+```json
+"short": [
+  { "down": [...Clean ...], "label": "CLEAN"  },
+  { "down": [...Crunch...], "label": "CRUNCH" },
+  { "down": [...Lead  ...], "label": "LEAD"   }
+],
+"long": [
+  { "down": [...Hall ...], "label": "HALL"  },
+  { "down": [...Plate...], "label": "PLATE" }
+]
+```
+
+**Under OEM**, the shared `keytimes` count forces you to the lowest-common-multiple of the two cycle periods — here `LCM(3, 2) = 6`. That's *twelve* slot definitions (six short, six long), with values repeated to keep both cycles aligned:
+
+```
+keytimes = 6
+short_up_1 = Clean,  long_1 = Hall
+short_up_2 = Crunch, long_2 = Plate
+short_up_3 = Lead,   long_3 = Hall
+short_up_4 = Clean,  long_4 = Plate
+short_up_5 = Crunch, long_5 = Hall
+short_up_6 = Lead,   long_6 = Plate
+```
+
+This works because OEM advances the short and long counters independently — but the user pays for it with redundant entries and a DRY violation: change Clean's CC value and you must update slots 1 and 4 in lockstep; same for every other repeated state. The new model expresses the user's actual intent (three taps, two holds) without forcing them through the LCM-padding ceremony. A future contributor tempted to "fix" this by collapsing back to a single count should know it's intentional — the asymmetric case is what makes the model strictly more expressive than OEM.
 
 ### Why pair `down`/`up` within an entry instead of independent timing sequences
 
@@ -138,11 +190,20 @@ Concretely, this preserves the user's traced expectation: with reverb (short=whi
 
 CC ramp (continuous interpolation while held) is filed separately as #123 — different enough to merit its own field, not just a `hold` variant.
 
-### Why `states[]` and `keytimes` count are removed
+### Why keytimes is a dedicated mode instead of a universal replacement
 
-The current shape locks each button to one `cc` channel and message type (`cc_on`/`cc_off` values vary per state). Adding long-press would force each state to carry multiple message variants and possibly different message types — the flat shape doesn't compose.
+The first version of this design replaced toggle and momentary altogether — every button moved to the new shape, with a 2-entry cycle for "old toggle" and a single-entry-with-down+up for "old momentary." That approach buckled under its own ambition:
 
-**Replaced with:** cycle arrays where length *is* the count, each entry can carry any message type, and `down`/`up`/`color` are first-class per-entry fields.
+- It forced a migration on every existing button regardless of need
+- It required render-side heuristics ("when entry has both down and up, treat as momentary") to recover behavior the old modes expressed directly
+- It removed `off_mode` (a button-level field) and tried to express the same intent via per-entry `color`/`dim`, which got tangled
+- It generated extended discussion of "Option A vs Option C" migration strategies that don't apply if no migration is required
+
+The right framing: **toggle and momentary are intuitive, universal stomp-pedal concepts**. They're not legacy to be deprecated — they're the right shape for ~95% of button configs. The new cycle/timing model is a genuinely different *kind* of button (multi-state, press-duration-aware) and deserves its own mode rather than masquerading as a generalization of the simple cases.
+
+**Replaced with:** `mode: "keytimes"` as a third primary mode alongside `toggle` and `momentary`. Toggle/momentary buttons keep their existing shape and dispatch path; only buttons that need cycling or long-press detection opt into the new mode and the new schema fields.
+
+**Why the legacy `keytimes` + `states[]` fields on toggle/momentary are removed:** they were a half-baked version of what `mode: "keytimes"` now does properly. Keeping both would be two cycling mechanisms in the codebase, which smells. The user base is small enough that asking the handful of `keytimes`-using configs to be re-expressed in the new mode is reasonable — and the new mode is a strict superset of what the old fields could do, so nothing is lost.
 
 ### Why arrays for `down`/`up` even when single-message
 
@@ -166,27 +227,31 @@ This is too large for a single PR. The plan phases the work so each phase is ind
 
 | Phase | What | Status |
 |---|---|---|
-| 1 | Switch timing infrastructure: timer/threshold detection in `Switch` class. Pure-test, no config changes. | Detailed below |
-| 2 | Schema + validator: parse new `short`/`long`/`long_press_threshold_ms` fields. New code doesn't yet *use* them. | Outline only |
-| 3 | New dispatch core: `handle_switches()` consumes the new schema for buttons that declare `short`/`long`. Old buttons keep working via the existing dispatch path. | Outline only |
-| 4 | Color render rule + cycle state table (forward-compatible with per-page). | Outline only |
-| 5 | Migrate all example configs to the new shape. Deprecate old shape via validator warning. | Outline only |
-| 6 | Remove old shape entirely (post-#47, post-#15). | Future plan |
+| 1: Foundation | `PressTracker` + `PressCycle` primitives + schema/validator for `mode: "keytimes"`. Pure-logic, fully unit-tested, no firmware integration. Ships nothing user-visible but lays the groundwork. | Detailed below |
+| 2: Integration | `handle_switches()` adds a `mode == "keytimes"` branch consuming the new schema; color render rule + cycle state table wired in. v2.0 actually does the thing. | Outline only |
+| 3: Polish | New example configs for keytimes mode; remove or convert in-tree configs that used `keytimes`/`states` on non-keytimes modes; release notes and docs. | Outline only |
 
-**Phase 1 is fully detailed below.** Phases 2–5 are outlined; each becomes its own plan when it gets picked up. This keeps the plan document focused on actionable work without ballooning to thousands of lines.
+**Phase 1 is fully detailed below.** Phases 2 and 3 are outlined; each becomes its own plan when picked up.
+
+There is no legacy-coexistence phase. Toggle, momentary, flash, and select keep their existing dispatch and schema; the `keytimes` mode is purely additive. The only removal is the legacy `keytimes`/`states` fields when used on non-keytimes-mode buttons — that's a hard rejection in the validator with a clear error message pointing users to the new mode.
 
 ---
 
-## Phase 1: Switch Timing Infrastructure
+## Phase 1: Foundation
 
-**Goal:** Extend the `Switch` class so it produces timing-classified events (`short_down`, `short_up`, `long_down`, `long_up`) based on observed press lifecycle, with no impact on existing dispatch.
+**Goal:** Land the data-and-logic foundation for keytimes mode: `PressTracker` and `PressCycle` primitives (timing classification + cycle state), and the schema + validator changes so configs using `mode: "keytimes"` are parseable. No firmware integration yet — that's Phase 2.
 
 **Files:**
-- Modify: `firmware/dev/core/button.py` (add `PressTracker` class — separate from `Switch` for testability)
-- Test: `tests/test_press_tracker.py` (new file)
-- Reference: `tests/conftest.py` for time-mocking patterns
+- Modify: `firmware/dev/core/button.py` (add `PressTracker` and `PressCycle` classes — separate from `Switch` for testability)
+- Modify: `firmware/dev/core/config.py` (validate `mode: "keytimes"` buttons; reject `keytimes`/`states` on other modes)
+- Modify: `config.schema.json` (add `mode: "keytimes"` and the new fields; gate by mode)
+- Test: `tests/test_press_tracker.py` (new)
+- Test: `tests/test_press_cycle.py` (new)
+- Test: `tests/test_press_tracker_cycle_integration.py` (new)
+- Test: extend `tests/test_config.py` with keytimes-mode validation tests
+- Reference: `tests/conftest.py` for any helpers
 
-**Why a separate class instead of bolting onto `Switch`:** `Switch` is a thin wrapper around `digitalio.DigitalInOut` and pull-up state. Timing logic is pure and best tested without any hardware mock. `PressTracker` consumes `(pressed: bool, now: float)` inputs and emits events. Compose: `Switch` produces edge-detected pressed/released, `PressTracker` adds timing classification.
+**Why separate classes from `Switch`:** `Switch` is a thin wrapper around `digitalio.DigitalInOut` and pull-up state. Timing logic is pure and best tested without any hardware mock. `PressTracker` consumes `(pressed: bool, now: float)` inputs and emits events. Compose: `Switch` produces edge-detected pressed/released, `PressTracker` adds timing classification, `PressCycle` tracks per-class cycle index.
 
 ### Task 1: PressTracker contract + failing test
 
@@ -606,19 +671,20 @@ Expected: all existing tests still pass; three new test files pass.
 
 ```bash
 git push -u origin <branch-name>
-gh pr create --title "feat(#48): add PressTracker and PressCycle primitives (phase 1 of 5)" --body "$(cat <<'EOF'
-First phase of #48 (press timings). Adds timing-classification primitives in `core/button.py` with no impact on existing dispatch — these are building blocks for phases 2–5.
+gh pr create --title "feat(#48): foundation — PressTracker, PressCycle, keytimes-mode validator (phase 1 of 3)" --body "$(cat <<'EOF'
+First phase of #48 (press timings). Lands the data-and-logic foundation for `mode: "keytimes"` — primitives, schema, validator. No firmware integration yet.
 
 ## What's added
 - `PressTracker` — classifies a physical press into `short_down`/`short_up`/`long_down`/`long_up` events based on a configurable threshold
 - `PressCycle` — independent index counter for one timing class, with wrap-around and reset
-- Unit tests for each + integration test tracing the reverb+shimmer scenario
+- `mode: "keytimes"` recognized by validator; `short[]`/`long[]`/`long_press_threshold_ms` parsed and validated on keytimes-mode buttons
+- Validator rejects legacy `keytimes`/`states` on non-keytimes-mode buttons with a helpful error pointing to the new mode
+- Unit tests for primitives + integration test tracing the reverb+shimmer scenario + validator tests
 
-## What's not changed
-- Schema (`config.schema.json`) — phase 2
-- Dispatch (`code.py`) — phase 3
-- Color rendering — phase 4
-- Example configs — phase 5
+## What's not changed yet
+- Dispatch (`code.py`) — phase 2 wires the new schema into `handle_switches()`
+- Color rendering and cycle state table — phase 2
+- Example configs — phase 3
 
 See `docs/plans/2026-05-13-issue-48-press-timings.md` for the full design and phasing.
 
@@ -626,6 +692,7 @@ See `docs/plans/2026-05-13-issue-48-press-timings.md` for the full design and ph
 - [x] `pytest tests/test_press_tracker.py` passes
 - [x] `pytest tests/test_press_cycle.py` passes
 - [x] `pytest tests/test_press_tracker_cycle_integration.py` passes
+- [x] `pytest tests/test_config.py` passes including new keytimes-mode tests
 - [x] Existing test suite unaffected
 EOF
 )"
@@ -633,45 +700,58 @@ EOF
 
 ---
 
-## Phase 2 (Outline): Schema & Validator
+## Phase 2 (Outline): Integration
 
-Goal: parse new fields without consuming them yet. Lays groundwork for phase 3.
+Goal: firmware actually *uses* the new schema for `mode: "keytimes"` buttons. Other modes' dispatch paths are completely untouched.
 
-- **Schema:** Extend `config.schema.json` with the new top-level field `long_press_threshold_ms` (number, default 500) and per-button `short`, `long`, `hold` fields. Reserve `hold` as schema-only (no validator support yet).
-- **Validator:** `validate_button` in `firmware/dev/core/config.py` learns to parse `short[]` and `long[]` as lists of entries, each with optional `down: Message[]`, `up: Message[]`, `color: string`. Each `Message` validated by type (`cc`, `pc`, `note`, `hid`, `pc_inc`, `pc_dec`). `long_press_threshold_ms` accepted at both top level and per-button.
-- **Mutual exclusion:** A button cannot have BOTH the new shape (`short`/`long`) AND the legacy shape (`cc` + `cc_on`/`cc_off`/`keytimes`/`states`). Validator rejects, falling back to legacy with a warning.
-- **Tests:** schema parses, defaults applied, threshold resolution (button override > global > 500), invalid shapes rejected gracefully.
-
-Estimated effort: ~12 tasks of TDD-pace.
-
-## Phase 3 (Outline): Dispatch Core
-
-Goal: firmware actually *uses* the new schema for buttons that opt in. Legacy buttons unchanged.
-
-- **Loop hook:** `code.py`'s `handle_switches()` polls each switch's `pressed` + `time.monotonic()` and feeds them through one `PressTracker` per button (allocated at startup). Events drive a per-button dispatcher.
+- **Loop hook:** `code.py`'s `handle_switches()` adds a new branch when `mode == "keytimes"`. For those buttons, the loop polls `pressed` + `time.monotonic()` and feeds them through one `PressTracker` per keytimes button (allocated at startup, only for keytimes-mode buttons — others don't need timing classification).
 - **Per-button dispatch:** For each event in the returned list, look up the matching slot in the new schema (e.g. `short[short_idx].down`) and dispatch its `Message[]` (initially just `[0]`, full iteration deferred to #47). After dispatch, advance the relevant cycle at most once per press.
-- **Co-existence:** Buttons with legacy fields (`cc`, `keytimes`, etc.) skip the new dispatcher and use existing logic. Decision deferred to phase 5.
-- **Tests:** dispatch table for each (event, message-type) combo; integration test for the reverb+shimmer scenario at the firmware level (mocked MIDI bus).
+- **No legacy fallback path:** the existing dispatch branches for `cc`/`pc`/`note`/`hid` × `toggle`/`momentary`/`flash`/`select` are unchanged. The keytimes branch is purely additive.
+- **Tests:** dispatch table for each (event, message-type) combo; integration test for the reverb+shimmer scenario at the firmware level (mocked MIDI bus); verification that non-keytimes-mode buttons are completely unaffected by the new code path.
 
-## Phase 4 (Outline): Color Rendering & Cycle State Table
+### Color Rendering & Cycle State Table (within Phase 2)
 
-Goal: per-button cycle state lives in a structure designed to extend to per-page for #15. LED renders per the two-layer rule.
+Per-button cycle state lives in a structure designed to extend to per-page for #15. LED renders per the two-layer rule.
 
 - **State table:** `cycle_state[button_idx] = {short_idx, long_idx, short_color, long_color}`. When pages land (#15), key on `(page_id, button_idx)`.
 - **Color inherit:** When an entry has no `color` field, the layer's stored color persists. `"off"` explicitly clears it.
 - **Render function:** `compute_led_color(short_color, long_color) → rgb` per the kill-switch rule.
 - **Tests:** color trace for the reverb+shimmer example (`[white, blue, off, blue, white]`); inherit semantics; `"off"` asymmetry.
 
-## Phase 5 (Outline): Example Config Migration & Deprecation
+## Phase 3 (Outline): Example Configs & Legacy Cleanup
 
-Goal: convert in-tree example configs to the new shape; warn on legacy shape.
+Goal: ship example configs for `mode: "keytimes"`; remove the legacy `keytimes`/`states` fields from non-keytimes example configs (cleaning up in-tree configs that the validator now rejects).
 
-- **Migrate:** `config-example-keytimes.json`, `config-example-mini6-keytimes.json`, `config-example-all-types.json`, plus the device-default configs if they use keytimes/states.
-- **Migration script:** one-shot Python script in `firmware/dev/scripts/migrate_legacy_keytimes.py` that converts a legacy config to the new shape. Run once, commit results, archive the script under `docs/migrations/`.
-- **Deprecation warning:** validator prints a warning when legacy `keytimes`/`states` is detected. Schema can also flag deprecated.
-- **Docs:** update `AGENTS.md` and any user-facing config docs.
+### New example configs
 
-Final removal of legacy shape: separate plan, deferred until #47 and #15 are landed (since both interact with cycle state).
+- Add `config-example-keytimes-mode.json` showcasing `mode: "keytimes"`: a reverb+shimmer pattern, a multi-state cycle (3 short × 2 long Lead button from the asymmetry rationale), and a long-press-only button. Include `long_press_threshold_ms` override examples.
+- Update `config-example-all-types.json` to demonstrate `mode: "keytimes"` alongside existing modes — showing the three primary modes side-by-side.
+
+### Cleanup of legacy in-tree configs
+
+The existing `config-example-keytimes.json` and `config-example-mini6-keytimes.json` files use the old `keytimes: N` + `states[]` shape on `mode: "toggle"` buttons. Once Phase 2's validator rejects that combination, those configs won't load. Two options:
+
+- **Rewrite them as `mode: "keytimes"` examples** — preferred. Preserves the demo value and shows the new shape.
+- **Delete them entirely** — acceptable if the new `config-example-keytimes-mode.json` covers the same ground.
+
+Check device-default configs (`config-mini6.json`, `config-nano4.json`, etc.) for any `keytimes`/`states` usage and clear them; default configs shouldn't depend on the deprecated combination.
+
+### User-facing release notes
+
+For v2.0 release notes / changelog (these are for users, not contributors):
+
+- **New:** `mode: "keytimes"` adds long-press detection and rich multi-state cycling. See `config-example-keytimes-mode.json` for usage.
+- **Breaking:** the `keytimes: N` and `states[]` fields no longer work on `mode: "toggle"` or `mode: "momentary"` buttons. If you used them, switch the button to `mode: "keytimes"` and re-express the cycle in the new shape. The new mode is a strict superset and can do everything the old fields could, plus long-press.
+- Toggle, momentary, flash, and select modes are otherwise unchanged. Plain stomp configs continue to work without modification.
+
+### Tasks
+
+- Write new keytimes-mode example configs.
+- Rewrite or delete legacy in-tree configs that use `keytimes`/`states` on non-keytimes modes.
+- Update `AGENTS.md` and any user-facing config docs with the three-mode framing and a "which mode should I use?" decision guide.
+- Add v2.0 release notes to the project README or changelog.
+
+No automatic migration code is shipped. The user base is small enough (and the affected subset — anyone using `keytimes` + `states` — even smaller) that a clean break with clear release notes is the right trade.
 
 ---
 
@@ -679,6 +759,7 @@ Final removal of legacy shape: separate plan, deferred until #47 and #15 are lan
 
 These were identified during design but deferred:
 
+- **#125 (select-mode + keytimes compatibility):** select mode (#43) and keytimes mode are mutually exclusive in v2.0 — they're separate `mode` values, so a button is one or the other. Some users may want both behaviors (group-radio selection AND long-press), so #125 tracks a future design for combining them. Not blocking #48.
 - **#15 (pages):** when pages land, cycle state must key on `(page_id, button_idx)`. The phase 4 table is designed for this — adding the page dimension is a refactor of one key access, not a re-architecture.
 - **#47 (multi-message):** phase 3's dispatcher reads `Message[]` but only processes index 0. When #47 lands, replace the index-0 read with iteration. No schema migration needed.
 - **#123 (CC ramp):** independent feature. Lives outside the short/long cycle model; consumes the long-press threshold to start the ramp.

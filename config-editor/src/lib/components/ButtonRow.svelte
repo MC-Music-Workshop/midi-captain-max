@@ -407,21 +407,26 @@
     </div>
   {/if}
 
-  <div class="field">
-    <label class="field-label" for={fieldId('keytimes')}>Keytimes:</label>
-    <input
-      id={fieldId('keytimes')}
-      type="number"
-      class="input-cc"
-      class:error={!!keytimesError}
-      value={button.keytimes ?? 1}
-      onblur={handleKeytimesChange}
-      disabled={disabled}
-      min="1"
-      max="99"
-    />
-    {#if keytimesError}<span class="error-text">{keytimesError}</span>{/if}
-  </div>
+  {#if hasKeytimes}
+    <div class="field">
+      <label class="field-label" for={fieldId('keytimes')}>
+        Keytimes:
+        <span class="legacy-tag" title="Deprecated; will be removed in v3.0. Switch to Mode: Keytimes for the new cycle model.">legacy</span>
+      </label>
+      <input
+        id={fieldId('keytimes')}
+        type="number"
+        class="input-cc"
+        class:error={!!keytimesError}
+        value={button.keytimes ?? 1}
+        onblur={handleKeytimesChange}
+        disabled={disabled}
+        min="1"
+        max="99"
+      />
+      {#if keytimesError}<span class="error-text">{keytimesError}</span>{/if}
+    </div>
+  {/if}
   {/if}<!-- /!isKeytimesMode -->
 
   <div class="field">
@@ -844,5 +849,19 @@
     padding: 0 0.25rem;
     border-radius: 2px;
     font-family: monospace;
+  }
+
+  .legacy-tag {
+    display: inline-block;
+    margin-left: 0.25rem;
+    padding: 0 0.25rem;
+    background: #fff3cd;
+    border: 1px solid #d4a017;
+    border-radius: 3px;
+    color: #5a4a00;
+    font-size: 0.6875rem;
+    font-weight: normal;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
 </style>

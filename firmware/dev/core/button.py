@@ -152,3 +152,78 @@ class ButtonState:
         """Reset keytime cycle back to position 1."""
         self.current_keytime = 1
         self._state = False
+
+
+class PressTracker:
+    """Classifies button press events into short/long timing slots.
+
+    Consumes (pressed, now) on every poll and returns a list of timing events
+    that fired during the transition. Designed to compose with Switch — the
+    caller passes Switch.pressed and time.monotonic() each loop.
+
+    Threshold defines the boundary between short and long presses. A release
+    before threshold emits short_up; a release after emits long_up. The
+    short_down event fires immediately on every physical press; long_down
+    fires once when the threshold is reached while still held.
+
+    Used only by buttons in mode: "keytimes" (see #48 / docs/plans/2026-05-13-...).
+    """
+
+    def __init__(self, threshold_ms):
+        self.threshold_s = threshold_ms / 1000.0
+        self._pressed = False
+        self._down_at = None
+        self._long_fired = False
+
+    def update(self, pressed, now):
+        """Process one poll. Returns a list of event names that fired.
+
+        Event names: "short_down", "short_up", "long_down", "long_up".
+        Multiple events can fire in one update (e.g. long_down arriving during
+        a steady hold). Returned list preserves firing order.
+        """
+        events = []
+
+        if pressed and not self._pressed:
+            self._pressed = True
+            self._down_at = now
+            self._long_fired = False
+            events.append("short_down")
+        elif pressed and self._pressed:
+            if not self._long_fired and (now - self._down_at) >= self.threshold_s:
+                self._long_fired = True
+                events.append("long_down")
+        elif not pressed and self._pressed:
+            self._pressed = False
+            if self._long_fired:
+                events.append("long_up")
+            else:
+                events.append("short_up")
+            self._down_at = None
+            self._long_fired = False
+
+        return events
+
+
+class PressCycle:
+    """Tracks the current entry index for one timing class (short or long).
+
+    Independent of PressTracker — a button has two PressCycles (short, long)
+    each managing its own index. Advanced once per physical press in which
+    at least one event from this class fired.
+
+    Used only by buttons in mode: "keytimes".
+    """
+
+    def __init__(self, length):
+        self.length = length
+        self.index = 0
+
+    def advance(self):
+        """Advance index by 1, wrapping at length. No-op when length <= 0."""
+        if self.length > 0:
+            self.index = (self.index + 1) % self.length
+
+    def reset(self):
+        """Reset index to 0 (e.g. on power cycle or config reload)."""
+        self.index = 0

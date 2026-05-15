@@ -12,8 +12,10 @@ from core.config import (
     validate_usb_drive_name,
     get_usb_drive_name,
     get_dev_mode,
-    get_midi_thru_usb,
-    get_midi_thru_din,
+    get_midi_thru_usb_to_din,
+    get_midi_thru_din_to_usb,
+    get_midi_thru_din_to_din,
+    get_midi_thru_usb_to_usb,
 )
 
 
@@ -119,64 +121,77 @@ def test_get_dev_mode_falsy_values():
     assert get_dev_mode({"dev_mode": None}) is False
 
 
-# ── midi_thru_usb tests ───────────────────────────────────────────────────────
-
-def test_get_midi_thru_usb_default_true():
-    """midi_thru_usb defaults to True when absent from config (back-compat)."""
-    assert get_midi_thru_usb({}) is True
+# ── midi_thru routing matrix tests ────────────────────────────────────────────
+# Routes: USB->DIN, DIN->USB, DIN->DIN default True (classic / cross-thru).
+# USB->USB defaults False (host loopback feedback risk).
 
 
-def test_get_midi_thru_usb_explicit_true():
-    """midi_thru_usb returns True when explicitly set to true."""
-    assert get_midi_thru_usb({"midi_thru_usb": True}) is True
+def test_get_midi_thru_usb_to_din_default_true():
+    assert get_midi_thru_usb_to_din({}) is True
 
 
-def test_get_midi_thru_usb_explicit_false():
-    """midi_thru_usb returns False when explicitly set to false."""
-    assert get_midi_thru_usb({"midi_thru_usb": False}) is False
+def test_get_midi_thru_usb_to_din_explicit_false():
+    assert get_midi_thru_usb_to_din({"midi_thru_usb_to_din": False}) is False
 
 
-def test_get_midi_thru_usb_truthy_values():
-    """midi_thru_usb coerces truthy non-bool values to True."""
-    assert get_midi_thru_usb({"midi_thru_usb": 1}) is True
+def test_get_midi_thru_usb_to_din_coercion():
+    assert get_midi_thru_usb_to_din({"midi_thru_usb_to_din": 1}) is True
+    assert get_midi_thru_usb_to_din({"midi_thru_usb_to_din": 0}) is False
+    assert get_midi_thru_usb_to_din({"midi_thru_usb_to_din": None}) is False
 
 
-def test_get_midi_thru_usb_falsy_values():
-    """midi_thru_usb coerces falsy non-bool values to False."""
-    assert get_midi_thru_usb({"midi_thru_usb": 0}) is False
-    assert get_midi_thru_usb({"midi_thru_usb": None}) is False
+def test_get_midi_thru_din_to_usb_default_true():
+    assert get_midi_thru_din_to_usb({}) is True
 
 
-# ── midi_thru_din tests ───────────────────────────────────────────────────────
-
-def test_get_midi_thru_din_default_true():
-    """midi_thru_din defaults to True when absent from config (back-compat)."""
-    assert get_midi_thru_din({}) is True
+def test_get_midi_thru_din_to_usb_explicit_false():
+    assert get_midi_thru_din_to_usb({"midi_thru_din_to_usb": False}) is False
 
 
-def test_get_midi_thru_din_explicit_true():
-    """midi_thru_din returns True when explicitly set to true."""
-    assert get_midi_thru_din({"midi_thru_din": True}) is True
+def test_get_midi_thru_din_to_usb_coercion():
+    assert get_midi_thru_din_to_usb({"midi_thru_din_to_usb": 1}) is True
+    assert get_midi_thru_din_to_usb({"midi_thru_din_to_usb": 0}) is False
 
 
-def test_get_midi_thru_din_explicit_false():
-    """midi_thru_din returns False when explicitly set to false."""
-    assert get_midi_thru_din({"midi_thru_din": False}) is False
+def test_get_midi_thru_din_to_din_default_true():
+    """DIN->DIN is the classic MIDI THRU pass-through; defaults True (matches OEM)."""
+    assert get_midi_thru_din_to_din({}) is True
 
 
-def test_get_midi_thru_din_truthy_values():
-    """midi_thru_din coerces truthy non-bool values to True."""
-    assert get_midi_thru_din({"midi_thru_din": 1}) is True
+def test_get_midi_thru_din_to_din_explicit_false():
+    assert get_midi_thru_din_to_din({"midi_thru_din_to_din": False}) is False
 
 
-def test_get_midi_thru_din_falsy_values():
-    """midi_thru_din coerces falsy non-bool values to False."""
-    assert get_midi_thru_din({"midi_thru_din": 0}) is False
-    assert get_midi_thru_din({"midi_thru_din": None}) is False
+def test_get_midi_thru_din_to_din_coercion():
+    assert get_midi_thru_din_to_din({"midi_thru_din_to_din": 1}) is True
+    assert get_midi_thru_din_to_din({"midi_thru_din_to_din": 0}) is False
 
 
-def test_midi_thru_usb_and_din_independent():
-    """Toggles are independent — setting one does not affect the other."""
-    assert get_midi_thru_usb({"midi_thru_din": False}) is True
-    assert get_midi_thru_din({"midi_thru_usb": False}) is True
+def test_get_midi_thru_usb_to_usb_default_false():
+    """USB->USB defaults False — host loopback can cause DAW feedback. Opt-in only."""
+    assert get_midi_thru_usb_to_usb({}) is False
+
+
+def test_get_midi_thru_usb_to_usb_explicit_true():
+    assert get_midi_thru_usb_to_usb({"midi_thru_usb_to_usb": True}) is True
+
+
+def test_get_midi_thru_usb_to_usb_coercion():
+    assert get_midi_thru_usb_to_usb({"midi_thru_usb_to_usb": 1}) is True
+    assert get_midi_thru_usb_to_usb({"midi_thru_usb_to_usb": 0}) is False
+
+
+def test_midi_thru_routes_independent():
+    """Each route is gated independently — setting one does not affect any other."""
+    cfg = {"midi_thru_usb_to_din": False}
+    assert get_midi_thru_usb_to_din(cfg) is False
+    assert get_midi_thru_din_to_usb(cfg) is True
+    assert get_midi_thru_din_to_din(cfg) is True
+    assert get_midi_thru_usb_to_usb(cfg) is False  # default
+
+    cfg = {"midi_thru_usb_to_usb": True}
+    assert get_midi_thru_usb_to_usb(cfg) is True
+    assert get_midi_thru_usb_to_din(cfg) is True  # default
+    assert get_midi_thru_din_to_usb(cfg) is True
+    assert get_midi_thru_din_to_din(cfg) is True
 

@@ -1060,10 +1060,14 @@ def handle_switches():
             events = kt_state.tracker.update(sw.pressed, now)
             if events:
                 default_channel = btn_config.get("channel", 0)
+                # Trace before dispatch so the indices logged are the ones we read from
+                # for THIS event's message dispatch (not post-advance).
+                print(f"[KT btn{btn_num}] events={events} pre: short_idx={kt_state.short_cycle.index}/{kt_state.short_cycle.length} long_idx={kt_state.long_cycle.index}/{kt_state.long_cycle.length} fired_s={kt_state._fired_short} fired_l={kt_state._fired_long}")
                 dispatch_keytimes_events(
                     events, kt_state, btn_config,
                     lambda msg: _dispatch_keytimes_message(msg, default_channel, btn_num)
                 )
+                print(f"[KT btn{btn_num}] post: short_idx={kt_state.short_cycle.index} long_idx={kt_state.long_cycle.index} short_color={kt_state.short_color} long_color={kt_state.long_color}")
                 _render_keytimes_led(btn_num, kt_state, btn_config)
             continue
 

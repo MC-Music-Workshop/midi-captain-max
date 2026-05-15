@@ -43,6 +43,7 @@ These pass `py_compile` and `pytest` on desktop Python but **crash on device boo
 | Dict unpacking in literals | `{**cfg, "key": val}` | Manual loop: `for k,v in d.items(): r[k] = v` |
 | Walrus operator | `if (n := len(x)) > 0:` | Separate assignment |
 | `match`/`case` | `match x: case 1:` | `if`/`elif` |
+| f-string conversion specifiers | `f"{x!r}"`, `f"{x!s}"`, `f"{x!a}"` | Plain string concat with explicit `str(x)` or pre-quoted text |
 
 **CI enforces this** via the "CircuitPython 7.x compatibility guard" step in `ci.yml`.
 

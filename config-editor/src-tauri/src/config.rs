@@ -28,6 +28,26 @@ pub enum ButtonMode {
     Momentary,
     Flash,
     Select,
+    /// Multi-state cycle with short/long press timing (#48). Carries its message data
+    /// inside short[]/long[] KeytimesEntry arrays rather than at the button level.
+    Keytimes,
+}
+
+/// Color for a keytimes-mode cycle entry. Includes "off" explicitly (LED dark)
+/// in addition to the standard ButtonColor palette.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum CycleEntryColor {
+    Red,
+    Green,
+    Blue,
+    Yellow,
+    Cyan,
+    Magenta,
+    Orange,
+    Purple,
+    White,
+    Off,
 }
 
 /// Behavior when re-pressing the already-active member of a select group.
@@ -82,6 +102,68 @@ pub enum HidModifier {
     Alt,
     Option,
     Windows,
+}
+
+/// One MIDI/HID message fired from a keytimes-mode cycle entry's down or up slot.
+/// Discriminated by the `type` field (serde tagged union).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum KeytimesMessage {
+    Cc {
+        cc: u8,
+        value: u8,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        channel: Option<u8>,
+    },
+    Note {
+        note: u8,
+        velocity: u8,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        channel: Option<u8>,
+    },
+    Pc {
+        program: u8,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        channel: Option<u8>,
+    },
+    PcInc {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        step: Option<u8>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        channel: Option<u8>,
+    },
+    PcDec {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        step: Option<u8>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        channel: Option<u8>,
+    },
+    Hid {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        action: Option<HidAction>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        key: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        modifier: Option<HidModifier>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        delay_ms: Option<u16>,
+    },
+}
+
+/// One entry in a keytimes-mode cycle (short or long). Optional down/up message
+/// arrays plus color/dim/label per entry.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct KeytimesEntry {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub down: Option<Vec<KeytimesMessage>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub up: Option<Vec<KeytimesMessage>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<CycleEntryColor>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dim: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 /// Per-state overrides for keytimes cycling
@@ -173,6 +255,13 @@ pub struct ButtonConfig {
     pub hid_modifier: Option<HidModifier>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hid_delay_ms: Option<u16>,
+    // Keytimes-mode fields (#48) — only meaningful when mode == "keytimes"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub short: Option<Vec<KeytimesEntry>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub long: Option<Vec<KeytimesEntry>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub long_press_threshold_ms: Option<u16>,
 }
 
 fn is_default_off_mode(mode: &OffMode) -> bool {
@@ -331,6 +420,10 @@ pub struct MidiCaptainConfig {
     pub expression: Option<ExpressionPedals>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display: Option<DisplayConfig>,
+    /// Global default long-press threshold in milliseconds for keytimes-mode buttons (#48).
+    /// Per-button overrides allowed via ButtonConfig.long_press_threshold_ms.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub long_press_threshold_ms: Option<u16>,
 }
 
 impl MidiCaptainConfig {

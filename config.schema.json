@@ -47,6 +47,13 @@
     "display": {
       "$ref": "#/definitions/DisplayConfig",
       "description": "Display and text rendering settings."
+    },
+    "long_press_threshold_ms": {
+      "type": "integer",
+      "minimum": 50,
+      "maximum": 5000,
+      "default": 500,
+      "description": "Global default long-press threshold in milliseconds for keytimes-mode buttons. Per-button overrides allowed via the button's long_press_threshold_ms field."
     }
   },
   "additionalProperties": false,
@@ -57,7 +64,8 @@
     },
     "ButtonMode": {
       "type": "string",
-      "enum": ["toggle", "momentary", "flash", "select"]
+      "enum": ["toggle", "momentary", "flash", "select", "keytimes"],
+      "description": "Button behavior. 'toggle' = latching, 'momentary' = LED on while held, 'flash' = brief LED flash (PC types), 'select' = radio-group exclusivity, 'keytimes' = multi-state cycle with short/long press timing (see short/long/long_press_threshold_ms fields)."
     },
     "SelectRepress": {
       "type": "string",
@@ -109,6 +117,99 @@
       "minimum": 0,
       "maximum": 15,
       "description": "MIDI channel. Stored as 0-15, displayed as 1-16 in UI."
+    },
+    "CycleEntryColor": {
+      "type": "string",
+      "enum": ["red", "green", "blue", "yellow", "cyan", "magenta", "orange", "purple", "white", "off"],
+      "description": "Color for a keytimes cycle entry. 'off' explicitly means LED dark; missing means inherit the previous entry's color in the same cycle."
+    },
+    "KeytimesMessage": {
+      "type": "object",
+      "description": "One MIDI/HID message fired from a keytimes-mode cycle entry's down or up slot. Discriminated by 'type'.",
+      "required": ["type"],
+      "oneOf": [
+        {
+          "properties": {
+            "type": { "const": "cc" },
+            "cc": { "$ref": "#/definitions/MidiByte" },
+            "value": { "$ref": "#/definitions/MidiByte" },
+            "channel": { "$ref": "#/definitions/MidiChannel" }
+          },
+          "required": ["type", "cc", "value"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "const": "note" },
+            "note": { "$ref": "#/definitions/MidiByte" },
+            "velocity": { "$ref": "#/definitions/MidiByte" },
+            "channel": { "$ref": "#/definitions/MidiChannel" }
+          },
+          "required": ["type", "note", "velocity"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "const": "pc" },
+            "program": { "$ref": "#/definitions/MidiByte" },
+            "channel": { "$ref": "#/definitions/MidiChannel" }
+          },
+          "required": ["type", "program"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "enum": ["pc_inc", "pc_dec"] },
+            "step": { "type": "integer", "minimum": 1, "maximum": 127, "default": 1 },
+            "channel": { "$ref": "#/definitions/MidiChannel" }
+          },
+          "required": ["type"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "const": "hid" },
+            "action": { "$ref": "#/definitions/HidAction" },
+            "key": { "type": "string", "description": "HID key name (see hid_key field on ButtonConfig for valid values)." },
+            "modifier": { "$ref": "#/definitions/HidModifier" },
+            "delay_ms": { "type": "integer", "minimum": 1, "maximum": 5000 }
+          },
+          "required": ["type"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "KeytimesEntry": {
+      "type": "object",
+      "description": "One entry in a keytimes-mode cycle (short or long). Optional down/up message arrays plus color/dim/label per entry.",
+      "properties": {
+        "down": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/KeytimesMessage" },
+          "description": "Messages fired when this entry's down event triggers (short_down for short cycle, long_down for long cycle). Strict array; single-element today, multi-element supported when #47 lands."
+        },
+        "up": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/KeytimesMessage" },
+          "description": "Messages fired when this entry's up event triggers (short_up for short cycle, long_up for long cycle). Strict array; see down."
+        },
+        "color": {
+          "$ref": "#/definitions/CycleEntryColor",
+          "description": "Color for this entry. Missing inherits the previous entry's color within this cycle. 'off' explicitly forces LED dark (kill-switch when on short layer)."
+        },
+        "dim": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, the resolved color is rendered at reduced brightness (15% of full via dim_color())."
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 6,
+          "pattern": "^[\\w \\-]+$",
+          "description": "Optional display label override for this cycle position. Missing or empty inherits the button-level label."
+        }
+      },
+      "additionalProperties": false
     },
     "StateOverride": {
       "type": "object",
@@ -232,12 +333,28 @@
           "minimum": 1,
           "maximum": 99,
           "default": 1,
-          "description": "Number of states to cycle through on press. 1 = no cycling."
+          "description": "DEPRECATED on toggle/momentary/flash/select modes. Use mode='keytimes' with short[]/long[] arrays for multi-state cycling. Validator now rejects this field on non-keytimes modes."
         },
         "states": {
           "type": "array",
           "items": { "$ref": "#/definitions/StateOverride" },
-          "description": "Per-state overrides. Array length should match keytimes value."
+          "description": "DEPRECATED on toggle/momentary/flash/select modes. Use mode='keytimes' with short[]/long[] arrays. Validator now rejects this field on non-keytimes modes."
+        },
+        "short": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/KeytimesEntry" },
+          "description": "Short-press cycle entries. Only valid when mode='keytimes'. Each entry can fire messages on down (short_down event), up (short_up event), and carries optional color/dim/label."
+        },
+        "long": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/KeytimesEntry" },
+          "description": "Long-press cycle entries. Only valid when mode='keytimes'. Independent counter from short. Each entry can fire messages on down (long_down event, when threshold reached) and up (long_up event, on release after threshold)."
+        },
+        "long_press_threshold_ms": {
+          "type": "integer",
+          "minimum": 50,
+          "maximum": 5000,
+          "description": "Per-button long-press threshold override in milliseconds. Only meaningful when mode='keytimes'. Falls back to top-level long_press_threshold_ms (default 500)."
         },
         "hid_action": {
           "$ref": "#/definitions/HidAction",

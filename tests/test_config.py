@@ -848,3 +848,274 @@ class TestHidButtonType:
         btn = validate_button({"type": "hid", "color": "blue", "label": "K",
                                "hid_key": "A"}, index=0, global_channel=3)
         assert btn["channel"] == 3
+
+
+class TestKeytimesMode:
+    """Tests for mode: 'keytimes' validation (#48)."""
+
+    def test_keytimes_mode_recognized(self):
+        btn = validate_button({"label": "X", "color": "red", "mode": "keytimes"}, index=0)
+        assert btn["mode"] == "keytimes"
+
+    def test_keytimes_mode_preserves_label_and_color(self):
+        btn = validate_button({"label": "VERB", "color": "blue", "mode": "keytimes"}, index=0)
+        assert btn["label"] == "VERB"
+        assert btn["color"] == "blue"
+
+    def test_keytimes_mode_no_legacy_cc_fields(self):
+        """Keytimes-mode buttons don't get the legacy cc/cc_on/cc_off button-level defaults."""
+        btn = validate_button({"label": "X", "color": "red", "mode": "keytimes"}, index=0)
+        assert "cc" not in btn
+        assert "cc_on" not in btn
+        assert "cc_off" not in btn
+
+    def test_short_cycle_parsed(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [
+                {"down": [{"type": "cc", "cc": 20, "value": 127}], "color": "white"},
+                {"down": [{"type": "cc", "cc": 20, "value": 0}], "color": "off"},
+            ]
+        }, index=0)
+        assert len(btn["short"]) == 2
+        assert btn["short"][0]["down"][0] == {"type": "cc", "cc": 20, "value": 127}
+        assert btn["short"][0]["color"] == "white"
+        assert btn["short"][1]["color"] == "off"
+
+    def test_long_cycle_parsed(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "long": [{"down": [{"type": "cc", "cc": 21, "value": 127}], "color": "blue"}]
+        }, index=0)
+        assert len(btn["long"]) == 1
+        assert btn["long"][0]["down"][0]["cc"] == 21
+
+    def test_short_and_long_independent_lengths(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"color": "blue"}, {"color": "cyan"}, {"color": "white"}],
+            "long": [{"color": "red"}, {"color": "orange"}],
+        }, index=0)
+        assert len(btn["short"]) == 3
+        assert len(btn["long"]) == 2
+
+    def test_entry_with_dim_flag(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"color": "blue", "dim": True}],
+        }, index=0)
+        assert btn["short"][0]["dim"] is True
+
+    def test_entry_dim_false_dropped(self):
+        """Default dim=False is not stored — only explicit True is persisted."""
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"color": "blue", "dim": False}],
+        }, index=0)
+        assert "dim" not in btn["short"][0]
+
+    def test_entry_with_label(self):
+        btn = validate_button({
+            "label": "VERB", "color": "blue", "mode": "keytimes",
+            "short": [{"color": "blue", "label": "VERB+"}],
+        }, index=0)
+        assert btn["short"][0]["label"] == "VERB+"
+
+    def test_entry_color_off_preserved(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"color": "off"}],
+        }, index=0)
+        assert btn["short"][0]["color"] == "off"
+
+    def test_entry_invalid_color_dropped(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"color": "fuchsia"}],
+        }, index=0)
+        assert "color" not in btn["short"][0]
+
+    def test_entry_missing_color_inherits_implicitly(self):
+        """No color on entry → no 'color' key in validated output (inherit at render time)."""
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [{"type": "cc", "cc": 20, "value": 127}]}],
+        }, index=0)
+        assert "color" not in btn["short"][0]
+
+
+class TestKeytimesMessageValidation:
+    """Tests for Message object validation inside down/up arrays."""
+
+    def test_cc_message(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [{"type": "cc", "cc": 20, "value": 127}]}],
+        }, index=0)
+        msg = btn["short"][0]["down"][0]
+        assert msg == {"type": "cc", "cc": 20, "value": 127}
+
+    def test_note_message(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [{"type": "note", "note": 60, "velocity": 100}]}],
+        }, index=0)
+        msg = btn["short"][0]["down"][0]
+        assert msg == {"type": "note", "note": 60, "velocity": 100}
+
+    def test_pc_message(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [{"type": "pc", "program": 5}]}],
+        }, index=0)
+        msg = btn["short"][0]["down"][0]
+        assert msg == {"type": "pc", "program": 5}
+
+    def test_pc_inc_message_defaults_step(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [{"type": "pc_inc"}]}],
+        }, index=0)
+        msg = btn["short"][0]["down"][0]
+        assert msg["type"] == "pc_inc"
+        assert msg["step"] == 1
+
+    def test_pc_dec_message_with_step(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [{"type": "pc_dec", "step": 5}]}],
+        }, index=0)
+        msg = btn["short"][0]["down"][0]
+        assert msg["step"] == 5
+
+    def test_hid_message(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [{"type": "hid", "action": "send", "key": "A"}]}],
+        }, index=0)
+        msg = btn["short"][0]["down"][0]
+        assert msg["type"] == "hid"
+        assert msg["action"] == "send"
+        assert msg["key"] == "A"
+
+    def test_hid_message_with_modifier(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [{"type": "hid", "action": "send", "key": "C", "modifier": "ctrl"}]}],
+        }, index=0)
+        msg = btn["short"][0]["down"][0]
+        assert msg["modifier"] == "ctrl"
+
+    def test_message_channel_preserved(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [{"type": "cc", "cc": 20, "value": 127, "channel": 5}]}],
+        }, index=0)
+        msg = btn["short"][0]["down"][0]
+        assert msg["channel"] == 5
+
+    def test_message_unknown_type_defaults_to_cc(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [{"type": "unknown", "cc": 20, "value": 127}]}],
+        }, index=0)
+        msg = btn["short"][0]["down"][0]
+        assert msg["type"] == "cc"
+
+    def test_message_clamps_out_of_range_values(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [{"type": "cc", "cc": 200, "value": -5}]}],
+        }, index=0)
+        msg = btn["short"][0]["down"][0]
+        assert msg["cc"] == 127
+        assert msg["value"] == 0
+
+    def test_multi_message_array_preserved(self):
+        """Multi-element down[] array survives validation (schema-reserved for #47)."""
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [
+                {"type": "cc", "cc": 20, "value": 127},
+                {"type": "pc", "program": 5},
+            ]}],
+        }, index=0)
+        assert len(btn["short"][0]["down"]) == 2
+
+    def test_non_list_messages_become_empty(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": "not a list"}],
+        }, index=0)
+        assert btn["short"][0]["down"] == []
+
+
+class TestKeytimesThreshold:
+    """Tests for long_press_threshold_ms resolution (button > top > default)."""
+
+    def test_button_override_stored(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "long_press_threshold_ms": 700,
+        }, index=0)
+        assert btn["long_press_threshold_ms"] == 700
+
+    def test_button_override_clamped_high(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "long_press_threshold_ms": 10000,
+        }, index=0)
+        assert btn["long_press_threshold_ms"] == 5000
+
+    def test_button_override_clamped_low(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "long_press_threshold_ms": 10,
+        }, index=0)
+        assert btn["long_press_threshold_ms"] == 50
+
+    def test_no_button_threshold_field_absent(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+        }, index=0)
+        assert "long_press_threshold_ms" not in btn
+
+    def test_validate_config_adds_top_level_default(self):
+        cfg = validate_config({"buttons": [{"label": "X", "color": "red"}]}, button_count=1)
+        assert cfg["long_press_threshold_ms"] == 500
+
+    def test_validate_config_preserves_explicit_top_level(self):
+        cfg = validate_config({
+            "long_press_threshold_ms": 300,
+            "buttons": [{"label": "X", "color": "red"}]
+        }, button_count=1)
+        assert cfg["long_press_threshold_ms"] == 300
+
+    def test_validate_config_clamps_top_level(self):
+        cfg = validate_config({
+            "long_press_threshold_ms": 99999,
+            "buttons": [{"label": "X", "color": "red"}]
+        }, button_count=1)
+        assert cfg["long_press_threshold_ms"] == 5000
+
+
+class TestKeytimesThresholdResolution:
+    """Test the get_long_press_threshold_ms helper for button > top > default order."""
+
+    def test_button_override_wins(self):
+        from core.config import get_long_press_threshold_ms
+        cfg = {"long_press_threshold_ms": 300}
+        btn = {"long_press_threshold_ms": 700}
+        assert get_long_press_threshold_ms(cfg, btn) == 700
+
+    def test_falls_back_to_top_level(self):
+        from core.config import get_long_press_threshold_ms
+        cfg = {"long_press_threshold_ms": 300}
+        btn = {}
+        assert get_long_press_threshold_ms(cfg, btn) == 300
+
+    def test_falls_back_to_default(self):
+        from core.config import get_long_press_threshold_ms
+        cfg = {}
+        btn = {}
+        assert get_long_press_threshold_ms(cfg, btn) == 500

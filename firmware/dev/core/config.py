@@ -11,7 +11,16 @@ except ImportError:
     json = None
 
 VALID_TYPES = ("cc", "note", "pc", "pc_inc", "pc_dec", "hid")
+VALID_MODES = ("toggle", "momentary", "flash", "select", "keytimes")
 STATE_OVERRIDE_FIELDS = ("cc", "cc_on", "cc_off", "note", "velocity_on", "velocity_off", "program", "pc_step", "color", "label", "hid_action", "hid_key", "hid_modifier", "hid_delay_ms")
+
+# Default and global-clamping bounds for long-press threshold (used by mode: "keytimes").
+LONG_PRESS_THRESHOLD_DEFAULT_MS = 500
+LONG_PRESS_THRESHOLD_MIN_MS = 50
+LONG_PRESS_THRESHOLD_MAX_MS = 5000
+
+# Valid colors for keytimes-mode cycle entries (button palette plus "off" for explicit LED-dark).
+_CYCLE_ENTRY_COLORS = ("red", "green", "blue", "yellow", "cyan", "magenta", "orange", "purple", "white", "off")
 
 
 def load_config(config_path="/config.json", button_count=10):
@@ -66,6 +75,134 @@ def _clamp_state_field(field, value):
     return value  # color, label, hid_action, hid_key, hid_modifier — pass through as-is
 
 
+def _clamp_threshold_ms(value):
+    """Clamp a long-press threshold value to schema bounds; non-int returns default."""
+    if not isinstance(value, int):
+        return LONG_PRESS_THRESHOLD_DEFAULT_MS
+    return max(LONG_PRESS_THRESHOLD_MIN_MS, min(LONG_PRESS_THRESHOLD_MAX_MS, value))
+
+
+def _clamp_midi_byte(value, default=0):
+    if not isinstance(value, int):
+        return default
+    return max(0, min(127, value))
+
+
+def _validate_keytimes_message(msg):
+    """Validate a single Message object inside a keytimes-mode entry's down/up array.
+
+    Returns a sanitized dict, or None if msg is not a valid dict.
+    Discriminated by 'type'. Unknown/missing type defaults to "cc".
+    """
+    if not isinstance(msg, dict):
+        return None
+    mtype = msg.get("type")
+    if mtype not in VALID_TYPES:
+        mtype = "cc"
+    out = {"type": mtype}
+    if "channel" in msg and isinstance(msg["channel"], int) and 0 <= msg["channel"] <= 15:
+        out["channel"] = msg["channel"]
+    if mtype == "cc":
+        out["cc"] = _clamp_midi_byte(msg.get("cc"), default=0)
+        out["value"] = _clamp_midi_byte(msg.get("value"), default=127)
+    elif mtype == "note":
+        out["note"] = _clamp_midi_byte(msg.get("note"), default=60)
+        out["velocity"] = _clamp_midi_byte(msg.get("velocity"), default=127)
+    elif mtype == "pc":
+        out["program"] = _clamp_midi_byte(msg.get("program"), default=0)
+    elif mtype in ("pc_inc", "pc_dec"):
+        step = msg.get("step", 1)
+        if not isinstance(step, int):
+            step = 1
+        out["step"] = max(1, min(127, step))
+    elif mtype == "hid":
+        action = msg.get("action", "send")
+        if action not in ("send", "press", "release", "delay"):
+            action = "send"
+        out["action"] = action
+        if "key" in msg and msg["key"] is not None:
+            out["key"] = str(msg["key"])
+        if msg.get("modifier") in ("ctrl", "shift", "alt", "option", "windows"):
+            out["modifier"] = msg["modifier"]
+        delay = msg.get("delay_ms")
+        if isinstance(delay, int):
+            out["delay_ms"] = max(1, min(5000, delay))
+    return out
+
+
+def _validate_keytimes_message_list(messages):
+    """Validate an array of messages (down or up slot). Returns a list (possibly empty)."""
+    if not isinstance(messages, list):
+        return []
+    validated = []
+    for msg in messages:
+        v = _validate_keytimes_message(msg)
+        if v is not None:
+            validated.append(v)
+    return validated
+
+
+def _validate_keytimes_entry(entry):
+    """Validate one cycle entry inside a keytimes-mode short[] or long[] array."""
+    if not isinstance(entry, dict):
+        return {}
+    out = {}
+    if "down" in entry:
+        out["down"] = _validate_keytimes_message_list(entry["down"])
+    if "up" in entry:
+        out["up"] = _validate_keytimes_message_list(entry["up"])
+    if "color" in entry:
+        color = entry["color"]
+        if isinstance(color, str) and color.lower() in _CYCLE_ENTRY_COLORS:
+            out["color"] = color.lower()
+    if entry.get("dim") is True:
+        out["dim"] = True
+    if "label" in entry and isinstance(entry["label"], str):
+        out["label"] = entry["label"]
+    return out
+
+
+def _validate_keytimes_cycle(entries):
+    """Validate a list of cycle entries. Returns a list (possibly empty)."""
+    if not isinstance(entries, list):
+        return []
+    return [_validate_keytimes_entry(e) for e in entries]
+
+
+def _validate_keytimes_button(btn, index, default_channel):
+    """Dedicated validation path for mode: 'keytimes' buttons.
+
+    Keytimes-mode buttons carry their message data inside per-entry down/up arrays,
+    not at the top of the button — so the legacy CC/Note/PC/HID per-button fields
+    do not apply here. short[] and long[] are independent cycle arrays.
+    """
+    label = btn.get("label", str(index + 1))
+    color = btn.get("color", "white")
+    off_mode = btn.get("off_mode", "dim")
+    channel = btn.get("channel", default_channel)
+
+    validated = {
+        "label": label,
+        "color": color,
+        "mode": "keytimes",
+        "off_mode": off_mode,
+        "channel": channel,
+        "type": "cc",  # vestigial; not used by keytimes dispatch but kept for cross-tool consistency
+    }
+
+    if "long_press_threshold_ms" in btn:
+        validated["long_press_threshold_ms"] = _clamp_threshold_ms(btn.get("long_press_threshold_ms"))
+
+    short = btn.get("short")
+    if short is not None:
+        validated["short"] = _validate_keytimes_cycle(short)
+    long_ = btn.get("long")
+    if long_ is not None:
+        validated["long"] = _validate_keytimes_cycle(long_)
+
+    return validated
+
+
 def validate_button(btn, index=0, global_channel=None):
     """Validate a button config dict, filling in defaults.
 
@@ -96,7 +233,9 @@ def validate_button(btn, index=0, global_channel=None):
         keytimes = 1
     keytimes = max(1, min(99, keytimes))
 
-    # Determine message type, fall back to cc if invalid
+    # Determine message type, fall back to cc if invalid.
+    # For mode "keytimes" this field is ignored — message types live inside each cycle entry's
+    # down/up Message objects. Keep parsing for legacy modes where button-level type still applies.
     msg_type = btn.get("type", "cc")
     if msg_type not in VALID_TYPES:
         msg_type = "cc"
@@ -104,6 +243,11 @@ def validate_button(btn, index=0, global_channel=None):
     # PC types default to "flash" (brief LED pulse); CC/Note default to "toggle"
     default_mode = "flash" if msg_type in ("pc", "pc_inc", "pc_dec") else "toggle"
     raw_mode = btn.get("mode", default_mode)
+
+    # mode: "keytimes" — short-circuit to a dedicated validation path. Other modes follow legacy.
+    if raw_mode == "keytimes":
+        return _validate_keytimes_button(btn, index, default_channel)
+
     # "select" (radio-group) is valid only on pc and cc, and only with keytimes==1.
     # Other invalid modes (and select on disallowed types) coerce back to default.
     if raw_mode == "select":
@@ -219,12 +363,30 @@ def validate_config(cfg, button_count=10):
         validate_button(btn, i, global_channel) for i, btn in enumerate(buttons[:button_count])
     ]
     
+    # Top-level long-press threshold (used by keytimes-mode buttons; per-button override allowed).
+    raw_threshold = cfg.get("long_press_threshold_ms", LONG_PRESS_THRESHOLD_DEFAULT_MS)
+    long_press_threshold_ms = _clamp_threshold_ms(raw_threshold)
+
     result = {}
     for k, v in cfg.items():
         result[k] = v
     result["buttons"] = validated_buttons
     result["global_channel"] = global_channel
+    result["long_press_threshold_ms"] = long_press_threshold_ms
     return result
+
+
+def get_long_press_threshold_ms(cfg, btn_config):
+    """Resolve the effective long-press threshold for a keytimes-mode button.
+
+    Resolution order: per-button override > top-level config > default (500ms).
+    Returns an integer in [LONG_PRESS_THRESHOLD_MIN_MS, LONG_PRESS_THRESHOLD_MAX_MS].
+    """
+    if "long_press_threshold_ms" in btn_config:
+        return _clamp_threshold_ms(btn_config.get("long_press_threshold_ms"))
+    if "long_press_threshold_ms" in cfg:
+        return _clamp_threshold_ms(cfg.get("long_press_threshold_ms"))
+    return LONG_PRESS_THRESHOLD_DEFAULT_MS
 
 
 def get_button_state_config(btn_config, keytime_index):

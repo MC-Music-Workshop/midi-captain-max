@@ -49,6 +49,113 @@ def test_schema_is_valid_draft7(schema):
   Draft7Validator.check_schema(schema)
 
 
+class TestKeytimesMode:
+  """Schema acceptance of mode='keytimes' buttons with short/long cycle arrays."""
+
+  def test_keytimes_mode_accepted(self, validator):
+    config = {
+      "buttons": [{
+        "label": "VERB",
+        "color": "blue",
+        "mode": "keytimes",
+        "short": [
+          {"down": [{"type": "cc", "cc": 20, "value": 127}], "color": "white"}
+        ]
+      }]
+    }
+    errors = list(validator.iter_errors(config))
+    assert errors == [], f"keytimes button rejected: {[e.message for e in errors]}"
+
+  def test_keytimes_mode_full_example(self, validator):
+    config = {
+      "buttons": [{
+        "label": "VERB",
+        "color": "blue",
+        "mode": "keytimes",
+        "long_press_threshold_ms": 500,
+        "short": [
+          {"down": [{"type": "cc", "cc": 20, "value": 64}],  "color": "blue",  "label": "VERB1"},
+          {"down": [{"type": "cc", "cc": 20, "value": 96}],  "color": "cyan"},
+          {"down": [{"type": "cc", "cc": 20, "value": 127}], "color": "white", "dim": True}
+        ],
+        "long": [
+          {"down": [{"type": "cc", "cc": 21, "value": 127}], "color": "blue"},
+          {"down": [{"type": "cc", "cc": 21, "value": 0}],   "color": "off"}
+        ]
+      }]
+    }
+    errors = list(validator.iter_errors(config))
+    assert errors == [], f"full keytimes example rejected: {[e.message for e in errors]}"
+
+  def test_message_type_cc(self, validator):
+    config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
+                           "short": [{"down": [{"type": "cc", "cc": 20, "value": 127}]}]}]}
+    assert list(validator.iter_errors(config)) == []
+
+  def test_message_type_note(self, validator):
+    config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
+                           "short": [{"down": [{"type": "note", "note": 60, "velocity": 127}]}]}]}
+    assert list(validator.iter_errors(config)) == []
+
+  def test_message_type_pc(self, validator):
+    config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
+                           "short": [{"down": [{"type": "pc", "program": 5}]}]}]}
+    assert list(validator.iter_errors(config)) == []
+
+  def test_message_type_pc_inc(self, validator):
+    config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
+                           "short": [{"down": [{"type": "pc_inc", "step": 1}]}]}]}
+    assert list(validator.iter_errors(config)) == []
+
+  def test_message_type_hid(self, validator):
+    config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
+                           "short": [{"down": [{"type": "hid", "action": "send", "key": "A"}]}]}]}
+    assert list(validator.iter_errors(config)) == []
+
+  def test_cc_message_missing_value_rejected(self, validator):
+    config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
+                           "short": [{"down": [{"type": "cc", "cc": 20}]}]}]}
+    errors = list(validator.iter_errors(config))
+    assert len(errors) > 0
+
+  def test_color_off_accepted_in_entry(self, validator):
+    config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
+                           "short": [{"color": "off"}]}]}
+    assert list(validator.iter_errors(config)) == []
+
+  def test_invalid_color_in_entry_rejected(self, validator):
+    config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
+                           "short": [{"color": "fuchsia"}]}]}
+    errors = list(validator.iter_errors(config))
+    assert len(errors) > 0
+
+  def test_top_level_threshold(self, validator):
+    config = {"long_press_threshold_ms": 300, "buttons": [{"label": "X", "color": "red"}]}
+    assert list(validator.iter_errors(config)) == []
+
+  def test_threshold_too_low_rejected(self, validator):
+    config = {"long_press_threshold_ms": 10, "buttons": [{"label": "X", "color": "red"}]}
+    errors = list(validator.iter_errors(config))
+    assert len(errors) > 0
+
+  def test_per_button_threshold(self, validator):
+    config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
+                           "long_press_threshold_ms": 700}]}
+    assert list(validator.iter_errors(config)) == []
+
+  def test_dim_boolean_accepted(self, validator):
+    config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
+                           "short": [{"color": "blue", "dim": True}]}]}
+    assert list(validator.iter_errors(config)) == []
+
+  def test_long_cycle_independent_length(self, validator):
+    """short.length and long.length can differ — independent cycles."""
+    config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
+                           "short": [{"color": "blue"}, {"color": "cyan"}, {"color": "white"}],
+                           "long":  [{"color": "red"},  {"color": "orange"}]}]}
+    assert list(validator.iter_errors(config)) == []
+
+
 # --- Negative tests: schema must reject bad input ---
 
 class TestRejectsInvalidLabel:

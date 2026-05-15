@@ -12,7 +12,7 @@
 **Closes:** #14 (already closed as duplicate of #73).
 **Forward-links:** #15 (pages), #47 (multi-message per slot), #123 (CC ramp), #125 (select-mode + keytimes compatibility).
 
-**Breaking change:** The `keytimes: N` + `states[]` fields on existing `mode: "toggle"`/`"momentary"` buttons are **removed**. They were the multi-state cycling mechanism we're replacing — anyone using them upgrades by switching the button to `mode: "keytimes"` and re-expressing the cycle in the new shape. No automatic migration; the user base is small and the new mode is a strict superset of what `keytimes` + `states[]` could do. Validator rejects `keytimes`/`states` on non-keytimes-mode buttons.
+**Breaking change (lands in Phase 3):** The `keytimes: N` + `states[]` fields on existing `mode: "toggle"`/`"momentary"` buttons are **removed** in v2.0. They were the multi-state cycling mechanism we're replacing — anyone using them upgrades by switching the button to `mode: "keytimes"` and re-expressing the cycle in the new shape. No automatic migration; the user base is small and the new mode is a strict superset of what `keytimes` + `states[]` could do. To keep phases incrementally shippable, the validator continues to *accept* legacy `keytimes`/`states` through Phase 1 and Phase 2 (existing behavior preserved); Phase 3 flips that to strict rejection alongside example-config cleanup and the v2.0 release notes.
 
 ---
 

@@ -339,11 +339,12 @@ def validate_button(btn, index=0, global_channel=None):
     # fields produces a single warning per button at boot.
     if keytimes > 1 or btn.get("states"):
         _btn_label = validated.get("label", "")
+        # CircuitPython 7.x doesn't support !r in f-strings — wrap values in explicit quotes.
         print(
-            f"[CONFIG WARN] Button {index + 1} ({_btn_label!r}) uses keytimes/states on mode={raw_mode!r}; "
-            f"these fields are DEPRECATED and will be removed in v3.0. "
-            f"Migrate to mode='keytimes' with short[]/long[] arrays. See "
-            f"docs/plans/2026-05-13-issue-48-press-timings.md."
+            "[CONFIG WARN] Button " + str(index + 1) + " '" + str(_btn_label) + "' uses keytimes/states on mode='" + str(raw_mode) + "'; "
+            "these fields are DEPRECATED and will be removed in v3.0. "
+            "Migrate to mode='keytimes' with short[]/long[] arrays. See "
+            "docs/plans/2026-05-13-issue-48-press-timings.md."
         )
 
     return validated

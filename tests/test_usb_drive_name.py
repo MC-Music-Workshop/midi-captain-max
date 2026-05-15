@@ -8,7 +8,13 @@ import os
 # Add firmware/dev to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../firmware/dev"))
 
-from core.config import validate_usb_drive_name, get_usb_drive_name, get_dev_mode
+from core.config import (
+    validate_usb_drive_name,
+    get_usb_drive_name,
+    get_dev_mode,
+    get_midi_thru_usb,
+    get_midi_thru_din,
+)
 
 
 def test_validate_usb_drive_name_valid():
@@ -111,4 +117,66 @@ def test_get_dev_mode_falsy_values():
     """dev_mode coerces falsy non-bool values to False."""
     assert get_dev_mode({"dev_mode": 0}) is False
     assert get_dev_mode({"dev_mode": None}) is False
+
+
+# ── midi_thru_usb tests ───────────────────────────────────────────────────────
+
+def test_get_midi_thru_usb_default_true():
+    """midi_thru_usb defaults to True when absent from config (back-compat)."""
+    assert get_midi_thru_usb({}) is True
+
+
+def test_get_midi_thru_usb_explicit_true():
+    """midi_thru_usb returns True when explicitly set to true."""
+    assert get_midi_thru_usb({"midi_thru_usb": True}) is True
+
+
+def test_get_midi_thru_usb_explicit_false():
+    """midi_thru_usb returns False when explicitly set to false."""
+    assert get_midi_thru_usb({"midi_thru_usb": False}) is False
+
+
+def test_get_midi_thru_usb_truthy_values():
+    """midi_thru_usb coerces truthy non-bool values to True."""
+    assert get_midi_thru_usb({"midi_thru_usb": 1}) is True
+
+
+def test_get_midi_thru_usb_falsy_values():
+    """midi_thru_usb coerces falsy non-bool values to False."""
+    assert get_midi_thru_usb({"midi_thru_usb": 0}) is False
+    assert get_midi_thru_usb({"midi_thru_usb": None}) is False
+
+
+# ── midi_thru_din tests ───────────────────────────────────────────────────────
+
+def test_get_midi_thru_din_default_true():
+    """midi_thru_din defaults to True when absent from config (back-compat)."""
+    assert get_midi_thru_din({}) is True
+
+
+def test_get_midi_thru_din_explicit_true():
+    """midi_thru_din returns True when explicitly set to true."""
+    assert get_midi_thru_din({"midi_thru_din": True}) is True
+
+
+def test_get_midi_thru_din_explicit_false():
+    """midi_thru_din returns False when explicitly set to false."""
+    assert get_midi_thru_din({"midi_thru_din": False}) is False
+
+
+def test_get_midi_thru_din_truthy_values():
+    """midi_thru_din coerces truthy non-bool values to True."""
+    assert get_midi_thru_din({"midi_thru_din": 1}) is True
+
+
+def test_get_midi_thru_din_falsy_values():
+    """midi_thru_din coerces falsy non-bool values to False."""
+    assert get_midi_thru_din({"midi_thru_din": 0}) is False
+    assert get_midi_thru_din({"midi_thru_din": None}) is False
+
+
+def test_midi_thru_usb_and_din_independent():
+    """Toggles are independent — setting one does not affect the other."""
+    assert get_midi_thru_usb({"midi_thru_din": False}) is True
+    assert get_midi_thru_din({"midi_thru_usb": False}) is True
 

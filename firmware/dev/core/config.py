@@ -333,6 +333,19 @@ def validate_button(btn, index=0, global_channel=None):
             if validated_states:
                 validated["states"] = validated_states
 
+    # Deprecation warning: keytimes/states on non-keytimes-mode buttons are functional in v2.0
+    # but will be removed in v3.0. Tell the user to migrate to mode: "keytimes".
+    # The check happens here (after parsing) so any legacy config that actually uses these
+    # fields produces a single warning per button at boot.
+    if keytimes > 1 or btn.get("states"):
+        _btn_label = validated.get("label", "")
+        print(
+            f"[CONFIG WARN] Button {index + 1} ({_btn_label!r}) uses keytimes/states on mode={raw_mode!r}; "
+            f"these fields are DEPRECATED and will be removed in v3.0. "
+            f"Migrate to mode='keytimes' with short[]/long[] arrays. See "
+            f"docs/plans/2026-05-13-issue-48-press-timings.md."
+        )
+
     return validated
 
 

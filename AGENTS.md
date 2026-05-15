@@ -129,7 +129,7 @@ Track features and bugs via [GitHub Issues](https://github.com/MC-Music-Workshop
 - [ ] Windows Signing Cert
 - [ ] Custom display layouts
 - [ ] SysEx protocol documentation
-- [ ] Keytimes / multi-press cycling, double-press, long-press detection
+- [x] Keytimes / multi-press cycling, double-press, long-press detection — landed as `mode: "keytimes"` (#48). Legacy `keytimes`/`states` fields on toggle/momentary are deprecated in v2.0 and will be removed in v3.0; the validator prints a boot-time warning.
 - [ ] Pages / banks
 - [ ] Firmware press-handler unit tests for select-mode (`handle_pc_select_press`, `handle_cc_select_press`, `update_select_group`, and the RX hooks in `_process_midi_msg`). Validator coverage exists; runtime coverage does not. Mock infrastructure in `tests/mocks/` should support this.
 - [ ] Tighten `pyproject.toml` ruff ignores: `F401` is currently global; should be scoped via `[tool.ruff.lint.per-file-ignores]` so genuinely-unused imports in production code get caught. Test-mock re-exports under `tests/mocks/**` are the legitimate use.

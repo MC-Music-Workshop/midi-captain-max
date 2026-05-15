@@ -12,7 +12,9 @@
 **Closes:** #14 (already closed as duplicate of #73).
 **Forward-links:** #15 (pages), #47 (multi-message per slot), #123 (CC ramp), #125 (select-mode + keytimes compatibility).
 
-**Breaking change (lands in Phase 3):** The `keytimes: N` + `states[]` fields on existing `mode: "toggle"`/`"momentary"` buttons are **removed** in v2.0. They were the multi-state cycling mechanism we're replacing — anyone using them upgrades by switching the button to `mode: "keytimes"` and re-expressing the cycle in the new shape. No automatic migration; the user base is small and the new mode is a strict superset of what `keytimes` + `states[]` could do. To keep phases incrementally shippable, the validator continues to *accept* legacy `keytimes`/`states` through Phase 1 and Phase 2 (existing behavior preserved); Phase 3 flips that to strict rejection alongside example-config cleanup and the v2.0 release notes.
+**Deprecation (v2.0) + Breaking change (v3.0):** The `keytimes: N` + `states[]` fields on `mode: "toggle"`/`"momentary"` buttons are **deprecated** in v2.0 and will be **removed** in v3.0. v2.0's validator continues to process them (legacy behavior preserved — users' existing buttons keep working) but prints a loud boot-time warning per affected button pointing to `mode: "keytimes"`. v3.0 will drop the field handling entirely. The user base is small and the new mode is a strict superset of what `keytimes` + `states[]` could do, so migration is mechanical; the soft-deprecation period exists only to avoid silently breaking buttons during upgrade.
+
+The strict-rejection alternative was considered and rejected: dropping the legacy fields silently in v2.0 would turn cycling buttons into single-state buttons with no visible explanation, which is worse UX than a warning-plus-functional. v3.0 can do the hard cut once users have had time to migrate (and once the warning has been visible for a release).
 
 ---
 
@@ -229,7 +231,7 @@ This is too large for a single PR. The plan phases the work so each phase is ind
 |---|---|---|
 | 1: Foundation | `PressTracker` + `PressCycle` primitives + schema/validator for `mode: "keytimes"`. Pure-logic, fully unit-tested, no firmware integration. Ships nothing user-visible but lays the groundwork. | Detailed below |
 | 2: Integration | `handle_switches()` adds a `mode == "keytimes"` branch consuming the new schema; color render rule + cycle state table wired in. v2.0 actually does the thing. | Outline only |
-| 3: Polish | New example configs for keytimes mode; remove or convert in-tree configs that used `keytimes`/`states` on non-keytimes modes; release notes and docs. | Outline only |
+| 3: Polish | New example configs for keytimes mode; convert in-tree configs that used `keytimes`/`states` on non-keytimes modes; deprecation warning in validator (full removal deferred to v3.0); release notes and docs. | Outline only |
 
 **Phase 1 is fully detailed below.** Phases 2 and 3 are outlined; each becomes its own plan when picked up.
 

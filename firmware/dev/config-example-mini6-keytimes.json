@@ -5,26 +5,25 @@
     "status_text_size": "medium",
     "expression_text_size": "medium"
   },
+  "long_press_threshold_ms": 500,
   "buttons": [
     {
       "label": "DRIVE",
-      "cc": 20,
       "color": "red",
-      "keytimes": 3,
-      "states": [
-        {"cc_on": 64, "color": "orange"},
-        {"cc_on": 96, "color": "red"},
-        {"cc_on": 127, "color": "magenta"}
+      "mode": "keytimes",
+      "short": [
+        {"down": [{"type": "cc", "cc": 20, "value": 64}],  "color": "orange"},
+        {"down": [{"type": "cc", "cc": 20, "value": 96}],  "color": "red"},
+        {"down": [{"type": "cc", "cc": 20, "value": 127}], "color": "magenta"}
       ]
     },
     {
       "label": "DELAY",
-      "cc": 21,
       "color": "yellow",
-      "keytimes": 2,
-      "states": [
-        {"cc_on": 80, "color": "yellow"},
-        {"cc_on": 127, "color": "orange"}
+      "mode": "keytimes",
+      "short": [
+        {"down": [{"type": "cc", "cc": 21, "value": 80}],  "color": "yellow"},
+        {"down": [{"type": "cc", "cc": 21, "value": 127}], "color": "orange"}
       ]
     },
     {"label": "VERB", "cc": 22, "color": "blue"},

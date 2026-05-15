@@ -190,7 +190,21 @@ All outgoing MIDI goes through `midi_send(msg)` which writes to both USB and 5-p
 
 `pc_values` is a 16-element array (one per MIDI channel), shared across all pc_inc/dec buttons.
 
-Keytimes: `btn_state.advance_keytime()` is called before reading `state_cfg`, so per-state overrides are applied from `btn_config["states"][keytime_index]` via `get_button_state_config()`.
+Keytimes (legacy, deprecated): `btn_state.advance_keytime()` is called before reading `state_cfg`, so per-state overrides are applied from `btn_config["states"][keytime_index]` via `get_button_state_config()`. **Deprecated in v2.0 (warning at boot); removed in v3.0** — see `mode: "keytimes"` below for the replacement.
+
+### Mode `"keytimes"` (#48, v2.0)
+
+The `mode: "keytimes"` dispatch path is a parallel branch in `handle_switches()` separate from the legacy `dispatch_button` logic. It owns its own per-button state in `keytimes_states[]` (parallel array to `button_states[]`, holds `KeytimesButtonState` or `None`).
+
+Per-loop flow for a keytimes-mode button:
+1. `state.tracker.update(sw.pressed, time.monotonic())` returns timing events (`short_down`/`short_up`/`long_down`/`long_up`)
+2. `dispatch_keytimes_events(events, state, btn_config, callback)` — pure function in `core/button.py`, calls callback for each Message to dispatch, updates state's inherited color/dim/label, advances cycles on press-end
+3. `_dispatch_keytimes_message(msg, default_channel, btn_num)` routes by `msg["type"]` to ControlChange/ProgramChange/NoteOn/NoteOff/dispatch_hid
+4. `_render_keytimes_led(btn_num, state, btn_config)` uses `compute_keytimes_led_color()` for the two-layer render rule (short.color == "off" kills; else long.color if set; else short.color; else off)
+
+Cycle state lives in RAM only — resets on power cycle / config reload. Per-page persistence (when #15 lands) keys the state table on `(page_id, button_idx)`.
+
+See [docs/plans/2026-05-13-issue-48-press-timings.md](../docs/plans/2026-05-13-issue-48-press-timings.md) for the full design and rationale.
 
 ### PC Button LED Modes
 

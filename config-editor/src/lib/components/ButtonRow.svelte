@@ -248,20 +248,22 @@
     {/if}
   </div>
 
-  <div class="field">
-    <label class="field-label" for={fieldId('type')}>Type:</label>
-    <select
-      id={fieldId('type')}
-      class="select"
-      value={button.type ?? 'cc'}
-      onchange={handleTypeChange}
-      disabled={disabled}
-    >
-      {#each Object.entries(MESSAGE_TYPE_LABELS) as [value, label]}
-        <option {value}>{label}</option>
-      {/each}
-    </select>
-  </div>
+  {#if !isKeytimesMode}
+    <div class="field">
+      <label class="field-label" for={fieldId('type')}>Type:</label>
+      <select
+        id={fieldId('type')}
+        class="select"
+        value={button.type ?? 'cc'}
+        onchange={handleTypeChange}
+        disabled={disabled}
+      >
+        {#each Object.entries(MESSAGE_TYPE_LABELS) as [value, label]}
+          <option {value}>{label}</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
 
   <div class="field">
     <label class="field-label" for={fieldId('channel')}>Channel:</label>

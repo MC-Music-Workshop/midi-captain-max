@@ -58,13 +58,14 @@ So a short tap with both `short_down` and `short_up` defined → both fire, shor
 Each cycle's current entry carries an optional `color`. The two layers combine as:
 
 ```
-if short.color == "off":     LED = off       (kill switch — short "off" overrides all)
-elif long.color is set:      LED = long      (decoration over primary)
+if short.color == "off":     LED = off          (kill switch — short "off" overrides all)
+elif long.color is set:      LED = long         (decoration over primary)
 elif short.color is set:     LED = short
+elif button.color is set:    LED = button.color (fallback — every entry inherits)
 else:                        LED = off
 ```
 
-Within a cycle, an entry with no `color` field **inherits** the previous entry's color. An explicit `"off"` is distinct from unset.
+Within a cycle, an entry with no `color` field **inherits** the previous entry's color in the same cycle. If no entry in either cycle has ever set a color (every entry is "(inherit)"), the LED falls back to the button-level `color` field — the same value used for the boot-time dim glow and for the label rendering precedence (`long_label or short_label or button.label`). An explicit `"off"` is distinct from unset.
 
 The asymmetry (`"off"` on short kills the LED but `"off"` on long is just "no decoration") matches the physical pedalboard metaphor: short is the primary indicator, long is a decoration painted over it; with no primary, there's nothing to decorate.
 

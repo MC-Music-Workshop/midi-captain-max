@@ -231,7 +231,7 @@ export interface KeytimesEntry {
    */
   up?: KeytimesMessage[];
   /**
-   * Color for this entry. Missing inherits the previous entry's color within this cycle. 'off' explicitly forces LED dark (kill-switch when on short layer).
+   * Color for this entry. Missing inherits the previous entry's color within this cycle, or falls back to the button-level 'color' field when no entry has set one. 'off' explicitly forces LED dark (kill-switch when on short layer).
    */
   color?: "red" | "green" | "blue" | "yellow" | "cyan" | "magenta" | "orange" | "purple" | "white" | "off";
   /**

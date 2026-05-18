@@ -1019,7 +1019,8 @@ def _render_keytimes_led(btn_num, state, btn_config):
         return
 
     rgb = compute_keytimes_led_color(state.short_color, state.short_dim,
-                                     state.long_color, state.long_dim)
+                                     state.long_color, state.long_dim,
+                                     btn_config.get("color"))
 
     led_idx = switch_to_led(btn_num)
     if led_idx is not None:

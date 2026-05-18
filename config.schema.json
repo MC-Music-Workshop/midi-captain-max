@@ -121,7 +121,7 @@
     "CycleEntryColor": {
       "type": "string",
       "enum": ["red", "green", "blue", "yellow", "cyan", "magenta", "orange", "purple", "white", "off"],
-      "description": "Color for a keytimes cycle entry. 'off' explicitly means LED dark; missing means inherit the previous entry's color in the same cycle."
+      "description": "Color for a keytimes cycle entry. 'off' explicitly means LED dark; missing means inherit the previous entry's color in the same cycle, falling back to the button-level 'color' field when no entry has set one."
     },
     "KeytimesMessage": {
       "type": "object",
@@ -195,7 +195,7 @@
         },
         "color": {
           "$ref": "#/definitions/CycleEntryColor",
-          "description": "Color for this entry. Missing inherits the previous entry's color within this cycle. 'off' explicitly forces LED dark (kill-switch when on short layer)."
+          "description": "Color for this entry. Missing inherits the previous entry's color within this cycle, or falls back to the button-level 'color' field when no entry has set one. 'off' explicitly forces LED dark (kill-switch when on short layer)."
         },
         "dim": {
           "type": "boolean",

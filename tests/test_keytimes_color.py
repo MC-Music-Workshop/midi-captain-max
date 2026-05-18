@@ -4,6 +4,7 @@ The two-layer render rule:
 - short.color == "off"        -> LED off (kill switch)
 - long.color set (not "off")  -> LED = long.color (long modifies short)
 - short.color set             -> LED = short.color
+- button_color set            -> LED = button_color (fallback when all entries inherit)
 - else                        -> LED off
 """
 
@@ -21,6 +22,34 @@ OFF = COLORS["off"]
 class TestKeytimesRenderRule:
     def test_both_unset_returns_off(self):
         assert compute_keytimes_led_color(None, False, None, False) == OFF
+
+    def test_both_unset_falls_back_to_button_color(self):
+        # When every cycle entry leaves color as "(inherit)" (i.e. unset), neither
+        # layer is ever populated. Fall back to the button-level color so the LED
+        # still lights — matching the label precedence used in _render_keytimes_led.
+        assert compute_keytimes_led_color(None, False, None, False, "red") == get_color("red")
+
+    def test_short_set_overrides_button_color_fallback(self):
+        assert compute_keytimes_led_color("blue", False, None, False, "red") == get_color("blue")
+
+    def test_short_off_kills_led_even_with_button_color_fallback(self):
+        # Kill-switch semantics must survive the new fallback path.
+        assert compute_keytimes_led_color("off", False, None, False, "red") == OFF
+
+    def test_button_color_fallback_applies_short_dim(self):
+        # User scenario: every short entry is "(inherit)" but one has dim=true.
+        # The button-level fallback should still dim.
+        result = compute_keytimes_led_color(None, True, None, False, "red")
+        assert result == dim_color(get_color("red"))
+
+    def test_button_color_fallback_applies_long_dim(self):
+        # Same dim path via the long layer.
+        result = compute_keytimes_led_color(None, False, None, True, "red")
+        assert result == dim_color(get_color("red"))
+
+    def test_button_color_fallback_no_dim_when_neither_set(self):
+        result = compute_keytimes_led_color(None, False, None, False, "red")
+        assert result == get_color("red")
 
     def test_short_only(self):
         assert compute_keytimes_led_color("blue", False, None, False) == get_color("blue")

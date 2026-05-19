@@ -127,12 +127,16 @@
           {#each ['down', 'up'] as slot (slot)}
             {@const messages = (slot === 'down' ? entry.down : entry.up) ?? []}
             <div class="kt-slot">
-              <div class="kt-slot-header">
+              <div class="kt-slot-header"
+                   title="An empty slot does nothing on this event — no MIDI fires and the LED color/label/dim do not update. Add at least one message to make this event take effect.">
                 <span class="kt-slot-label">{cycle}_{slot}:</span>
                 <button type="button" class="kt-add-msg"
                         onclick={() => addKeytimesMessage(index, cycle as 'short' | 'long', ei, slot as 'down' | 'up')}>
                   + message
                 </button>
+                {#if messages.length === 0}
+                  <span class="kt-slot-empty-hint">(empty — this event fires nothing)</span>
+                {/if}
               </div>
               {#each messages as msg, mi (mi)}
                 <KeytimesMessageEditor
@@ -264,6 +268,12 @@
     font-family: monospace;
     font-size: 0.8125rem;
     color: #555;
+  }
+
+  .kt-slot-empty-hint {
+    font-size: 0.75rem;
+    color: #999;
+    font-style: italic;
   }
 
   .kt-add-msg {

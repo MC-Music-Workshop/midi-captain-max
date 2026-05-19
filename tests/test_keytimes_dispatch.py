@@ -314,3 +314,170 @@ class TestDispatchReverbShimmerScenario:
         # short_cycle advances to 0 (wrap)
         assert self.state.short_cycle.index == 0
         assert self.state.short_color == "off"
+
+
+class TestDispatchMixedSlotPopulation:
+    """Test 1: a single cycle whose entries have different slot population —
+    one with both down+up, one with down only, one with up only. Each entry
+    should fire/render/advance only on the events whose slots have content.
+    The cycle index must advance once per physical press as long as at least
+    one of that cycle's events fired with content."""
+
+    def setup_method(self):
+        self.state = _make_state(3, 0)
+        self.cfg = {
+            "mode": "keytimes",
+            "short": [
+                # entry 0: both slots populated
+                {"down": [CC(20, 1)], "up": [CC(20, 2)], "color": "red"},
+                # entry 1: down only
+                {"down": [CC(20, 3)],                    "color": "green"},
+                # entry 2: up only
+                {                     "up": [CC(20, 4)], "color": "blue"},
+            ],
+        }
+
+    def test_tap_at_entry_with_both_slots(self):
+        cb, captured = _msg_collector()
+        dispatch_keytimes_events(["short_down", "short_up"], self.state, self.cfg, cb)
+        # Both slots fire MIDI, render uses entry 0's color, cycle advances to 1.
+        assert captured == [CC(20, 1), CC(20, 2)]
+        assert self.state.short_color == "red"
+        assert self.state.short_cycle.index == 1
+
+    def test_tap_at_entry_with_down_only(self):
+        cb, captured = _msg_collector()
+        # advance to entry 1 first
+        dispatch_keytimes_events(["short_down", "short_up"], self.state, self.cfg, cb)
+        assert self.state.short_cycle.index == 1
+        captured.clear()
+
+        dispatch_keytimes_events(["short_down", "short_up"], self.state, self.cfg, cb)
+        # Only the down slot fires; up is empty. Render updates from the down event.
+        # Cycle still advances because short_down fired with content.
+        assert captured == [CC(20, 3)]
+        assert self.state.short_color == "green"
+        assert self.state.short_cycle.index == 2
+
+    def test_tap_at_entry_with_up_only(self):
+        cb, captured = _msg_collector()
+        # advance to entry 2
+        dispatch_keytimes_events(["short_down", "short_up"], self.state, self.cfg, cb)
+        dispatch_keytimes_events(["short_down", "short_up"], self.state, self.cfg, cb)
+        assert self.state.short_cycle.index == 2
+        captured.clear()
+
+        dispatch_keytimes_events(["short_down", "short_up"], self.state, self.cfg, cb)
+        # short_down has no content → no MIDI, no render, no cycle flag from this event.
+        # short_up has content → fires MIDI, renders, sets flag → cycle advances (wraps).
+        assert captured == [CC(20, 4)]
+        assert self.state.short_color == "blue"
+        assert self.state.short_cycle.index == 0
+
+    def test_full_cycle_returns_to_start(self):
+        cb, captured = _msg_collector()
+        for _ in range(3):
+            dispatch_keytimes_events(["short_down", "short_up"], self.state, self.cfg, cb)
+        # After three taps the cycle index is back at 0. The LED still shows
+        # whatever the last entry rendered (entry 2's "blue") — the color only
+        # updates to "red" again on the next press, when entry 0 fires.
+        assert self.state.short_cycle.index == 0
+        assert self.state.short_color == "blue"
+        # One more press confirms entry 0 fires next and re-renders red.
+        dispatch_keytimes_events(["short_down", "short_up"], self.state, self.cfg, cb)
+        assert self.state.short_color == "red"
+        assert self.state.short_cycle.index == 1
+
+    def test_entry_with_no_slots_is_noop(self):
+        # A color-only entry with no down or up content is a no-op: no MIDI,
+        # no render, no cycle advance. The cycle gets stuck at this entry.
+        state = _make_state(2, 0)
+        cb, captured = _msg_collector()
+        cfg = {"mode": "keytimes",
+               "short": [{"color": "purple"},                    # no slots
+                         {"up": [CC(20, 9)], "color": "yellow"}]}
+        dispatch_keytimes_events(["short_down", "short_up"], state, cfg, cb)
+        # Entry 0 has no slot content → silent on every axis.
+        assert captured == []
+        assert state.short_color is None
+        assert state.short_cycle.index == 0  # stays put — color-only entries are no-ops
+
+
+class TestDispatchIndependentCycleProgression:
+    """Test 2: short cycle of 3, long cycle of 2, with empty *_down slots on
+    both cycles. Confirms that long presses advance only the long cycle and
+    short taps advance only the short cycle, even though short_down fires on
+    every physical press.
+    """
+
+    def setup_method(self):
+        self.state = _make_state(3, 2)
+        self.cfg = {
+            "mode": "keytimes",
+            "short": [
+                {"up": [CC(20, 1)], "color": "red"},
+                {"up": [CC(20, 2)], "color": "green"},
+                {"up": [CC(20, 3)], "color": "blue"},
+            ],
+            "long": [
+                {"down": [CC(21, 1)], "color": "white"},
+                {"down": [CC(21, 2)], "color": "off"},
+            ],
+        }
+
+    def test_taps_and_longs_advance_independently(self):
+        cb, captured = _msg_collector()
+        # Pattern: tap, tap, tap, long, tap, long, tap.
+        # Short cycle (len 3) should reach: 1, 2, 0, 0, 1, 1, 2.
+        # Long  cycle (len 2) should reach: 0, 0, 0, 1, 1, 0, 0.
+        steps = [
+            ("tap",  ["short_down", "short_up"]),
+            ("tap",  ["short_down", "short_up"]),
+            ("tap",  ["short_down", "short_up"]),
+            ("long", ["short_down", "long_down", "long_up"]),
+            ("tap",  ["short_down", "short_up"]),
+            ("long", ["short_down", "long_down", "long_up"]),
+            ("tap",  ["short_down", "short_up"]),
+        ]
+        expected_short_idx = [1, 2, 0, 0, 1, 1, 2]
+        expected_long_idx  = [0, 0, 0, 1, 1, 0, 0]
+
+        for i, (kind, events) in enumerate(steps):
+            dispatch_keytimes_events(events, self.state, self.cfg, cb)
+            assert self.state.short_cycle.index == expected_short_idx[i], (
+                f"after step {i} ({kind}): expected short_idx="
+                f"{expected_short_idx[i]}, got {self.state.short_cycle.index}"
+            )
+            assert self.state.long_cycle.index == expected_long_idx[i], (
+                f"after step {i} ({kind}): expected long_idx="
+                f"{expected_long_idx[i]}, got {self.state.long_cycle.index}"
+            )
+
+    def test_long_presses_do_not_touch_short_state(self):
+        cb, captured = _msg_collector()
+        # Do a tap to advance short_color to "red".
+        dispatch_keytimes_events(["short_down", "short_up"], self.state, self.cfg, cb)
+        assert self.state.short_color == "red"
+        assert self.state.short_cycle.index == 1
+
+        # Long press: short layer's color and cycle should remain untouched.
+        captured.clear()
+        dispatch_keytimes_events(["short_down", "long_down", "long_up"], self.state, self.cfg, cb)
+        assert captured == [CC(21, 1)]
+        assert self.state.short_color == "red"          # unchanged
+        assert self.state.short_cycle.index == 1        # unchanged
+        assert self.state.long_color == "white"
+        assert self.state.long_cycle.index == 1
+
+    def test_short_taps_do_not_touch_long_state(self):
+        cb, captured = _msg_collector()
+        # First trigger a long press to set long state to non-default.
+        dispatch_keytimes_events(["short_down", "long_down", "long_up"], self.state, self.cfg, cb)
+        assert self.state.long_color == "white"
+        assert self.state.long_cycle.index == 1
+
+        # Now several short taps; long state must not change.
+        for _ in range(5):
+            dispatch_keytimes_events(["short_down", "short_up"], self.state, self.cfg, cb)
+        assert self.state.long_color == "white"         # unchanged
+        assert self.state.long_cycle.index == 1         # unchanged

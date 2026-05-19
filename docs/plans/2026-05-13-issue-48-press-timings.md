@@ -43,9 +43,9 @@ Each button has **two independent cycles**: `short` and `long`. Each is an array
 - `dim` — boolean. When true, the resolved color is rendered through `dim_color()` (15% brightness, reusing existing `core/colors.py:34`). Lets a cycle entry represent a "muted" state without introducing new color names.
 - `label` — optional text override for the TFT display. Missing or empty string means inherit from the button-level `label`. Same inherit rule across the cycle as `color`.
 
-**Advancement rule:** Per cycle, per physical press — advance by 1 if ≥1 of that cycle's events fired during the press; else don't advance.
+**Advancement rule:** Per cycle, per physical press — advance by 1 if ≥1 of that cycle's events fired **with slot content** during the press; else don't advance. An event whose slot is empty does not advance the cycle (same rule as MIDI dispatch and LED render — see Render-Update Trigger below).
 
-So a short tap with both `short_down` and `short_up` defined → both fire, short cycle advances **by 1** (not 2). A long press with both `short_down` and `long_down` defined → both fire (different cycles), each advances by 1.
+So a short tap with both `short_down` and `short_up` populated → both fire, short cycle advances **by 1** (not 2). A long press with `long_down` populated but `short_down` empty → only the long cycle advances. The short cycle stays put, which is what you want for the reverb+shimmer scenario: holding to toggle shimmer must not silently shift your reverb cycle.
 
 ### Threshold
 
@@ -71,17 +71,17 @@ Note: this is *not* "inherit the previous entry's color". An earlier draft of #4
 
 The asymmetry (`"off"` on short kills the LED but `"off"` on long is just "no decoration") matches the physical pedalboard metaphor: short is the primary indicator, long is a decoration painted over it; with no primary, there's nothing to decorate.
 
-### Render-Update Trigger
+### Slot-Has-Content Rule (MIDI + LED + Cycle Advancement)
 
-Render state for an entry (`color`/`dim`/`label`) is updated **only on events whose slot has messages**. An event with an empty slot fires no MIDI and does not change the LED — the slot is silent on every axis.
+A single rule governs all three axes: **an event whose slot has no messages does nothing.** No MIDI fires, the LED render state doesn't update, and the cycle doesn't advance.
 
-Consequences:
-- A config with only `short_up` populated → LED changes on tap-release, nothing on press. No "flash" of the short entry's color during a long press, because `short_down` has no slot content for that entry.
-- A config with `long_down` populated → LED changes at the threshold (when the long press is confirmed).
-- A config with `long_up` populated → LED changes at release of a long press.
-- If you want LED feedback at the threshold, configure something on `long_down`. If you want it at release, configure something on `long_up`. The slot you populate is the slot where stuff happens.
+The slot the user populates is the slot where stuff happens. Concretely:
+- A config with only `short_up` populated → LED changes on tap-release. No flash on press. Long press does not advance the short cycle (no short MIDI fired).
+- A config with `long_down` populated → LED changes (and MIDI fires) at the threshold.
+- A config with `long_up` populated → LED changes (and MIDI fires) at release of a long press.
+- An entry with no messages on either slot (color-only) does nothing — no render, no advance. If you want a colored cycle position, give it at least one message.
 
-Cycle *advancement* is unrelated to slot content — per-press, "≥1 of that cycle's events fired" still advances the cycle (Advancement rule above). This means a long press can still advance the short cycle even though no short-slot messages fired, because `short_down` itself is an event.
+This is intentional. An earlier draft had cycle advancement triggered by any event firing (including empty `short_down` during a long press), which silently shifted the short cycle every time you held the button. That's now fixed.
 
 ### Cycle State Lifecycle
 

@@ -296,11 +296,9 @@ def dispatch_keytimes_events(events, state, btn_config, message_callback):
         if cycle_name == "short":
             entries = short_entries
             cycle = state.short_cycle
-            state._fired_short = True
         else:
             entries = long_entries
             cycle = state.long_cycle
-            state._fired_long = True
 
         if entries:
             idx = cycle.index
@@ -309,12 +307,18 @@ def dispatch_keytimes_events(events, state, btn_config, message_callback):
                 slot_messages = entry.get(slot, []) or []
                 for msg in slot_messages:
                     message_callback(msg)
-                # Render-state updates piggyback on the slot's MIDI dispatch: an event
-                # whose slot has no messages does nothing — no MIDI, no LED change.
-                # This keeps the user mental model consistent (the slot you populate
-                # is the slot where stuff happens) and avoids the short_down "flash"
-                # during long presses when the user only configured *_up slots.
+                # MIDI dispatch, render-state updates, AND cycle advancement all
+                # piggyback on the slot's content: an event whose slot has no messages
+                # does nothing on any axis. The slot the user populates is the slot
+                # where stuff happens. This avoids two surprises:
+                # (1) the short_down "flash" when only *_up slots are populated, and
+                # (2) the short cycle advancing during a long press just because
+                #     short_down fired as an event (with no MIDI to back it up).
                 if slot_messages:
+                    if cycle_name == "short":
+                        state._fired_short = True
+                    else:
+                        state._fired_long = True
                     # color/dim/label are all per-entry with no carry-forward — a missing
                     # field clears the layer's state so the render falls back to the
                     # button-level color/label. Matches the UI's "(inherit)" reading.

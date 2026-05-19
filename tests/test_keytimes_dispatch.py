@@ -174,6 +174,24 @@ class TestDispatchColorState:
         assert captured == []
         assert state.short_color == "white"  # unchanged — slot was empty
 
+    def test_long_press_does_not_advance_short_cycle_when_short_down_empty(self):
+        # Regression: previously, short_down fired during a long press would mark
+        # _fired_short=True and the short cycle would advance at long_up, even
+        # though no short MIDI fired. Now: short_down with empty slot is silent
+        # on every axis (MIDI, render, cycle) so the short cycle stays put.
+        state = _make_state(2, 1)
+        cb, _ = _msg_collector()
+        cfg = {"mode": "keytimes",
+               "short": [{"up": [CC(20, 127)]}, {"up": [CC(20, 0)]}],  # only up slots
+               "long":  [{"down": [CC(21, 127)]}]}
+        # One short tap to advance short cycle to index 1.
+        dispatch_keytimes_events(["short_down", "short_up"], state, cfg, cb)
+        assert state.short_cycle.index == 1
+        # Now do a long press. Short cycle should NOT advance.
+        dispatch_keytimes_events(["short_down", "long_down", "long_up"], state, cfg, cb)
+        assert state.short_cycle.index == 1   # stays — short_down had no content
+        assert state.long_cycle.index == 0    # advanced and wrapped (len=1)
+
     def test_off_does_not_persist_through_inherit_entry(self):
         # Regression: previously [inherit, off] would stick at "off" after the
         # first wrap because the inherit entry left short_color unchanged.
@@ -261,16 +279,17 @@ class TestDispatchReverbShimmerScenario:
         # 2. Long hold -> shimmer on
         dispatch_keytimes_events(["short_down", "long_down", "long_up"], self.state, self.cfg, cb)
         assert captured == [CC(21, 127)]  # long entry[0].down
-        # short_cycle: short_down fired (no messages, but the event itself fired) -> advance.
-        # Cycle was at 1; advances to 0 (wraps).
-        assert self.state.short_cycle.index == 0
-        # long_cycle: long_down/long_up fired -> advance to 1
+        # short_cycle: short_down fired BUT short entry[1] has no down messages,
+        # so the cycle does NOT advance — the slot-has-content rule applies to
+        # cycle advancement too. short_cycle.index stays at 1.
+        assert self.state.short_cycle.index == 1
+        # long_cycle: long_down fired with messages -> advance to 1
         assert self.state.long_cycle.index == 1
         # short_color: short_down on short entry[1] has no down messages, so render
         # state is NOT updated. short_color stays at "white" from step 1.
-        # This is the strict slot-has-content rule: an empty slot is silent on every
-        # axis (MIDI and LED) — long-press toggling shimmer doesn't leak into the
-        # short layer's render state.
+        # The strict slot-has-content rule: an empty slot is silent on every axis
+        # (MIDI, LED, cycle) — long-press toggling shimmer doesn't leak into the
+        # short layer.
         assert self.state.short_color == "white"
         assert self.state.long_color == "blue"
         captured.clear()

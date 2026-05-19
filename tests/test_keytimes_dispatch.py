@@ -145,19 +145,49 @@ class TestDispatchColorState:
         dispatch_keytimes_events(["short_down"], state, cfg, cb)
         assert state.short_color == "blue"
 
-    def test_color_inherits_when_entry_has_no_color(self):
-        # entry[1] has no color — state should keep entry[0]'s color across press-end.
+    def test_color_clears_when_entry_has_no_color(self):
+        # An entry with no "color" field clears the layer's color so the render
+        # falls back to the button-level color. "(inherit)" means "no override",
+        # not "carry forward the previous entry's color".
         state = _make_state(2, 1)
         cb, _ = _msg_collector()
         cfg = {"mode": "keytimes",
                "short": [{"down": [CC(20, 64)], "color": "blue"},
                          {"down": [CC(20, 127)]}]}  # no color on entry 1
         dispatch_keytimes_events(["short_down", "short_up"], state, cfg, cb)
-        # state advances to index 1; state.short_color stayed "blue" (inherit)
+        # After short_up, cycle advanced to index 1. The next press will hit entry 1.
+        # state.short_color still reflects entry 0 (the one that just fired).
         assert state.short_color == "blue"
-        # Fire next press — entry[1] has no color, so still "blue"
+        # Next press hits entry 1 — no color → clear so render falls back to button color.
         dispatch_keytimes_events(["short_down", "short_up"], state, cfg, cb)
-        assert state.short_color == "blue"
+        assert state.short_color is None
+
+    def test_render_state_unchanged_when_slot_has_no_messages(self):
+        # Strict rule: short_down with no down messages does nothing — neither MIDI
+        # nor render. This is the fix for the "short_down flash" during long presses.
+        state = _make_state(1, 0)
+        state.short_color = "white"  # simulate prior state from a previous press
+        cb, captured = _msg_collector()
+        cfg = {"mode": "keytimes",
+               "short": [{"up": [CC(20, 127)], "color": "off"}]}  # only up has content
+        dispatch_keytimes_events(["short_down"], state, cfg, cb)
+        assert captured == []
+        assert state.short_color == "white"  # unchanged — slot was empty
+
+    def test_off_does_not_persist_through_inherit_entry(self):
+        # Regression: previously [inherit, off] would stick at "off" after the
+        # first wrap because the inherit entry left short_color unchanged.
+        state = _make_state(2, 1)
+        cb, _ = _msg_collector()
+        cfg = {"mode": "keytimes",
+               "short": [{"down": [CC(20, 64)]},                      # inherit
+                         {"down": [CC(20, 0)], "color": "off"}]}
+        dispatch_keytimes_events(["short_down", "short_up"], state, cfg, cb)
+        assert state.short_color is None  # entry 0 inherit
+        dispatch_keytimes_events(["short_down", "short_up"], state, cfg, cb)
+        assert state.short_color == "off"  # entry 1 kill
+        dispatch_keytimes_events(["short_down", "short_up"], state, cfg, cb)
+        assert state.short_color is None  # wrap to entry 0 — kill cleared
 
     def test_long_color_updates_on_long_event(self):
         state = _make_state(1, 1)
@@ -231,15 +261,17 @@ class TestDispatchReverbShimmerScenario:
         # 2. Long hold -> shimmer on
         dispatch_keytimes_events(["short_down", "long_down", "long_up"], self.state, self.cfg, cb)
         assert captured == [CC(21, 127)]  # long entry[0].down
-        # short_cycle: short_down fired -> advance (wraps to 0)
+        # short_cycle: short_down fired (no messages, but the event itself fired) -> advance.
+        # Cycle was at 1; advances to 0 (wraps).
         assert self.state.short_cycle.index == 0
         # long_cycle: long_down/long_up fired -> advance to 1
         assert self.state.long_cycle.index == 1
-        # short_color: short_down on entry[0] (after wrap... no wait, sequence is)
-        # Actually short_cycle was at 1 before this; short_down event used entry at index 1
-        # (the "reverb off, color: off" entry). After firing, advance to 0.
-        # So short_color was updated from entry[1].color = "off"
-        assert self.state.short_color == "off"
+        # short_color: short_down on short entry[1] has no down messages, so render
+        # state is NOT updated. short_color stays at "white" from step 1.
+        # This is the strict slot-has-content rule: an empty slot is silent on every
+        # axis (MIDI and LED) — long-press toggling shimmer doesn't leak into the
+        # short layer's render state.
+        assert self.state.short_color == "white"
         assert self.state.long_color == "blue"
         captured.clear()
 

@@ -61,13 +61,27 @@ Each cycle's current entry carries an optional `color`. The two layers combine a
 if short.color == "off":     LED = off          (kill switch — short "off" overrides all)
 elif long.color is set:      LED = long         (decoration over primary)
 elif short.color is set:     LED = short
-elif button.color is set:    LED = button.color (fallback — every entry inherits)
+elif button.color is set:    LED = button.color (fallback for "(inherit)" entries)
 else:                        LED = off
 ```
 
-Within a cycle, an entry with no `color` field **inherits** the previous entry's color in the same cycle. If no entry in either cycle has ever set a color (every entry is "(inherit)"), the LED falls back to the button-level `color` field — the same value used for the boot-time dim glow and for the label rendering precedence (`long_label or short_label or button.label`). An explicit `"off"` is distinct from unset.
+An entry with no `color` field — "(inherit)" in the editor — means **no override**: the layer's color clears on that entry and the LED falls back to the button-level `color` field. This mirrors the label rendering precedence (`long_label or short_label or button.label`) and matches the boot-time dim glow. An explicit `"off"` is distinct from unset: `"off"` overrides; `(inherit)` does not.
+
+Note: this is *not* "inherit the previous entry's color". An earlier draft of #48 carried the previous entry's color forward, but that caused a wrap-around surprise — a kill-switch `"off"` entry would persist through subsequent inherit entries because the inherit didn't clear the layer. The current rule is per-entry: each press resets the layer to exactly what the entry specifies, or to the button-level fallback if the entry specifies nothing.
 
 The asymmetry (`"off"` on short kills the LED but `"off"` on long is just "no decoration") matches the physical pedalboard metaphor: short is the primary indicator, long is a decoration painted over it; with no primary, there's nothing to decorate.
+
+### Render-Update Trigger
+
+Render state for an entry (`color`/`dim`/`label`) is updated **only on events whose slot has messages**. An event with an empty slot fires no MIDI and does not change the LED — the slot is silent on every axis.
+
+Consequences:
+- A config with only `short_up` populated → LED changes on tap-release, nothing on press. No "flash" of the short entry's color during a long press, because `short_down` has no slot content for that entry.
+- A config with `long_down` populated → LED changes at the threshold (when the long press is confirmed).
+- A config with `long_up` populated → LED changes at release of a long press.
+- If you want LED feedback at the threshold, configure something on `long_down`. If you want it at release, configure something on `long_up`. The slot you populate is the slot where stuff happens.
+
+Cycle *advancement* is unrelated to slot content — per-press, "≥1 of that cycle's events fired" still advances the cycle (Advancement rule above). This means a long press can still advance the short cycle even though no short-slot messages fired, because `short_down` itself is an event.
 
 ### Cycle State Lifecycle
 

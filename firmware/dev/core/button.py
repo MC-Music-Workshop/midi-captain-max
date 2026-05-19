@@ -306,32 +306,48 @@ def dispatch_keytimes_events(events, state, btn_config, message_callback):
             idx = cycle.index
             if 0 <= idx < len(entries):
                 entry = entries[idx]
-                for msg in entry.get(slot, []) or []:
+                slot_messages = entry.get(slot, []) or []
+                for msg in slot_messages:
                     message_callback(msg)
-                # Update inherited render state from this entry. color inherits across
-                # entries (only updates if entry has one); dim and label are per-entry
-                # but treated symmetrically here — only updated if the field is present.
-                if "color" in entry:
-                    if cycle_name == "short":
-                        state.short_color = entry["color"]
+                # Render-state updates piggyback on the slot's MIDI dispatch: an event
+                # whose slot has no messages does nothing — no MIDI, no LED change.
+                # This keeps the user mental model consistent (the slot you populate
+                # is the slot where stuff happens) and avoids the short_down "flash"
+                # during long presses when the user only configured *_up slots.
+                if slot_messages:
+                    # color/dim/label are all per-entry with no carry-forward — a missing
+                    # field clears the layer's state so the render falls back to the
+                    # button-level color/label. Matches the UI's "(inherit)" reading.
+                    if "color" in entry:
+                        if cycle_name == "short":
+                            state.short_color = entry["color"]
+                        else:
+                            state.long_color = entry["color"]
                     else:
-                        state.long_color = entry["color"]
-                if "dim" in entry:
-                    if cycle_name == "short":
-                        state.short_dim = bool(entry["dim"])
+                        if cycle_name == "short":
+                            state.short_color = None
+                        else:
+                            state.long_color = None
+                    if "dim" in entry:
+                        if cycle_name == "short":
+                            state.short_dim = bool(entry["dim"])
+                        else:
+                            state.long_dim = bool(entry["dim"])
                     else:
-                        state.long_dim = bool(entry["dim"])
-                else:
-                    # Entry without explicit dim resets dim to False (non-inheriting).
-                    if cycle_name == "short":
-                        state.short_dim = False
+                        if cycle_name == "short":
+                            state.short_dim = False
+                        else:
+                            state.long_dim = False
+                    if "label" in entry:
+                        if cycle_name == "short":
+                            state.short_label = entry["label"]
+                        else:
+                            state.long_label = entry["label"]
                     else:
-                        state.long_dim = False
-                if "label" in entry:
-                    if cycle_name == "short":
-                        state.short_label = entry["label"]
-                    else:
-                        state.long_label = entry["label"]
+                        if cycle_name == "short":
+                            state.short_label = None
+                        else:
+                            state.long_label = None
 
         # On press-end, advance cycles whose events fired during this press, then reset flags.
         if event in ("short_up", "long_up"):

@@ -223,6 +223,15 @@ export function validateConfig(config: MidiCaptainConfig): ValidationResult {
     if (btn.mode !== 'keytimes' && (btn.short || btn.long)) {
       errors.set(`buttons[${idx}].mode`, `short/long are only valid when mode is "keytimes"`);
     }
+    // Legacy keytimes/states are forbidden on the new mode='keytimes' (use short[]/long[] instead).
+    if (btn.mode === 'keytimes') {
+      if (btn.keytimes !== undefined) {
+        errors.set(`buttons[${idx}].keytimes`, `'keytimes' is not allowed on mode="keytimes" (use short[]/long[])`);
+      }
+      if (btn.states !== undefined) {
+        errors.set(`buttons[${idx}].states`, `'states' is not allowed on mode="keytimes" (use short[]/long[])`);
+      }
+    }
     if (btn.mode === 'keytimes' && btn.long_press_threshold_ms !== undefined) {
       const t = btn.long_press_threshold_ms;
       if (!Number.isInteger(t) || t < 50 || t > 5000) {

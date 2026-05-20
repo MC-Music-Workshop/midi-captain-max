@@ -453,6 +453,13 @@ impl MidiCaptainConfig {
             }
         }
 
+        // Validate global long-press threshold (50-5000ms per schema)
+        if let Some(ms) = self.long_press_threshold_ms {
+            if !(50..=5000).contains(&ms) {
+                errors.push(format!("Global long_press_threshold_ms {} out of range (50-5000)", ms));
+            }
+        }
+
         // Check button count matches device
         let expected_buttons = match self.device {
             DeviceType::Std10 => 10,
@@ -503,6 +510,22 @@ impl MidiCaptainConfig {
             if let Some(ms) = button.flash_ms {
                 if !(50..=5000).contains(&ms) {
                     errors.push(format!("Button {} flash_ms {} out of range (50-5000)", i + 1, ms));
+                }
+            }
+            if let Some(ms) = button.long_press_threshold_ms {
+                if !(50..=5000).contains(&ms) {
+                    errors.push(format!("Button {} long_press_threshold_ms {} out of range (50-5000)", i + 1, ms));
+                }
+            }
+            // mode='keytimes' carries its cycle data in short[]/long[]; the legacy
+            // keytimes/states fields are meaningless there and forbidden by the editor.
+            // Other modes still accept them with a runtime deprecation warning from the firmware.
+            if button.mode == ButtonMode::Keytimes {
+                if button.keytimes.is_some() {
+                    errors.push(format!("Button {} 'keytimes' field is not allowed on mode='keytimes' (use short[]/long[])", i + 1));
+                }
+                if button.states.is_some() {
+                    errors.push(format!("Button {} 'states' field is not allowed on mode='keytimes' (use short[]/long[])", i + 1));
                 }
             }
         }
@@ -988,6 +1011,100 @@ mod tests {
                 );
             }
         }
+    }
+
+    // --- Validation tests for keytimes-mode and long_press_threshold_ms (#48 review fixes) ---
+
+    fn _std10_minimal() -> MidiCaptainConfig {
+        let mut buttons = Vec::new();
+        for i in 0..10 {
+            buttons.push(ButtonConfig {
+                label: format!("B{}", i + 1),
+                color: ButtonColor::Red,
+                message_type: MessageType::Cc,
+                mode: ButtonMode::Toggle,
+                off_mode: OffMode::Dim,
+                channel: None, cc: Some(20 + i as u8), cc_on: None, cc_off: None,
+                note: None, velocity_on: None, velocity_off: None,
+                program: None, pc_step: None, flash_ms: None,
+                select_group: None, select_repress: None,
+                keytimes: None, states: None,
+                hid_action: None, hid_key: None, hid_modifier: None, hid_delay_ms: None,
+                short: None, long: None, long_press_threshold_ms: None,
+            });
+        }
+        MidiCaptainConfig {
+            device: DeviceType::Std10, global_channel: None, usb_drive_name: None,
+            dev_mode: None, midi_thru_usb_to_din: None, midi_thru_din_to_usb: None,
+            midi_thru_din_to_din: None, midi_thru_usb_to_usb: None,
+            buttons, encoder: None, expression: None, display: None,
+            long_press_threshold_ms: None,
+        }
+    }
+
+    #[test]
+    fn test_validate_global_long_press_threshold_ms_in_range() {
+        let mut cfg = _std10_minimal();
+        cfg.long_press_threshold_ms = Some(500);
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_global_long_press_threshold_ms_below_range() {
+        let mut cfg = _std10_minimal();
+        cfg.long_press_threshold_ms = Some(49);
+        let err = cfg.validate().unwrap_err();
+        assert!(err.iter().any(|e| e.contains("Global long_press_threshold_ms 49")));
+    }
+
+    #[test]
+    fn test_validate_global_long_press_threshold_ms_above_range() {
+        let mut cfg = _std10_minimal();
+        cfg.long_press_threshold_ms = Some(5001);
+        let err = cfg.validate().unwrap_err();
+        assert!(err.iter().any(|e| e.contains("Global long_press_threshold_ms 5001")));
+    }
+
+    #[test]
+    fn test_validate_per_button_long_press_threshold_ms_out_of_range() {
+        let mut cfg = _std10_minimal();
+        cfg.buttons[0].long_press_threshold_ms = Some(10);
+        let err = cfg.validate().unwrap_err();
+        assert!(err.iter().any(|e| e.contains("Button 1 long_press_threshold_ms 10")));
+    }
+
+    #[test]
+    fn test_validate_per_button_long_press_threshold_ms_in_range() {
+        let mut cfg = _std10_minimal();
+        cfg.buttons[0].long_press_threshold_ms = Some(750);
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_keytimes_field_rejected_on_keytimes_mode() {
+        let mut cfg = _std10_minimal();
+        cfg.buttons[0].mode = ButtonMode::Keytimes;
+        cfg.buttons[0].keytimes = Some(3);
+        let err = cfg.validate().unwrap_err();
+        assert!(err.iter().any(|e| e.contains("Button 1 'keytimes' field is not allowed on mode='keytimes'")));
+    }
+
+    #[test]
+    fn test_validate_states_field_rejected_on_keytimes_mode() {
+        let mut cfg = _std10_minimal();
+        cfg.buttons[0].mode = ButtonMode::Keytimes;
+        cfg.buttons[0].states = Some(Vec::new());
+        let err = cfg.validate().unwrap_err();
+        assert!(err.iter().any(|e| e.contains("Button 1 'states' field is not allowed on mode='keytimes'")));
+    }
+
+    #[test]
+    fn test_validate_keytimes_field_allowed_on_toggle_mode() {
+        // Legacy field still accepted on non-keytimes modes (firmware emits deprecation warning).
+        let mut cfg = _std10_minimal();
+        cfg.buttons[0].mode = ButtonMode::Toggle;
+        cfg.buttons[0].keytimes = Some(3);
+        assert!(cfg.validate().is_ok());
     }
 
     #[test]

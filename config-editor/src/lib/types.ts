@@ -16,9 +16,13 @@ export type {
   ExpressionConfig,
   ExpressionPedals,
   DisplayConfig,
-  KeytimesEntry,
-  KeytimesMessage,
 } from './types.generated';
+
+// Keytimes entries/messages carry an optional ephemeral `__uiId` (UI-only, not persisted)
+// so {#each} blocks key by stable identity across structuredClone-on-edit. Stripped by
+// normalizeConfig before write — never reaches disk.
+export type KeytimesEntry = import('./types.generated').KeytimesEntry & { __uiId?: number };
+export type KeytimesMessage = import('./types.generated').KeytimesMessage & { __uiId?: number };
 
 // Derived from generated types — no manual sync needed
 export type ButtonMode = NonNullable<ButtonConfig['mode']>;

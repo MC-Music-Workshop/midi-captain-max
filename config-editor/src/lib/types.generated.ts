@@ -176,11 +176,11 @@ export interface ButtonConfig {
    */
   flash_ms?: number;
   /**
-   * DEPRECATED on toggle/momentary/flash/select modes. Use mode='keytimes' with short[]/long[] arrays for multi-state cycling. Validator now rejects this field on non-keytimes modes.
+   * DEPRECATED on toggle/momentary/flash/select modes (firmware accepts with a deprecation warning at boot; will be removed in v3.0). Forbidden on mode='keytimes' — use short[]/long[] arrays instead.
    */
   keytimes?: number;
   /**
-   * DEPRECATED on toggle/momentary/flash/select modes. Use mode='keytimes' with short[]/long[] arrays. Validator now rejects this field on non-keytimes modes.
+   * DEPRECATED on toggle/momentary/flash/select modes (firmware accepts with a deprecation warning at boot; will be removed in v3.0). Forbidden on mode='keytimes' — use short[]/long[] arrays instead.
    */
   states?: StateOverride[];
   /**

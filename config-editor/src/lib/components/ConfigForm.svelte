@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, type Snippet } from 'svelte';
-  import { isDirty, canUndo, canRedo, undo, redo, validationErrors, config } from '$lib/formStore';
+  import { isDirty, canUndo, canRedo, undo, redo, validationErrors, config, normalizeConfig } from '$lib/formStore';
   
   interface Props {
     onSave: () => void;
@@ -22,7 +22,9 @@
   }
 
   function handleViewJson() {
-    jsonText = JSON.stringify($config, null, 2);
+    // normalizeConfig strips type-irrelevant fields and ephemeral __uiId markers,
+    // so the preview matches what would actually be written to disk.
+    jsonText = JSON.stringify(normalizeConfig(structuredClone($config)), null, 2);
     showJsonModal = true;
   }
   

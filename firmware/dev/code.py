@@ -1086,6 +1086,10 @@ def handle_switches():
         # Keytimes mode (#48): poll-driven dispatch via PressTracker. Runs every loop iteration
         # so the long-press threshold timer fires even when the switch state is steady.
         if btn_config.get("mode") == "keytimes":
+            # Defensive: keytimes_states is sized to BUTTON_COUNT; idx should already be < BUTTON_COUNT
+            # given the switches loop above, but guard explicitly to mirror the buttons[] fallback at L1084.
+            if idx >= len(keytimes_states):
+                continue
             kt_state = keytimes_states[idx]
             if kt_state is None:
                 continue

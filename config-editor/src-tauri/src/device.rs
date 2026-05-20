@@ -531,7 +531,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = check_volume(&dir.path().to_path_buf());
+        let result = check_volume(dir.path());
         assert!(result.is_some(), "Custom-named volume should be detected when config name matches");
         let device = result.unwrap();
         assert!(device.has_config);
@@ -551,7 +551,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = check_volume(&dir.path().to_path_buf());
+        let result = check_volume(dir.path());
         assert!(result.is_some(), "Volume with valid MIDI Captain config should be accepted regardless of name");
     }
 
@@ -561,7 +561,7 @@ mod tests {
         // A volume with an unknown name AND no config.json should NOT be detected
         let dir = tempfile::TempDir::with_prefix("RANDOMDRIVE").unwrap();
         // No config.json written
-        let result = check_volume(&dir.path().to_path_buf());
+        let result = check_volume(dir.path());
         assert!(result.is_none(), "Unknown volume with no config should not be detected");
     }
 

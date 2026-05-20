@@ -85,7 +85,7 @@
         <p class="kt-empty">(no entries — button is silent for {cycle} press events)</p>
       {/if}
 
-      {#each entries as entry, ei (ei)}
+      {#each entries as entry, ei ((entry as { __uiId?: number }).__uiId ?? ei)}
         <div class="kt-entry">
           <div class="kt-entry-header">
             <span class="kt-entry-num">#{ei + 1}</span>
@@ -138,7 +138,7 @@
                   <span class="kt-slot-empty-hint">(empty — this event fires nothing)</span>
                 {/if}
               </div>
-              {#each messages as msg, mi (mi)}
+              {#each messages as msg, mi ((msg as { __uiId?: number }).__uiId ?? mi)}
                 <KeytimesMessageEditor
                   buttonIndex={index}
                   cycle={cycle as 'short' | 'long'}

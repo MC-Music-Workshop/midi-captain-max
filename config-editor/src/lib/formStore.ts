@@ -59,12 +59,43 @@ export const selectGroupNames = derived(formState, $state => {
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Ephemeral UI-only ids attached to KeytimesEntry/KeytimesMessage objects so
+// Svelte {#each} blocks can key by stable identity across structuredClone edits.
+// Stripped from any config written to disk (see normalizeConfig).
+let _uiIdCounter = 0;
+function _nextUiId(): number {
+  return ++_uiIdCounter;
+}
+
+// Walk a config and assign `__uiId` to any keytimes entry/message that lacks one.
+// Mutates in place; safe to call on a freshly structuredCloned config.
+function _attachUiIds(cfg: MidiCaptainConfig): void {
+  for (const btn of cfg.buttons) {
+    for (const cycle of ['short', 'long'] as const) {
+      const entries = (btn as unknown as Record<string, unknown>)[cycle];
+      if (!Array.isArray(entries)) continue;
+      for (const entry of entries as Array<Record<string, unknown>>) {
+        if (typeof entry.__uiId !== 'number') entry.__uiId = _nextUiId();
+        for (const slot of ['down', 'up'] as const) {
+          const messages = entry[slot];
+          if (!Array.isArray(messages)) continue;
+          for (const msg of messages as Array<Record<string, unknown>>) {
+            if (typeof msg.__uiId !== 'number') msg.__uiId = _nextUiId();
+          }
+        }
+      }
+    }
+  }
+}
+
 export function loadConfig(newConfig: MidiCaptainConfig) {
   // Ensure display always exists so DisplaySection can traverse into it
   const config = { ...newConfig, display: newConfig.display ?? {} };
+  const cloned = structuredClone(config);
+  _attachUiIds(cloned);
   formState.update(_state => ({
-    config: structuredClone(config),
-    history: [structuredClone(config)],
+    config: cloned,
+    history: [structuredClone(cloned)],
     historyIndex: 0,
     validationErrors: new Map(),
     isDirty: false,
@@ -236,7 +267,7 @@ function _updateButton(buttonIndex: number, mutate: (btn: ButtonConfig) => void)
 export function addKeytimesEntry(buttonIndex: number, cycle: 'short' | 'long') {
   _updateButton(buttonIndex, btn => {
     const arr = (btn[cycle] ?? []) as KeytimesEntry[];
-    arr.push({});
+    arr.push({ __uiId: _nextUiId() } as KeytimesEntry);
     btn[cycle] = arr;
   });
 }
@@ -266,7 +297,7 @@ export function addKeytimesMessage(
     if (!Array.isArray(arr) || !arr[entryIndex]) return;
     const entry = arr[entryIndex] as KeytimesEntry;
     const messages = (entry[slot] ?? []) as KeytimesMessage[];
-    messages.push(_defaultMessage(msgType));
+    messages.push({ ..._defaultMessage(msgType), __uiId: _nextUiId() } as KeytimesMessage);
     entry[slot] = messages;
   });
 }
@@ -556,12 +587,28 @@ function normalizeButton(btn: ButtonConfig): ButtonConfig {
   }
 }
 
+// Recursively strip ephemeral `__uiId` markers from a deep-cloned config so they
+// never reach the on-disk JSON. Operates on the input in place.
+function _stripUiIds(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const v of value) _stripUiIds(v);
+  } else if (value && typeof value === 'object') {
+    delete (value as Record<string, unknown>).__uiId;
+    for (const v of Object.values(value)) _stripUiIds(v);
+  }
+}
+
 export function normalizeConfig(cfg: MidiCaptainConfig): MidiCaptainConfig {
-  const normalized: MidiCaptainConfig = { ...cfg, buttons: cfg.buttons.map(normalizeButton) };
+  // Deep clone so the ephemeral `__uiId` strip below (and any other mutations)
+  // don't reach back into the live store.
+  const cloned = structuredClone(cfg);
+  const normalized: MidiCaptainConfig = { ...cloned, buttons: cloned.buttons.map(normalizeButton) };
   // Strip display if no fields were set (avoids writing `"display": {}` for untouched configs)
   if (normalized.display && Object.values(normalized.display).every(v => v === undefined)) {
     delete normalized.display;
   }
+  // Drop UI-only stable-key markers attached to keytimes entries/messages.
+  _stripUiIds(normalized);
   return normalized;
 }
 

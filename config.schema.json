@@ -353,12 +353,12 @@
           "minimum": 1,
           "maximum": 99,
           "default": 1,
-          "description": "DEPRECATED on toggle/momentary/flash/select modes. Use mode='keytimes' with short[]/long[] arrays for multi-state cycling. Validator now rejects this field on non-keytimes modes."
+          "description": "DEPRECATED on toggle/momentary/flash/select modes (firmware accepts with a deprecation warning at boot; will be removed in v3.0). Forbidden on mode='keytimes' — use short[]/long[] arrays instead."
         },
         "states": {
           "type": "array",
           "items": { "$ref": "#/definitions/StateOverride" },
-          "description": "DEPRECATED on toggle/momentary/flash/select modes. Use mode='keytimes' with short[]/long[] arrays. Validator now rejects this field on non-keytimes modes."
+          "description": "DEPRECATED on toggle/momentary/flash/select modes (firmware accepts with a deprecation warning at boot; will be removed in v3.0). Forbidden on mode='keytimes' — use short[]/long[] arrays instead."
         },
         "short": {
           "type": "array",

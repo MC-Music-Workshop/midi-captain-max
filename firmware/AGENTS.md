@@ -43,8 +43,11 @@ These pass `py_compile` and `pytest` on desktop Python but **crash on device boo
 | Dict unpacking in literals | `{**cfg, "key": val}` | Manual loop: `for k,v in d.items(): r[k] = v` |
 | Walrus operator | `if (n := len(x)) > 0:` | Separate assignment |
 | `match`/`case` | `match x: case 1:` | `if`/`elif` |
+| Adjacent f-string concat across lines | `print(\n  f"a={a} "\n  f"b={b}"\n)` | One f-string, or `+` between them |
 
-**CI enforces this** via the "CircuitPython 7.x compatibility guard" step in `ci.yml`.
+**CI enforces this** via two steps in `ci.yml`:
+- "CircuitPython 7.x compatibility guard" greps for the banned constructs above.
+- "CircuitPython parse check (all .py files)" runs every `firmware/dev/*.py` through `mpy-cross` to catch anything the grep guard misses (including `code.py` and `boot.py`, which ship as `.py` and otherwise never see the CP parser in CI).
 
 ### Missing `str` Methods in CP 7.x
 

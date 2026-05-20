@@ -26,7 +26,8 @@ def _make_state(short_len, long_len, threshold_ms=500):
     return KeytimesButtonState(threshold_ms=threshold_ms, short_length=short_len, long_length=long_len)
 
 
-CC = lambda cc, value: {"type": "cc", "cc": cc, "value": value}
+def CC(cc, value):
+    return {"type": "cc", "cc": cc, "value": value}
 
 
 class TestDispatchBasic:

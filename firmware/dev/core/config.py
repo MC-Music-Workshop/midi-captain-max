@@ -535,6 +535,29 @@ def get_display_config(cfg):
     }
 
 
+def get_midi_thru_usb_to_din(cfg):
+    """USB input -> 5-pin DIN output (cross-thru). Default True."""
+    return bool(cfg.get("midi_thru_usb_to_din", True))
+
+
+def get_midi_thru_din_to_usb(cfg):
+    """5-pin DIN input -> USB output (cross-thru). Default True."""
+    return bool(cfg.get("midi_thru_din_to_usb", True))
+
+
+def get_midi_thru_din_to_din(cfg):
+    """5-pin DIN input -> 5-pin DIN output (classic MIDI THRU pass-through
+    for daisy-chaining controllers downstream). Default True (matches OEM)."""
+    return bool(cfg.get("midi_thru_din_to_din", True))
+
+
+def get_midi_thru_usb_to_usb(cfg):
+    """USB input -> USB output (loopback to host). Default False — echoing
+    back to the host can cause duplicate notes or feedback when the DAW also
+    has MIDI echo enabled. Opt-in for niche routing setups."""
+    return bool(cfg.get("midi_thru_usb_to_usb", False))
+
+
 def get_dev_mode(cfg):
     """Extract development mode setting from config.
 

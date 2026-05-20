@@ -9,12 +9,12 @@ A feature-by-feature comparison of **MIDI Captain MAX (MCM)** against **Paint Au
 | | **MIDI Captain MAX** | **OEM (Paint Audio SuperMode 4.0)** |
 |---|---|---|
 | **Bidirectional MIDI** | ✅ Host updates LEDs and display in real time | ❌ One-way only |
-| **Config format** | ✅ JSON, schema-validated | ⚠️ Bracketed ASCII (`[1][CC][69][0]`) in `pageX.txt` |
+| **Config format** | ✅ Modern, validated config — readable and shareable | ⚠️ Cryptic bracket strings in text files (`[1][CC][69][0]`) |
 | **Editor** | ✅ GUI Config Editor with live validation | ❌ Hand-edit text files |
 | **Firmware updates** | ✅ One-click from the editor | ❌ Manual drag-and-drop |
-| **Source** | ✅ Open, CircuitPython | ❌ Closed binary |
+| **Source** | ✅ Open source — readable, hackable, forkable | ❌ Closed binary |
 | **Custom USB drive name** | ✅ Per-device | ❌ Always `MIDICAPTAIN` |
-| **Signed installers** | ✅ macOS + Windows | ❌ N/A |
+| **Signed installers** | ✅ macOS + Windows (Linux coming soon) | ❌ N/A |
 
 ---
 
@@ -24,46 +24,41 @@ A feature-by-feature comparison of **MIDI Captain MAX (MCM)** against **Paint Au
 
 | OEM Feature | MCM Equivalent | Status |
 |---|---|---|
-| Multi-press cycling (`keytimes`, up to 9 states) | `mode: "keytimes"` with up to **99** states per button | ✅ Parity (and then some) |
-| Short / long press timings (`short_dw`, `short_up`, `long`, `long_up`) | Short + long press via keytimes with independent per-timing cycles | ⚠️ Partial — MCM splits short vs. long, but not separate up/down phases |
-| Multiple commands per press (combine PC + CC + NT + HID in one trigger) | One message per state | ❌ Gap — MCM fires one message per state |
-| `ledmode: normal` | Default keytimes / toggle behavior | ✅ |
-| `ledmode: select` (radio-group exclusivity) | `mode: "select"` with `select_group` + `select_repress` (`resend` / `nothing` / `deselect`) | ✅ Parity, more configurable |
-| `ledmode: tap` (beat flash) | — | ❌ Gap |
-| Per-LED-segment color (3 segments per ring) | Single color per button (all 3 segments lit same color) | ❌ Gap — MCM treats the ring as one color |
-| Momentary behavior | `mode: "momentary"` | ✅ |
-| Toggle behavior | `mode: "toggle"` | ✅ |
-| — | `mode: "flash"` (brief LED flash for PC types) | 🆕 MCM-only |
+| **Keytimes** — multi-press cycling (up to 9 states) | **Keytimes** (same name, expanded) — up to **99** states per button | ⬆️ Parity, 11× the depth |
+| Short / long press timings (fire on press-down, press-up, long-hold, and long-release) | All four actions supported, with independent short and long press cycles | ✅ Parity |
+| Multiple commands per press (any combination of message types) | Stack as many messages as you want on any press action, edited visually in the GUI | ✅ Parity |
+| Standard LED behavior (lights on press) | Default toggle / momentary behavior | ✅ |
+| Radio-group buttons (one lit at a time) — single implicit group | **Unlimited named radio groups** — set up as many independent button groups as you want, with configurable behavior when pressing the already-active button (re-send, do nothing, or deselect) | ⬆️ Parity, more configurable |
+| Tap-tempo beat-flash LED mode | — | 🛠️ [Coming soon](https://github.com/MC-Music-Workshop/midi-captain-max/issues/80) |
+| Per-segment color on the 3-segment LED ring | Single color per button today; per-segment control and even simple LED animations are on the roadmap, with GUI editing far easier than OEM's hex-by-segment syntax | 🛠️ [Coming soon](https://github.com/MC-Music-Workshop/midi-captain-max/issues/58) |
+| Momentary (LED on while held) | Momentary mode | ✅ |
+| Toggle (latching on/off) | Toggle mode | ✅ |
+| — | **Flash mode** — brief LED flash on press, perfect for program-change buttons | 🆕 MCM-only |
 
 ### Message Types
 
 | OEM Feature | MCM Equivalent | Status |
 |---|---|---|
-| MIDI CC (`[ch][CC][num][val]`) | `type: "cc"` with `cc`, `cc_on`, `cc_off`, `channel` | ✅ |
-| MIDI Note (`[ch][NT][note][vel]`) | `type: "note"` | ✅ |
-| MIDI PC (`[ch][PC][num][-]`) | `type: "pc"` | ✅ |
-| PC increment (`[1][PC][inc1..inc5][-]`) | `type: "pc_inc"` with configurable `pc_step` | ✅ Parity (any step, not just 1–5) |
-| PC decrement (`[1][PC][dec1..dec5][-]`) | `type: "pc_dec"` with `pc_step` | ✅ |
-| PC random (`[2][PC][random][-]`) | — | ❌ Gap |
-| PC auto-bank (`[1][PC][auto][bank_inc / bank_dec / 0..7]`) | — | ❌ Gap |
-| HID keyboard / mouse | `type: "hid"` | ✅ |
-| HID `send` / `press` / `release` / modifiers | Supported via CircuitPython HID layer | ✅ |
-| HID `delay` (pure delay command) | — | ❌ Gap (no scripted delay primitive) |
+| MIDI CC | Full CC with separate on / off values and channel | ✅ |
+| MIDI Note | Full note with velocity and channel | ✅ |
+| MIDI Program Change | Full PC with channel | ✅ |
+| PC increment (steps 1–5) | PC increment with any step size you choose | ⬆️ Parity (any step, not just 1–5) |
+| PC decrement (steps 1–5) | PC decrement with any step size | ⬆️ Parity (any step, not just 1–5) |
+| PC random (`[2][PC][random][-]`) | — | ➖ Gap (Do you use this? Get in touch!) |
+| PC auto-bank (`[1][PC][auto][bank_inc / bank_dec / 0..7]`) | — | ➖ Gap (Do you use this? Get in touch!) |
+| HID keyboard and mouse | Full keyboard and mouse control of any application | ✅ |
+| HID press / release / modifiers (Ctrl, Shift, Alt, etc.) | Press, release, and chord with all standard modifiers | ✅ |
+| HID delay (insert a pause between keystrokes) | — | 🛠️ Pending |
 
 ### Pages
 
-| OEM Feature | MCM Equivalent | Status |
-|---|---|---|
-| Multiple pages (`pageX.txt`, up to 99), long-press right key to switch | — | ❌ Gap — pages not implemented yet, on the backlog |
-| `page_name` | — | ❌ Gap |
-| External page jump via incoming `CC 20 XX` | — | ❌ Gap (depends on pages landing first) |
-| PC + page persistence every 30 s | — | ❌ Gap |
+Pages are **coming soon to MCM**, with far more flexibility than OEM. OEM supports up to 99 pages, but the page-change action is hard-coded (no user config). MCM's version will be fully configurable — any button, any action, plus host-driven page jumps via bidirectional MIDI.
 
 ### Expression Pedals
 
 | OEM Feature | MCM Equivalent | Status |
 |---|---|---|
-| Two expression pedals (`exp1_CH`, `exp1_CC`, `exp2_CH`, `exp2_CC`) | Full per-pedal config: `cc`, `channel`, `min`, `max`, `polarity`, `threshold`, `label` | ✅ Parity, richer config |
+| Two expression pedals (set CC and channel) | Two pedals with channel, CC, value range, polarity, sensitivity, and custom label per pedal | ⬆️ Parity, richer config |
 | Live value display on device | ✅ MCM shows pedal value on the OLED | ✅ |
 | Hardware availability | STD10 only (the only Captain with pedal ports) | Same on both |
 
@@ -71,30 +66,30 @@ A feature-by-feature comparison of **MIDI Captain MAX (MCM)** against **Paint Au
 
 | OEM Feature | MCM Equivalent | Status |
 |---|---|---|
-| `encoder_CC`, `encoder_NAME` | Full encoder config: `cc`, `label`, `min`, `max`, `initial`, `steps`, `channel` | ✅ Parity, richer config |
-| Encoder push button | First-class `encoder.push` block: `cc`, `mode`, `cc_on`, `cc_off`, `label`, `channel` | 🆕 MCM-only level of control |
+| Encoder CC and name | Encoder with custom CC, channel, label, value range, starting value, and step size | ⬆️ Parity, richer config |
+| Encoder push button | Push button as its own fully configurable control — channel, CC, label, momentary or toggle, separate on / off values | 🆕 MCM-only level of control |
 
 ### Global / Display Settings
 
 | OEM Feature | MCM Equivalent | Status |
 |---|---|---|
-| `midithrough = on/off` | — | ❌ Gap — no MIDI passthrough setting |
-| `display_number_ABC` (123 / abc3 / abc4 / abc5 / abc8 grouping) | — | ❌ Gap — MCM doesn't ship the PC-display grouping modes |
-| `group_number`, `display_pc_offset`, `display_bank_offset` | — | ❌ Gap (tied to pages / PC display) |
-| — | Per-zone text-size config (`button_text_size`, `status_text_size`, `expression_text_size`) | 🆕 MCM-only |
-| — | Custom USB drive name (`usb_drive_name`) | 🆕 MCM-only |
-| — | Bidirectional MIDI (host can drive LEDs / display) | 🆕 MCM-only headline feature |
+| MIDI Thru on/off (single global toggle) | **MIDI Thru routing matrix** — 4 independent USB ↔ DIN routes, each toggleable | ⬆️ Parity, far richer |
+| PC display grouping modes (`123` / `abc3` / `abc4` / `abc5` / `abc8`) | — | ➖ Gap — open to adding once requirements are scoped |
+| PC offset, bank offset, group size | — | ➖ Gap — open to adding once requirements are scoped |
+| — | Basic text-size tuning today (button labels, status line, expression-pedal readouts); richer typography, layout, and per-page display control on the roadmap | 🆕 MCM-only (early; growing) |
+| — | Custom USB drive name: great for juggling multiple Captains | 🆕 MCM-only |
+| — | Bidirectional MIDI: host can drive LEDs / display | 🆕 MCM-only headline feature |
 
 ### Tooling & Workflow
 
 | OEM | MCM | Status |
 |---|---|---|
 | Hand-edit `supersetup/pageX.txt` in a text editor | GUI Config Editor: visual layout, color picker, live validation, device auto-detect | 🆕 MCM-only |
-| No schema / validation | Published `config.schema.json` | 🆕 MCM-only |
+| No validation — typo in a config file silently misbehaves | Live validation catches mistakes before you save | 🆕 MCM-only |
 | Manual firmware flashing (drag-and-drop, hold KEY0 on boot) | One-click firmware install from the GUI | 🆕 MCM-only |
-| No dev iteration loop | **Dev Mode** — iterate without remounting | 🆕 MCM-only |
-| Closed binary firmware | Open-source CircuitPython | 🆕 MCM-only |
-| No signed installers | Signed `.dmg` (macOS), code-signed `.exe`/`.msi` (Windows) | 🆕 MCM-only |
+| Edit config, eject, replug, repeat | **Setup Mode** — tweak your config and hear the change without ever remounting the pedal | 🆕 MCM-only |
+| Closed binary firmware | Open source — readable, hackable, forkable | 🆕 MCM-only |
+| No signed installers | Signed installers for macOS and Windows — no security warnings, no manual overrides (Linux coming soon) | 🆕 MCM-only |
 
 ### Supported Hardware
 
@@ -106,30 +101,27 @@ A feature-by-feature comparison of **MIDI Captain MAX (MCM)** against **Paint Au
 | DUO   | ✅ | ✅ |
 | ONE   | ✅ | ✅ |
 
-Paint Audio's newer **EXP/SW** is a separate product, not a Captain variant; MCM has not been ported to it.
+Paint Audio's newer **EXP/SW** is a separate product, not a Captain variant; MCM has not been ported to it (yet).
 
 ---
 
 ## Summary
 
 **Where MCM clearly wins:**
-- Bidirectional MIDI — the entire reason this firmware exists
-- GUI editor, schema-validated JSON, signed installers, one-click updates
-- Custom USB drive names, dev mode, open source
+- Bidirectional MIDI — the gamechanger that puts your DAW and your pedalboard on the same page
+- GUI editor with live validation, signed installers, one-click updates
+- Custom USB drive names, Setup Mode, open source
 - `select` radio-group mode, `flash` mode, configurable `pc_step`, richer encoder + expression pedal config
 
 **Where OEM still has features MCM lacks:**
-- Pages and everything tied to them (page names, CC 20 page jump, PC/page persistence)
-- `tap` LED mode (beat flash)
-- Multiple commands chained on a single trigger
-- Separate `short_up` / `long_up` timing phases (MCM has short vs. long, but not up/down per timing)
-- Per-LED-segment colors on the 3-segment LED ring
+- Pages and everything tied to them (page names, CC 20 page jump, PC/page persistence) — **coming soon**
+- `tap` LED mode (beat flash) — coming soon
+- Per-segment colors on the 3-segment LED ring (and animation, both coming soon)
 - PC `random` and PC `auto` bank macros
-- HID `delay` primitive
-- MIDI passthrough toggle
-- PC display grouping modes (`abc3` / `abc4` / etc.)
+- HID delay (pause between keystrokes) — pending
+- PC display grouping modes (`abc3` / `abc4` / etc.) — open to adding, awaiting requirements
 
-Several of these are on the [public backlog](https://github.com/MC-Music-Workshop/midi-captain-max/issues); pages are the biggest tracked item.
+Track upcoming work on the [public roadmap](https://github.com/orgs/MC-Music-Workshop/projects/1/views/1) — pages are the biggest item on deck.
 
 ---
 
@@ -137,7 +129,7 @@ Several of these are on the [public backlog](https://github.com/MC-Music-Worksho
 
 MCM keeps the parts of OEM SuperMode that real players use — keytimes cycling, expression pedals, HID, all the MIDI types — and adds the things performers have been asking for: bidirectional state, a real editor, validated config, painless updates, and open source under the hood. The OEM still wins on a handful of advanced macros and on pages, both of which are on the roadmap.
 
-Built on Paint Audio's solid hardware. Extended by an open-source community.
+Built on Paint Audio's solid hardware. Inspired by [Helmut Keller](https://hfrk.de), whose original firmware first demonstrated bidirectional MIDI on the Captain. Extended by an open-source community.
 
 ---
 

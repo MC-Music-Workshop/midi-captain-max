@@ -16,7 +16,7 @@ Hardware Variants:
 - DUO2: 2 switches, segmented LCD (no display support), 6 NeoPixels
 - ONE1: 1 switch, segmented LCD (no display support), 3 NeoPixels
 
-Author: Max Cascone (based on work by Helmut Keller)
+Author: Max Cascone (inspired by Helmut Keller)
 Date: 2026-01-27
 """
 

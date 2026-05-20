@@ -174,7 +174,7 @@ You may use this firmware freely for personal or commercial performances. Redist
 
 ## Attribution
 
-This project builds on work by **Helmut Keller** ([hfrk.de](https://hfrk.de)), whose original firmware demonstrated bidirectional MIDI on the MIDI Captain. His code is preserved in `firmware/original_helmut/` as a reference.
+This project is inspired by **Helmut Keller** ([hfrk.de](https://hfrk.de)), whose original firmware first demonstrated bidirectional MIDI on the MIDI Captain. His code is preserved in `firmware/original_helmut/` as a reference.
 
 ## Questions, Comments, Suggestions are welcome
 

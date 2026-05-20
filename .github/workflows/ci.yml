@@ -156,6 +156,28 @@ jobs:
           echo "mpy-cross version:"
           mpy-cross --version || true
 
+      - name: CircuitPython parse check (all .py files)
+        run: |
+          # Parse every firmware/dev/*.py through CircuitPython's mpy-cross to
+          # catch syntax CPython accepts but the device rejects (e.g. adjacent
+          # f-string concatenation, which py_compile passes but CP 7.x cannot
+          # parse). Output is discarded — this is a parse-validation pass.
+          # Covers code.py and boot.py, which are shipped as .py and otherwise
+          # never see the CircuitPython parser in CI.
+          FAILED=0
+          while IFS= read -r f; do
+            if ! mpy-cross -o /tmp/_parse_check.mpy "$f" 2>&1; then
+              echo "::error file=$f::CircuitPython parse failed"
+              FAILED=$((FAILED + 1))
+            fi
+          done < <(find firmware/dev -name "*.py" -not -path "*/experiments/*")
+          rm -f /tmp/_parse_check.mpy
+          if [ "$FAILED" -gt 0 ]; then
+            echo "$FAILED file(s) failed CircuitPython parse check"
+            exit 1
+          fi
+          echo "All firmware/dev .py files parse cleanly under CircuitPython mpy-cross"
+
       - name: Compile .py to .mpy
         run: |
           cd firmware/dev

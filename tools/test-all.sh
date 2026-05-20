@@ -10,6 +10,7 @@
 #   - generate:types + git diff (catches stale generated types)
 #   - ruff (Python lint)
 #   - cargo clippy (Rust lint)
+#   - mpy-cross parse check (CircuitPython 7.x syntax validation)
 
 set -eo pipefail
 
@@ -54,6 +55,9 @@ fi
 
 step "ruff (Python lint)"
 ruff check firmware/ tests/
+
+step "mpy-cross parse check (CircuitPython 7.x)"
+./tools/check-circuitpython-parse.sh
 
 step "cargo clippy (Rust lint)"
 # Warnings-only: the codebase has 2 pre-existing clippy warnings on untouched

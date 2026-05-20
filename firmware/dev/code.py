@@ -281,10 +281,7 @@ MIDI_THRU_USB_TO_DIN = get_midi_thru_usb_to_din(config)
 MIDI_THRU_DIN_TO_USB = get_midi_thru_din_to_usb(config)
 MIDI_THRU_DIN_TO_DIN = get_midi_thru_din_to_din(config)
 MIDI_THRU_USB_TO_USB = get_midi_thru_usb_to_usb(config)
-print(
-    f"MIDI thru: USB->DIN={MIDI_THRU_USB_TO_DIN}, DIN->USB={MIDI_THRU_DIN_TO_USB}, "
-    f"DIN->DIN={MIDI_THRU_DIN_TO_DIN}, USB->USB={MIDI_THRU_USB_TO_USB}"
-)
+print(f"MIDI thru: USB->DIN={MIDI_THRU_USB_TO_DIN}, DIN->USB={MIDI_THRU_DIN_TO_USB}, DIN->DIN={MIDI_THRU_DIN_TO_DIN}, USB->USB={MIDI_THRU_USB_TO_USB}")
 
 # =============================================================================
 # Fonts

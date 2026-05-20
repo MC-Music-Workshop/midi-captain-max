@@ -49,6 +49,10 @@ These pass `py_compile` and `pytest` on desktop Python but **crash on device boo
 - "CircuitPython 7.x compatibility guard" greps for the banned constructs above.
 - "CircuitPython parse check (all .py files)" runs every `firmware/dev/*.py` through `mpy-cross` to catch anything the grep guard misses (including `code.py` and `boot.py`, which ship as `.py` and otherwise never see the CP parser in CI).
 
+**On-device recovery**: if a `SyntaxError` still ships (e.g. a user edits `code.py` directly via USB drive), `boot.py` compile-checks `code.py` and, on failure, leaves USB drive enabled and blinks **red SOS** (`... --- ...`) on NeoPixel 0 forever. Source error prints to serial. User edits the file via the mounted drive and power-cycles. This does not run if `boot.py` itself has the syntax error — that case requires a reflash.
+
+The compile-check only runs when the previous boot didn't complete (gated by a one-byte `microcontroller.nvm[0]` crash flag: `boot.py` sets it to `1` on entry, `code.py` clears it to `0` just before the main loop). Healthy boots skip the compile entirely. Any reboot path that didn't reach `code.py`'s main loop — `SyntaxError`, runtime exception during init, hardware fault — triggers diagnosis on the next boot.
+
 ### Missing `str` Methods in CP 7.x
 
 These work on desktop Python and pass all tests, but raise `AttributeError` at runtime on device:

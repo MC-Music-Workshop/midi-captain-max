@@ -493,15 +493,18 @@
     </div>
   {/if}
 
-  {#if !isKeytimesMode}
   <div class="field">
-    <label class="field-label" for={fieldId('off-mode')}>LED Off Mode:</label>
-    <select id={fieldId('off-mode')} class="select" value={button.off_mode || 'dim'} onchange={handleOffModeChange} disabled={disabled}>
+    <label class="field-label" for={fieldId('off-mode')}>
+      {isKeytimesMode ? 'LED Start Mode' : 'LED Off Mode'}:
+    </label>
+    <select id={fieldId('off-mode')} class="select" value={button.off_mode || 'dim'} onchange={handleOffModeChange} disabled={disabled}
+            title={isKeytimesMode
+              ? 'LED state at boot, before any cycle entry has rendered. After the first press, the cycle entry takes over.'
+              : 'LED state when the button is in its off/idle state.'}>
       <option value="dim">Dim</option>
       <option value="off">Off</option>
     </select>
   </div>
-  {/if}
 
   {#if isKeytimesMode && !disabled}
     <KeytimesEditor button={button} index={index} globalChannel={globalChannel} />

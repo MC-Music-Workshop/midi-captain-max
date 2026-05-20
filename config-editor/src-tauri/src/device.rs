@@ -2,7 +2,7 @@
 
 #[cfg(not(target_os = "windows"))]
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher, Event, EventKind};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Sender, Receiver};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -115,7 +115,7 @@ pub struct DetectedDevice {
 
 /// Get the volume name for a given path
 #[cfg(target_os = "windows")]
-fn get_volume_name(path: &PathBuf) -> Option<String> {
+fn get_volume_name(path: &Path) -> Option<String> {
     use std::os::windows::ffi::OsStrExt;
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
@@ -152,7 +152,7 @@ fn get_volume_name(path: &PathBuf) -> Option<String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn get_volume_name(path: &PathBuf) -> Option<String> {
+fn get_volume_name(path: &Path) -> Option<String> {
     path.file_name()?.to_str().map(|s| s.to_string())
 }
 
@@ -164,7 +164,7 @@ fn get_volume_name(path: &PathBuf) -> Option<String> {
 ///    (has a known `"device"` value: `"std10"`, `"mini6"`, `"nano4"`, `"duo2"`, or `"one1"`).
 ///    This covers user-renamed drives (e.g. renamed in Finder) where the
 ///    volume name no longer matches the default "MIDICAPTAIN".
-fn check_volume(path: &PathBuf) -> Option<DetectedDevice> {
+fn check_volume(path: &Path) -> Option<DetectedDevice> {
     let name = get_volume_name(path)?;
     let config_path = path.join("config.json");
     let has_config = config_path.exists();
@@ -174,7 +174,7 @@ fn check_volume(path: &PathBuf) -> Option<DetectedDevice> {
     if is_known_name || is_midi_captain_config(&config_path) {
         Some(DetectedDevice {
             name: name.to_string(),
-            path: path.clone(),
+            path: path.to_path_buf(),
             config_path,
             has_config,
         })

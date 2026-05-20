@@ -501,7 +501,7 @@ impl MidiCaptainConfig {
                 }
             }
             if let Some(ms) = button.flash_ms {
-                if ms < 50 || ms > 5000 {
+                if !(50..=5000).contains(&ms) {
                     errors.push(format!("Button {} flash_ms {} out of range (50-5000)", i + 1, ms));
                 }
             }

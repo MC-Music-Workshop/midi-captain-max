@@ -39,7 +39,16 @@ from adafruit_midi.note_off import NoteOff
 
 # Import core modules (testable logic)
 from core.colors import COLORS, get_color, dim_color, rgb_to_hex, get_off_color, get_off_color_for_display
-from core.config import load_config as _load_config_from_file, validate_config, get_display_config, get_button_state_config
+from core.config import (
+    load_config as _load_config_from_file,
+    validate_config,
+    get_display_config,
+    get_button_state_config,
+    get_midi_thru_usb_to_din,
+    get_midi_thru_din_to_usb,
+    get_midi_thru_din_to_din,
+    get_midi_thru_usb_to_usb,
+)
 from core.button import Switch, ButtonState
 from core.hid import dispatch_hid
 
@@ -264,6 +273,17 @@ def load_config():
 config = load_config()
 buttons = config.get("buttons", [])
 print(f"Loaded {len(buttons)} button configs")
+
+# MIDI Thru routing matrix (read once at boot).
+# Cross routes default True; USB->USB defaults False (host loopback risk).
+MIDI_THRU_USB_TO_DIN = get_midi_thru_usb_to_din(config)
+MIDI_THRU_DIN_TO_USB = get_midi_thru_din_to_usb(config)
+MIDI_THRU_DIN_TO_DIN = get_midi_thru_din_to_din(config)
+MIDI_THRU_USB_TO_USB = get_midi_thru_usb_to_usb(config)
+print(
+    f"MIDI thru: USB->DIN={MIDI_THRU_USB_TO_DIN}, DIN->USB={MIDI_THRU_DIN_TO_USB}, "
+    f"DIN->DIN={MIDI_THRU_DIN_TO_DIN}, USB->USB={MIDI_THRU_USB_TO_USB}"
+)
 
 # =============================================================================
 # Fonts
@@ -922,15 +942,21 @@ def _process_midi_msg(msg, source="USB"):
 
 
 def handle_midi():
-    """Handle incoming MIDI messages and MIDI thru."""
+    """Handle incoming MIDI messages and MIDI thru (4-route matrix)."""
     # --- USB MIDI in ---
     usb_msg = midi.receive()
     if usb_msg:
         _process_midi_msg(usb_msg, source="USB")
-        # Thru: forward USB → 5-pin
-        if midi_serial is not None:
+        # USB -> DIN (cross)
+        if MIDI_THRU_USB_TO_DIN and midi_serial is not None:
             try:
                 midi_serial.send(usb_msg)
+            except Exception:
+                pass
+        # USB -> USB (loopback to host; opt-in)
+        if MIDI_THRU_USB_TO_USB:
+            try:
+                midi.send(usb_msg)
             except Exception:
                 pass
 
@@ -939,11 +965,18 @@ def handle_midi():
         din_msg = midi_serial.receive()
         if din_msg:
             _process_midi_msg(din_msg, source="DIN")
-            # Thru: forward 5-pin → USB
-            try:
-                midi.send(din_msg)
-            except Exception:
-                pass
+            # DIN -> USB (cross)
+            if MIDI_THRU_DIN_TO_USB:
+                try:
+                    midi.send(din_msg)
+                except Exception:
+                    pass
+            # DIN -> DIN (classic MIDI THRU pass-through)
+            if MIDI_THRU_DIN_TO_DIN:
+                try:
+                    midi_serial.send(din_msg)
+                except Exception:
+                    pass
 
 
 def handle_switches():

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ask, message } from '@tauri-apps/plugin-dialog';
   import { getFirmwareVersions, installFirmware } from '$lib/api';
+  import ReflashCircuitPython from './ReflashCircuitPython.svelte';
   import type {
     DetectedDevice,
     FirmwareVersions,
@@ -52,6 +53,15 @@
     progress && progress.total > 0
       ? Math.round((progress.current / progress.total) * 100)
       : 0,
+  );
+
+  // The Rust preflight (issue #132) refuses installs on CP >= 8 with an error
+  // mentioning "CircuitPython" and pointing at the RPI-RP2 recovery path. When
+  // we see that shape, surface the reflash flow more prominently. False
+  // positives are harmless (the button is always available) — we're just
+  // drawing the eye to it when we know it's the right next step.
+  let cpVersionMismatch = $derived(
+    errorMsg.includes('CircuitPython') && errorMsg.includes('RPI-RP2'),
   );
 
   async function startInstall() {
@@ -171,6 +181,13 @@
       <strong>Error:</strong> {errorMsg}
     </div>
   {/if}
+
+  <div class="reflash-row">
+    <ReflashCircuitPython
+      highlight={cpVersionMismatch}
+      onComplete={() => refreshVersions(device)}
+    />
+  </div>
 </section>
 
 <style>
@@ -325,5 +342,13 @@
   .result ul {
     margin: 6px 0 0 0;
     padding-left: 20px;
+  }
+
+  .reflash-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
   }
 </style>

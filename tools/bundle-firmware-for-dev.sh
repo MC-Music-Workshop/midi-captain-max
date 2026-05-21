@@ -40,3 +40,8 @@ echo "Staged firmware version $VERSION at:"
 echo "  $DEST"
 echo "Contents:"
 ls -la "$DEST"
+
+# Also stage the pinned CircuitPython .uf2 used by the GUI reflash button
+# (issue #134). The fetch script is idempotent — no-op after the first run.
+echo ""
+"$REPO_ROOT/tools/fetch-cp-uf2.sh"

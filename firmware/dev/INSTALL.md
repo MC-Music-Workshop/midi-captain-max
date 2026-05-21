@@ -82,13 +82,19 @@ If your device ends up in a bad state, don't worry — it's fully recoverable:
 3. Copy the firmware files onto the drive again
 4. Safely eject the drive, then unplug and replug USB to restart
 
-If the drive doesn't appear at all, reinstall CircuitPython:
+If the drive doesn't appear at all — or if the Config Editor refused to install with a CircuitPython-version error — you need to reflash CircuitPython 7.3.1.
 
-1. **Hold Switch 1** (top-left footswitch) while plugging in USB — a drive called **RPI-RP2** will appear
-2. Download the CircuitPython 7.x `.uf2` file for your board
-3. Copy the `.uf2` file to the RPI-RP2 drive
-4. The device will reboot and appear as **CIRCUITPY**
-5. Now copy the firmware files (or run the deploy script)
+> **Why 7.3.1 specifically?** This firmware's bundled libraries are mpy format v5 and `boot.py` uses CP 7-only APIs. CP 8.0 and later silently break it. See issue #132 for details and #2 for the planned migration to CP 9/10.
+
+**Easiest: use the Config Editor's "Reflash CircuitPython 7.3.1" button** (next to "Install Firmware"). It walks you through the bootloader hold, copies the bundled `.uf2`, and waits for the device to come back to `CIRCUITPY` automatically.
+
+**Manual / terminal:**
+
+1. **Hold Switch 1** (top-left footswitch) while plugging in USB — a drive called **RPI-RP2** will appear.
+2. Grab `adafruit-circuitpython-raspberry_pi_pico-en_US-7.3.1.uf2` from the `MIDI-Captain-MAX-vX.Y.Z-complete.zip` release asset (or run `./tools/fetch-cp-uf2.sh` from a repo checkout to download + checksum-verify it).
+3. Copy the `.uf2` file onto the **RPI-RP2** drive.
+4. The device will reboot on its own and appear as **CIRCUITPY**.
+5. Now copy the firmware files (or run the deploy script).
 
 ---
 

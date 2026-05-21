@@ -55,7 +55,7 @@ pub fn parse_midi_captain_config(config_path: &std::path::Path) -> Option<String
 }
 
 /// Get the volumes directory for the current platform
-fn get_volumes_path() -> PathBuf {
+pub(crate) fn get_volumes_path() -> PathBuf {
     #[cfg(target_os = "macos")]
     {
         PathBuf::from("/Volumes")
@@ -115,7 +115,7 @@ pub struct DetectedDevice {
 
 /// Get the volume name for a given path
 #[cfg(target_os = "windows")]
-fn get_volume_name(path: &Path) -> Option<String> {
+pub(crate) fn get_volume_name(path: &Path) -> Option<String> {
     use std::os::windows::ffi::OsStrExt;
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
@@ -152,7 +152,7 @@ fn get_volume_name(path: &Path) -> Option<String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn get_volume_name(path: &Path) -> Option<String> {
+pub(crate) fn get_volume_name(path: &Path) -> Option<String> {
     path.file_name()?.to_str().map(|s| s.to_string())
 }
 

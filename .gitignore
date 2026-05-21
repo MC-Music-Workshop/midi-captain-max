@@ -33,3 +33,7 @@ emulator/*.img
 # Bundled firmware for Config Editor — populated by CI or tools/bundle-firmware-for-dev.sh
 config-editor/src-tauri/resources/firmware/*
 !config-editor/src-tauri/resources/firmware/README.md
+
+# Bundled CircuitPython .uf2 for the GUI reflash button (issue #134) — populated
+# by tools/fetch-cp-uf2.sh (called from bundle-firmware-for-dev.sh + CI).
+config-editor/src-tauri/resources/circuitpython/*.uf2

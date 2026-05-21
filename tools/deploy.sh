@@ -216,8 +216,9 @@ echo -e "${GREEN}✓ Device found at $MOUNT_POINT${NC}"
 # CP >= 8 produces a silent brick. Long-term CP 9/10 migration: issue #2.
 MAX_SUPPORTED_CP_MAJOR=7
 if [ -f "$MOUNT_POINT/boot_out.txt" ]; then
-    # `head -n 5` because boot_out.txt sometimes leads with reload notices
-    # before the CircuitPython banner line; we only need to find the first match.
+    # boot_out.txt sometimes leads with reload notices before the CircuitPython
+    # banner line, so scan all lines and take the first matching one. `-m1` stops
+    # at the first hit. `|| true` keeps `set -e` happy on no-match.
     CP_VERSION_LINE=$(grep -m1 'Adafruit CircuitPython' "$MOUNT_POINT/boot_out.txt" 2>/dev/null || true)
     if [ -n "$CP_VERSION_LINE" ]; then
         # Extract a clean X.Y.Z; ignore pre-release suffixes like -alpha.1 / .dev0.

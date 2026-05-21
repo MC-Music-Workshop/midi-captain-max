@@ -28,6 +28,26 @@ pub enum ButtonMode {
     Momentary,
     Flash,
     Select,
+    /// Multi-state cycle with short/long press timing (#48). Carries its message data
+    /// inside short[]/long[] KeytimesEntry arrays rather than at the button level.
+    Keytimes,
+}
+
+/// Color for a keytimes-mode cycle entry. Includes "off" explicitly (LED dark)
+/// in addition to the standard ButtonColor palette.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum CycleEntryColor {
+    Red,
+    Green,
+    Blue,
+    Yellow,
+    Cyan,
+    Magenta,
+    Orange,
+    Purple,
+    White,
+    Off,
 }
 
 /// Behavior when re-pressing the already-active member of a select group.
@@ -82,6 +102,68 @@ pub enum HidModifier {
     Alt,
     Option,
     Windows,
+}
+
+/// One MIDI/HID message fired from a keytimes-mode cycle entry's down or up slot.
+/// Discriminated by the `type` field (serde tagged union).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum KeytimesMessage {
+    Cc {
+        cc: u8,
+        value: u8,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        channel: Option<u8>,
+    },
+    Note {
+        note: u8,
+        velocity: u8,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        channel: Option<u8>,
+    },
+    Pc {
+        program: u8,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        channel: Option<u8>,
+    },
+    PcInc {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        step: Option<u8>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        channel: Option<u8>,
+    },
+    PcDec {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        step: Option<u8>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        channel: Option<u8>,
+    },
+    Hid {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        action: Option<HidAction>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        key: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        modifier: Option<HidModifier>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        delay_ms: Option<u16>,
+    },
+}
+
+/// One entry in a keytimes-mode cycle (short or long). Optional down/up message
+/// arrays plus color/dim/label per entry.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct KeytimesEntry {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub down: Option<Vec<KeytimesMessage>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub up: Option<Vec<KeytimesMessage>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<CycleEntryColor>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dim: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 /// Per-state overrides for keytimes cycling
@@ -173,6 +255,13 @@ pub struct ButtonConfig {
     pub hid_modifier: Option<HidModifier>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hid_delay_ms: Option<u16>,
+    // Keytimes-mode fields (#48) — only meaningful when mode == "keytimes"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub short: Option<Vec<KeytimesEntry>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub long: Option<Vec<KeytimesEntry>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub long_press_threshold_ms: Option<u16>,
 }
 
 fn is_default_off_mode(mode: &OffMode) -> bool {
@@ -346,6 +435,10 @@ pub struct MidiCaptainConfig {
     pub expression: Option<ExpressionPedals>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display: Option<DisplayConfig>,
+    /// Global default long-press threshold in milliseconds for keytimes-mode buttons (#48).
+    /// Per-button overrides allowed via ButtonConfig.long_press_threshold_ms.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub long_press_threshold_ms: Option<u16>,
 }
 
 impl MidiCaptainConfig {
@@ -357,6 +450,13 @@ impl MidiCaptainConfig {
         if let Some(ch) = self.global_channel {
             if ch > 15 {
                 errors.push(format!("Global channel value {} is invalid (must be 1-16, stored as 0-15)", ch + 1));
+            }
+        }
+
+        // Validate global long-press threshold (50-5000ms per schema)
+        if let Some(ms) = self.long_press_threshold_ms {
+            if !(50..=5000).contains(&ms) {
+                errors.push(format!("Global long_press_threshold_ms {} out of range (50-5000)", ms));
             }
         }
 
@@ -408,8 +508,24 @@ impl MidiCaptainConfig {
                 }
             }
             if let Some(ms) = button.flash_ms {
-                if ms < 50 || ms > 5000 {
+                if !(50..=5000).contains(&ms) {
                     errors.push(format!("Button {} flash_ms {} out of range (50-5000)", i + 1, ms));
+                }
+            }
+            if let Some(ms) = button.long_press_threshold_ms {
+                if !(50..=5000).contains(&ms) {
+                    errors.push(format!("Button {} long_press_threshold_ms {} out of range (50-5000)", i + 1, ms));
+                }
+            }
+            // mode='keytimes' carries its cycle data in short[]/long[]; the legacy
+            // keytimes/states fields are meaningless there and forbidden by the editor.
+            // Other modes still accept them with a runtime deprecation warning from the firmware.
+            if button.mode == ButtonMode::Keytimes {
+                if button.keytimes.is_some() {
+                    errors.push(format!("Button {} 'keytimes' field is not allowed on mode='keytimes' (use short[]/long[])", i + 1));
+                }
+                if button.states.is_some() {
+                    errors.push(format!("Button {} 'states' field is not allowed on mode='keytimes' (use short[]/long[])", i + 1));
                 }
             }
         }
@@ -895,6 +1011,100 @@ mod tests {
                 );
             }
         }
+    }
+
+    // --- Validation tests for keytimes-mode and long_press_threshold_ms (#48 review fixes) ---
+
+    fn _std10_minimal() -> MidiCaptainConfig {
+        let mut buttons = Vec::new();
+        for i in 0..10 {
+            buttons.push(ButtonConfig {
+                label: format!("B{}", i + 1),
+                color: ButtonColor::Red,
+                message_type: MessageType::Cc,
+                mode: ButtonMode::Toggle,
+                off_mode: OffMode::Dim,
+                channel: None, cc: Some(20 + i as u8), cc_on: None, cc_off: None,
+                note: None, velocity_on: None, velocity_off: None,
+                program: None, pc_step: None, flash_ms: None,
+                select_group: None, select_repress: None,
+                keytimes: None, states: None,
+                hid_action: None, hid_key: None, hid_modifier: None, hid_delay_ms: None,
+                short: None, long: None, long_press_threshold_ms: None,
+            });
+        }
+        MidiCaptainConfig {
+            device: DeviceType::Std10, global_channel: None, usb_drive_name: None,
+            dev_mode: None, midi_thru_usb_to_din: None, midi_thru_din_to_usb: None,
+            midi_thru_din_to_din: None, midi_thru_usb_to_usb: None,
+            buttons, encoder: None, expression: None, display: None,
+            long_press_threshold_ms: None,
+        }
+    }
+
+    #[test]
+    fn test_validate_global_long_press_threshold_ms_in_range() {
+        let mut cfg = _std10_minimal();
+        cfg.long_press_threshold_ms = Some(500);
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_global_long_press_threshold_ms_below_range() {
+        let mut cfg = _std10_minimal();
+        cfg.long_press_threshold_ms = Some(49);
+        let err = cfg.validate().unwrap_err();
+        assert!(err.iter().any(|e| e.contains("Global long_press_threshold_ms 49")));
+    }
+
+    #[test]
+    fn test_validate_global_long_press_threshold_ms_above_range() {
+        let mut cfg = _std10_minimal();
+        cfg.long_press_threshold_ms = Some(5001);
+        let err = cfg.validate().unwrap_err();
+        assert!(err.iter().any(|e| e.contains("Global long_press_threshold_ms 5001")));
+    }
+
+    #[test]
+    fn test_validate_per_button_long_press_threshold_ms_out_of_range() {
+        let mut cfg = _std10_minimal();
+        cfg.buttons[0].long_press_threshold_ms = Some(10);
+        let err = cfg.validate().unwrap_err();
+        assert!(err.iter().any(|e| e.contains("Button 1 long_press_threshold_ms 10")));
+    }
+
+    #[test]
+    fn test_validate_per_button_long_press_threshold_ms_in_range() {
+        let mut cfg = _std10_minimal();
+        cfg.buttons[0].long_press_threshold_ms = Some(750);
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_keytimes_field_rejected_on_keytimes_mode() {
+        let mut cfg = _std10_minimal();
+        cfg.buttons[0].mode = ButtonMode::Keytimes;
+        cfg.buttons[0].keytimes = Some(3);
+        let err = cfg.validate().unwrap_err();
+        assert!(err.iter().any(|e| e.contains("Button 1 'keytimes' field is not allowed on mode='keytimes'")));
+    }
+
+    #[test]
+    fn test_validate_states_field_rejected_on_keytimes_mode() {
+        let mut cfg = _std10_minimal();
+        cfg.buttons[0].mode = ButtonMode::Keytimes;
+        cfg.buttons[0].states = Some(Vec::new());
+        let err = cfg.validate().unwrap_err();
+        assert!(err.iter().any(|e| e.contains("Button 1 'states' field is not allowed on mode='keytimes'")));
+    }
+
+    #[test]
+    fn test_validate_keytimes_field_allowed_on_toggle_mode() {
+        // Legacy field still accepted on non-keytimes modes (firmware emits deprecation warning).
+        let mut cfg = _std10_minimal();
+        cfg.buttons[0].mode = ButtonMode::Toggle;
+        cfg.buttons[0].keytimes = Some(3);
+        assert!(cfg.validate().is_ok());
     }
 
     #[test]

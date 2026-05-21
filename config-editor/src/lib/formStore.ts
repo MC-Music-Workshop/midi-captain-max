@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import type { MidiCaptainConfig, ButtonConfig, EncoderConfig, DeviceType } from './types';
+import type { MidiCaptainConfig, ButtonConfig, EncoderConfig, DeviceType, KeytimesEntry, KeytimesMessage, MessageType } from './types';
 import { validateConfig } from './validation';
 
 interface FormState {
@@ -59,12 +59,43 @@ export const selectGroupNames = derived(formState, $state => {
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Ephemeral UI-only ids attached to KeytimesEntry/KeytimesMessage objects so
+// Svelte {#each} blocks can key by stable identity across structuredClone edits.
+// Stripped from any config written to disk (see normalizeConfig).
+let _uiIdCounter = 0;
+function _nextUiId(): number {
+  return ++_uiIdCounter;
+}
+
+// Walk a config and assign `__uiId` to any keytimes entry/message that lacks one.
+// Mutates in place; safe to call on a freshly structuredCloned config.
+function _attachUiIds(cfg: MidiCaptainConfig): void {
+  for (const btn of cfg.buttons) {
+    for (const cycle of ['short', 'long'] as const) {
+      const entries = (btn as unknown as Record<string, unknown>)[cycle];
+      if (!Array.isArray(entries)) continue;
+      for (const entry of entries as Array<Record<string, unknown>>) {
+        if (typeof entry.__uiId !== 'number') entry.__uiId = _nextUiId();
+        for (const slot of ['down', 'up'] as const) {
+          const messages = entry[slot];
+          if (!Array.isArray(messages)) continue;
+          for (const msg of messages as Array<Record<string, unknown>>) {
+            if (typeof msg.__uiId !== 'number') msg.__uiId = _nextUiId();
+          }
+        }
+      }
+    }
+  }
+}
+
 export function loadConfig(newConfig: MidiCaptainConfig) {
   // Ensure display always exists so DisplaySection can traverse into it
   const config = { ...newConfig, display: newConfig.display ?? {} };
+  const cloned = structuredClone(config);
+  _attachUiIds(cloned);
   formState.update(_state => ({
-    config: structuredClone(config),
-    history: [structuredClone(config)],
+    config: cloned,
+    history: [structuredClone(cloned)],
     historyIndex: 0,
     validationErrors: new Map(),
     isDirty: false,
@@ -201,6 +232,116 @@ export function updateField(path: string, value: any) {
   debounceTimer = setTimeout(() => {
     formState.update(state => pushHistory(state));
   }, DEBOUNCE_MS);
+}
+
+// --- Keytimes-mode helpers (mode: "keytimes" cycle/message mutations) ---
+//
+// These wrap formState updates that change the *structure* of a keytimes-mode
+// button (adding/removing entries or messages). For leaf-value edits (color,
+// dim, label, individual message fields), use updateField() with a dotted path.
+
+function _defaultMessage(type: MessageType): KeytimesMessage {
+  switch (type) {
+    case 'cc':     return { type: 'cc', cc: 20, value: 127 };
+    case 'note':   return { type: 'note', note: 60, velocity: 127 };
+    case 'pc':     return { type: 'pc', program: 0 };
+    case 'pc_inc': return { type: 'pc_inc', step: 1 };
+    case 'pc_dec': return { type: 'pc_dec', step: 1 };
+    case 'hid':    return { type: 'hid', action: 'send' };
+  }
+}
+
+function _updateButton(buttonIndex: number, mutate: (btn: ButtonConfig) => void) {
+  formState.update(state => {
+    const newConfig = structuredClone(state.config);
+    const btn = newConfig.buttons[buttonIndex];
+    if (!btn) return state;
+    mutate(btn);
+    return { ...state, config: newConfig, isDirty: true };
+  });
+  validate();
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => formState.update(state => pushHistory(state)), DEBOUNCE_MS);
+}
+
+export function addKeytimesEntry(buttonIndex: number, cycle: 'short' | 'long') {
+  _updateButton(buttonIndex, btn => {
+    const arr = (btn[cycle] ?? []) as KeytimesEntry[];
+    arr.push({ __uiId: _nextUiId() } as KeytimesEntry);
+    btn[cycle] = arr;
+  });
+}
+
+export function removeKeytimesEntry(buttonIndex: number, cycle: 'short' | 'long', entryIndex: number) {
+  _updateButton(buttonIndex, btn => {
+    const arr = btn[cycle];
+    if (!Array.isArray(arr)) return;
+    arr.splice(entryIndex, 1);
+    if (arr.length === 0) {
+      delete btn[cycle];
+    } else {
+      btn[cycle] = arr;
+    }
+  });
+}
+
+export function addKeytimesMessage(
+  buttonIndex: number,
+  cycle: 'short' | 'long',
+  entryIndex: number,
+  slot: 'down' | 'up',
+  msgType: MessageType = 'cc',
+) {
+  _updateButton(buttonIndex, btn => {
+    const arr = btn[cycle];
+    if (!Array.isArray(arr) || !arr[entryIndex]) return;
+    const entry = arr[entryIndex] as KeytimesEntry;
+    const messages = (entry[slot] ?? []) as KeytimesMessage[];
+    messages.push({ ..._defaultMessage(msgType), __uiId: _nextUiId() } as KeytimesMessage);
+    entry[slot] = messages;
+  });
+}
+
+export function removeKeytimesMessage(
+  buttonIndex: number,
+  cycle: 'short' | 'long',
+  entryIndex: number,
+  slot: 'down' | 'up',
+  msgIndex: number,
+) {
+  _updateButton(buttonIndex, btn => {
+    const arr = btn[cycle];
+    if (!Array.isArray(arr) || !arr[entryIndex]) return;
+    const entry = arr[entryIndex] as KeytimesEntry;
+    const messages = entry[slot];
+    if (!Array.isArray(messages)) return;
+    messages.splice(msgIndex, 1);
+    if (messages.length === 0) {
+      delete entry[slot];
+    } else {
+      entry[slot] = messages;
+    }
+  });
+}
+
+export function setKeytimesMessageType(
+  buttonIndex: number,
+  cycle: 'short' | 'long',
+  entryIndex: number,
+  slot: 'down' | 'up',
+  msgIndex: number,
+  newType: MessageType,
+) {
+  // Replace the whole message with a default of the new type, since type-specific
+  // fields don't overlap across types (cc/value vs note/velocity vs program vs step vs key).
+  _updateButton(buttonIndex, btn => {
+    const arr = btn[cycle];
+    if (!Array.isArray(arr) || !arr[entryIndex]) return;
+    const entry = arr[entryIndex] as KeytimesEntry;
+    const messages = entry[slot];
+    if (!Array.isArray(messages) || !messages[msgIndex]) return;
+    messages[msgIndex] = _defaultMessage(newType);
+  });
 }
 
 export function syncButtonStates(buttonIndex: number, keytimes: number) {
@@ -366,10 +507,29 @@ export function setDevice(deviceType: DeviceType) {
 // Prevents stale cc/note/program/etc. from accumulating in the saved JSON when
 // the user switches a button's type.
 function normalizeButton(btn: ButtonConfig): ButtonConfig {
-  const type = btn.type ?? 'cc';
+  // mode: "keytimes" carries its message data inside short[]/long[] entries,
+  // not at the top of the button. Strip all legacy per-type fields here so
+  // serialized JSON stays clean if the user toggled the button through other
+  // modes before settling on keytimes.
+  if (btn.mode === 'keytimes') {
+    const { cc, cc_on, cc_off, note, velocity_on, velocity_off, program, pc_step, flash_ms,
+            hid_action, hid_key, hid_modifier, hid_delay_ms,
+            select_group, select_repress, keytimes, states, type, ...common } = btn;
+    return {
+      ...common,
+      ...(btn.short !== undefined && { short: btn.short }),
+      ...(btn.long !== undefined && { long: btn.long }),
+      ...(btn.long_press_threshold_ms !== undefined && { long_press_threshold_ms: btn.long_press_threshold_ms }),
+    };
+  }
+
+  // Non-keytimes modes: keytimes/states are deprecated but still functional in v2.0.
+  // Strip the new-mode-only fields (short/long/long_press_threshold_ms) if they leaked in.
+  const { short: _short, long: _long, long_press_threshold_ms: _lpt, ...btnWithoutKeytimesFields } = btn;
+  const type = btnWithoutKeytimesFields.type ?? 'cc';
   const { cc, cc_on, cc_off, note, velocity_on, velocity_off, program, pc_step, flash_ms,
           hid_action, hid_key, hid_modifier, hid_delay_ms,
-          select_group, select_repress, ...common } = btn;
+          select_group, select_repress, ...common } = btnWithoutKeytimesFields;
 
   // Select mode (radio-group) is valid only on PC and CC. select_group/select_repress
   // are stripped on serialize when mode != 'select' so the JSON stays clean even if
@@ -427,12 +587,28 @@ function normalizeButton(btn: ButtonConfig): ButtonConfig {
   }
 }
 
+// Recursively strip ephemeral `__uiId` markers from a deep-cloned config so they
+// never reach the on-disk JSON. Operates on the input in place.
+function _stripUiIds(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const v of value) _stripUiIds(v);
+  } else if (value && typeof value === 'object') {
+    delete (value as Record<string, unknown>).__uiId;
+    for (const v of Object.values(value)) _stripUiIds(v);
+  }
+}
+
 export function normalizeConfig(cfg: MidiCaptainConfig): MidiCaptainConfig {
-  const normalized: MidiCaptainConfig = { ...cfg, buttons: cfg.buttons.map(normalizeButton) };
+  // Deep clone so the ephemeral `__uiId` strip below (and any other mutations)
+  // don't reach back into the live store.
+  const cloned = structuredClone(cfg);
+  const normalized: MidiCaptainConfig = { ...cloned, buttons: cloned.buttons.map(normalizeButton) };
   // Strip display if no fields were set (avoids writing `"display": {}` for untouched configs)
   if (normalized.display && Object.values(normalized.display).every(v => v === undefined)) {
     delete normalized.display;
   }
+  // Drop UI-only stable-key markers attached to keytimes entries/messages.
+  _stripUiIds(normalized);
   return normalized;
 }
 

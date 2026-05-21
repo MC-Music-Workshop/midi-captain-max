@@ -15,6 +15,7 @@ Momentary and toggle modes are currently supported. Many more features are comin
 - **Dev Mode** - Quickly test config changes without remounting the device
 - **Custom Drive Names** - Useful when managing multiple Captains
 - **HID Messages** - send keyboard and mouse messages in addition to MIDI
+- **Short / Long Press (Keytimes mode)** — Each button can fire different messages on short tap vs long hold, with independent multi-state cycles per timing class. See [`firmware/dev/config-example-keytimes-mode.json`](firmware/dev/config-example-keytimes-mode.json) for examples and [`docs/plans/2026-05-13-issue-48-press-timings.md`](docs/plans/2026-05-13-issue-48-press-timings.md) for the full design.
 - **Signed Installation Packages** — Install without security warnings or manual overrides (macOS and Linux)
 - **Stage-ready** — No unexpected resets, no crashes, no surprises
 

@@ -17,6 +17,46 @@ export type HidAction = "send" | "press" | "release" | "delay";
  * Modifier key held during the HID action. 'option' is macOS Alt; 'windows' is the Windows/Meta key.
  */
 export type HidModifier = "ctrl" | "shift" | "alt" | "option" | "windows";
+/**
+ * One MIDI/HID message fired from a keytimes-mode cycle entry's down or up slot. Discriminated by 'type'.
+ */
+export type KeytimesMessage =
+  | {
+      type: "cc";
+      cc: MidiByte;
+      value: MidiByte;
+      channel?: MidiChannel;
+    }
+  | {
+      type: "note";
+      note: MidiByte;
+      velocity: MidiByte;
+      channel?: MidiChannel;
+    }
+  | {
+      type: "pc";
+      program: MidiByte;
+      channel?: MidiChannel;
+    }
+  | {
+      type: "pc_inc" | "pc_dec";
+      step?: number;
+      channel?: MidiChannel;
+    }
+  | {
+      type: "hid";
+      action?: HidAction;
+      /**
+       * HID key name (see hid_key field on ButtonConfig for valid values).
+       */
+      key?: string;
+      modifier?: HidModifier;
+      delay_ms?: number;
+    };
+/**
+ * MIDI channel. Stored as 0-15, displayed as 1-16 in UI.
+ */
+export type MidiChannel = number;
 
 /**
  * Configuration for Paint Audio MIDI Captain MAX custom firmware. This schema is the single source of truth for the config format — TypeScript types are generated from it, Rust structs are validated against it, and Python firmware uses it as reference. Note: the title field drives the generated TypeScript interface name, so keep it short and stable.
@@ -45,6 +85,10 @@ export interface MIDICaptainConfig {
   encoder?: EncoderConfig;
   expression?: ExpressionPedals;
   display?: DisplayConfig;
+  /**
+   * Global default long-press threshold in milliseconds for keytimes-mode buttons. Per-button overrides allowed via the button's long_press_threshold_ms field.
+   */
+  long_press_threshold_ms?: number;
   /**
    * MIDI Thru: forward messages received on USB MIDI to the 5-pin DIN output (cross-thru). Default true.
    */
@@ -78,7 +122,7 @@ export interface ButtonConfig {
   /**
    * Button behavior. 'toggle' = latching LED on/off, 'momentary' = LED on while held, 'flash' = brief LED flash on press (PC types only, default for PC types), 'select' = radio-group exclusivity (PC and CC only, requires select_group). Default for CC/Note/HID: 'toggle'.
    */
-  mode?: "toggle" | "momentary" | "flash" | "select";
+  mode?: "toggle" | "momentary" | "flash" | "select" | "keytimes";
   /**
    * Radio-group identifier. Required when mode='select'. Pressing a select-mode button activates it and deactivates all sibling buttons sharing the same select_group. PC and CC types only.
    */
@@ -132,13 +176,25 @@ export interface ButtonConfig {
    */
   flash_ms?: number;
   /**
-   * Number of states to cycle through on press. 1 = no cycling.
+   * DEPRECATED on toggle/momentary/flash/select modes (firmware accepts with a deprecation warning at boot; will be removed in v3.0). Forbidden on mode='keytimes' — use short[]/long[] arrays instead.
    */
   keytimes?: number;
   /**
-   * Per-state overrides. Array length should match keytimes value.
+   * DEPRECATED on toggle/momentary/flash/select modes (firmware accepts with a deprecation warning at boot; will be removed in v3.0). Forbidden on mode='keytimes' — use short[]/long[] arrays instead.
    */
   states?: StateOverride[];
+  /**
+   * Short-press cycle entries. Only valid when mode='keytimes'. Each entry can fire messages on down (short_down event), up (short_up event), and carries optional color/dim/label.
+   */
+  short?: KeytimesEntry[];
+  /**
+   * Long-press cycle entries. Only valid when mode='keytimes'. Independent counter from short. Each entry can fire messages on down (long_down event, when threshold reached) and up (long_up event, on release after threshold).
+   */
+  long?: KeytimesEntry[];
+  /**
+   * Per-button long-press threshold override in milliseconds. Only meaningful when mode='keytimes'. Falls back to top-level long_press_threshold_ms (default 500).
+   */
+  long_press_threshold_ms?: number;
   /**
    * 'send' = press+release, 'press' = hold key, 'release' = release key(s), 'delay' = pause execution.
    */
@@ -179,6 +235,31 @@ export interface StateOverride {
   hid_delay_ms?: number;
 }
 /**
+ * One entry in a keytimes-mode cycle (short or long). Optional down/up message arrays plus color/dim/label per entry.
+ */
+export interface KeytimesEntry {
+  /**
+   * Messages fired when this entry's down event triggers (short_down for short cycle, long_down for long cycle). Strict array; single-element today, multi-element supported when #47 lands.
+   */
+  down?: KeytimesMessage[];
+  /**
+   * Messages fired when this entry's up event triggers (short_up for short cycle, long_up for long cycle). Strict array; see down.
+   */
+  up?: KeytimesMessage[];
+  /**
+   * Color for this entry. Missing ('(inherit)' in the editor) means no override — the LED falls back to the button-level 'color' field for this entry. 'off' explicitly forces LED dark (kill-switch when on short layer).
+   */
+  color?: "red" | "green" | "blue" | "yellow" | "cyan" | "magenta" | "orange" | "purple" | "white" | "off";
+  /**
+   * When true, the resolved color is rendered at reduced brightness (15% of full via dim_color()).
+   */
+  dim?: boolean;
+  /**
+   * Optional display label override for this cycle position. Missing or empty inherits the button-level label.
+   */
+  label?: string;
+}
+/**
  * Rotary encoder configuration. Only supported on STD10.
  */
 export interface EncoderConfig {
@@ -211,7 +292,7 @@ export interface EncoderConfig {
    */
   steps?: number | null;
   /**
-   * Per-encoder MIDI channel override. Inherits global_channel if omitted.
+   * MIDI channel. Stored as 0-15, displayed as 1-16 in UI.
    */
   channel?: number;
   push?: EncoderPush;
@@ -235,9 +316,9 @@ export interface EncoderPush {
   /**
    * Button behavior. Default: 'momentary'.
    */
-  mode?: "toggle" | "momentary" | "flash" | "select";
+  mode?: "toggle" | "momentary" | "flash" | "select" | "keytimes";
   /**
-   * Per-push MIDI channel override. Inherits encoder channel or global_channel if omitted.
+   * MIDI channel. Stored as 0-15, displayed as 1-16 in UI.
    */
   channel?: number;
   /**
@@ -286,7 +367,7 @@ export interface ExpressionConfig {
    */
   threshold?: number;
   /**
-   * Per-pedal MIDI channel override. Inherits global_channel if omitted.
+   * MIDI channel. Stored as 0-15, displayed as 1-16 in UI.
    */
   channel?: number;
 }

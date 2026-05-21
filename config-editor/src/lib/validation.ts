@@ -218,6 +218,84 @@ export function validateConfig(config: MidiCaptainConfig): ValidationResult {
       errors.set(`buttons[${idx}].states`, 'states requires keytimes > 1');
     }
 
+    // mode: "keytimes" validation (#48): short/long entries + per-button threshold.
+    // short[]/long[] are only allowed when mode === 'keytimes'.
+    if (btn.mode !== 'keytimes' && (btn.short || btn.long)) {
+      errors.set(`buttons[${idx}].mode`, `short/long are only valid when mode is "keytimes"`);
+    }
+    // Legacy keytimes/states are forbidden on the new mode='keytimes' (use short[]/long[] instead).
+    if (btn.mode === 'keytimes') {
+      if (btn.keytimes !== undefined) {
+        errors.set(`buttons[${idx}].keytimes`, `'keytimes' is not allowed on mode="keytimes" (use short[]/long[])`);
+      }
+      if (btn.states !== undefined) {
+        errors.set(`buttons[${idx}].states`, `'states' is not allowed on mode="keytimes" (use short[]/long[])`);
+      }
+    }
+    if (btn.mode === 'keytimes' && btn.long_press_threshold_ms !== undefined) {
+      const t = btn.long_press_threshold_ms;
+      if (!Number.isInteger(t) || t < 50 || t > 5000) {
+        errors.set(`buttons[${idx}].long_press_threshold_ms`, 'Threshold must be between 50 and 5000 ms');
+      }
+    }
+    if (btn.mode === 'keytimes') {
+      // Validate Message objects nested inside short[i].down[j] / up[j] and same for long.
+      for (const cycle of ['short', 'long'] as const) {
+        const entries = btn[cycle];
+        if (!entries) continue;
+        entries.forEach((entry, ei) => {
+          for (const slot of ['down', 'up'] as const) {
+            const messages = entry[slot];
+            if (!messages) continue;
+            messages.forEach((msg, mi) => {
+              const mp = `buttons[${idx}].${cycle}[${ei}].${slot}[${mi}]`;
+              switch (msg.type) {
+                case 'cc': {
+                  const e = validators.cc(msg.cc);
+                  if (e) errors.set(`${mp}.cc`, e);
+                  const v = validators.withinRange(msg.value, 0, 127);
+                  if (v) errors.set(`${mp}.value`, v);
+                  break;
+                }
+                case 'note': {
+                  const e = validators.note(msg.note);
+                  if (e) errors.set(`${mp}.note`, e);
+                  const v = validators.velocity(msg.velocity);
+                  if (v) errors.set(`${mp}.velocity`, v);
+                  break;
+                }
+                case 'pc': {
+                  const e = validators.program(msg.program);
+                  if (e) errors.set(`${mp}.program`, e);
+                  break;
+                }
+                case 'pc_inc':
+                case 'pc_dec': {
+                  if (msg.step !== undefined) {
+                    const e = validators.pcStep(msg.step);
+                    if (e) errors.set(`${mp}.step`, e);
+                  }
+                  break;
+                }
+                case 'hid': {
+                  if (msg.delay_ms !== undefined) {
+                    if (!Number.isInteger(msg.delay_ms) || msg.delay_ms < 1 || msg.delay_ms > 5000) {
+                      errors.set(`${mp}.delay_ms`, 'Delay must be between 1 and 5000 ms');
+                    }
+                  }
+                  break;
+                }
+              }
+              if (msg.type !== 'hid' && (msg as { channel?: number }).channel !== undefined) {
+                const cherr = validators.channel((msg as { channel?: number }).channel!);
+                if (cherr) errors.set(`${mp}.channel`, cherr);
+              }
+            });
+          }
+        });
+      }
+    }
+
     if (btn.keytimes !== undefined) {
       const ktError = validators.keytimes(btn.keytimes);
       if (ktError) errors.set(`buttons[${idx}].keytimes`, ktError);

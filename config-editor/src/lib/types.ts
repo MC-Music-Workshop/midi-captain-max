@@ -18,12 +18,21 @@ export type {
   DisplayConfig,
 } from './types.generated';
 
+// Keytimes entries/messages carry an optional ephemeral `__uiId` (UI-only, not persisted)
+// so {#each} blocks key by stable identity across structuredClone-on-edit. Stripped by
+// normalizeConfig before write — never reaches disk.
+export type KeytimesEntry = import('./types.generated').KeytimesEntry & { __uiId?: number };
+export type KeytimesMessage = import('./types.generated').KeytimesMessage & { __uiId?: number };
+
 // Derived from generated types — no manual sync needed
 export type ButtonMode = NonNullable<ButtonConfig['mode']>;
 export type OffMode = NonNullable<ButtonConfig['off_mode']>;
 export type MessageType = NonNullable<ButtonConfig['type']>;
 export type Polarity = NonNullable<ExpressionConfig['polarity']>;
 export type DeviceType = NonNullable<MIDICaptainConfig['device']>;
+
+// CycleEntryColor includes "off" in addition to the named palette colors. Used by KeytimesEntry.color.
+export type CycleEntryColor = NonNullable<import('./types.generated').KeytimesEntry['color']>;
 
 // Human-readable labels for every message type.
 // `satisfies` ensures this map stays in sync with the MessageType union —
@@ -37,6 +46,16 @@ export const MESSAGE_TYPE_LABELS = {
   pc_dec: 'PC-',
   hid:    'HID',
 } as const satisfies Record<MessageType, string>;
+
+// Same pattern for button modes — fails to compile if a new mode is added to the schema
+// without updating this map.
+export const BUTTON_MODE_LABELS = {
+  toggle:    'Toggle',
+  momentary: 'Momentary',
+  flash:     'Flash',
+  select:    'Select',
+  keytimes:  'Keytimes (short/long)',
+} as const satisfies Record<ButtonMode, string>;
 
 export interface DetectedDevice {
   name: string;

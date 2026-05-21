@@ -69,14 +69,11 @@
     {
       "label": "Cycle",
       "color": "yellow",
-      "type": "hid",
-      "hid_action": "send",
-      "hid_key": "F1",
-      "keytimes": 3,
-      "states": [
-        { "hid_key": "F1", "color": "yellow" },
-        { "hid_key": "F2", "color": "cyan" },
-        { "hid_key": "F3", "color": "green" }
+      "mode": "keytimes",
+      "short": [
+        {"down": [{"type": "hid", "action": "send", "key": "F1"}], "color": "yellow"},
+        {"down": [{"type": "hid", "action": "send", "key": "F2"}], "color": "cyan"},
+        {"down": [{"type": "hid", "action": "send", "key": "F3"}], "color": "green"}
       ]
     }
   ]

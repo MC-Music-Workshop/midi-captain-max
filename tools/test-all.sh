@@ -40,6 +40,13 @@ step "cargo test (Rust)"
 (cd config-editor/src-tauri && cargo test)
 
 step "svelte-check (TypeScript)"
+# Self-heal: fresh worktrees / clones won't have config-editor/node_modules,
+# so `npm run check` would die with `svelte-kit: command not found`. Install
+# on demand the first time the suite runs in a new tree.
+if [ ! -x config-editor/node_modules/.bin/svelte-kit ]; then
+  echo "config-editor/node_modules missing — installing deps..."
+  (cd config-editor && npm install --no-audit --no-fund)
+fi
 (cd config-editor && npm run check)
 
 step "generate:types (schema → TS)"

@@ -152,3 +152,212 @@ class ButtonState:
         """Reset keytime cycle back to position 1."""
         self.current_keytime = 1
         self._state = False
+
+
+class PressTracker:
+    """Classifies button press events into short/long timing slots.
+
+    Consumes (pressed, now) on every poll and returns a list of timing events
+    that fired during the transition. Designed to compose with Switch — the
+    caller passes Switch.pressed and time.monotonic() each loop.
+
+    Threshold defines the boundary between short and long presses. A release
+    before threshold emits short_up; a release after emits long_up. The
+    short_down event fires immediately on every physical press; long_down
+    fires once when the threshold is reached while still held.
+
+    Used only by buttons in mode: "keytimes" (see #48 / docs/plans/2026-05-13-...).
+    """
+
+    def __init__(self, threshold_ms):
+        self.threshold_s = threshold_ms / 1000.0
+        self._pressed = False
+        self._down_at = None
+        self._long_fired = False
+
+    def update(self, pressed, now):
+        """Process one poll. Returns a list of event names that fired.
+
+        Event names: "short_down", "short_up", "long_down", "long_up".
+        Multiple events can fire in one update (e.g. long_down arriving during
+        a steady hold). Returned list preserves firing order.
+        """
+        events = []
+
+        if pressed and not self._pressed:
+            self._pressed = True
+            self._down_at = now
+            self._long_fired = False
+            events.append("short_down")
+        elif pressed and self._pressed:
+            if not self._long_fired and (now - self._down_at) >= self.threshold_s:
+                self._long_fired = True
+                events.append("long_down")
+        elif not pressed and self._pressed:
+            self._pressed = False
+            if self._long_fired:
+                events.append("long_up")
+            else:
+                events.append("short_up")
+            self._down_at = None
+            self._long_fired = False
+
+        return events
+
+
+class PressCycle:
+    """Tracks the current entry index for one timing class (short or long).
+
+    Independent of PressTracker — a button has two PressCycles (short, long)
+    each managing its own index. Advanced once per physical press in which
+    at least one event from this class fired.
+
+    Used only by buttons in mode: "keytimes".
+    """
+
+    def __init__(self, length):
+        self.length = length
+        self.index = 0
+
+    def advance(self):
+        """Advance index by 1, wrapping at length. No-op when length <= 0."""
+        if self.length > 0:
+            self.index = (self.index + 1) % self.length
+
+    def reset(self):
+        """Reset index to 0 (e.g. on power cycle or config reload)."""
+        self.index = 0
+
+
+class KeytimesButtonState:
+    """All per-button runtime state for a mode: "keytimes" button.
+
+    Aggregates PressTracker (timing classifier), two PressCycles (one per timing
+    class), and the inherited color/label/dim state for each layer. The dispatcher
+    reads from a button's config to fire messages and updates this state's
+    cycle indices and inherited colors after each press.
+    """
+
+    def __init__(self, threshold_ms, short_length, long_length):
+        self.tracker = PressTracker(threshold_ms)
+        self.short_cycle = PressCycle(short_length)
+        self.long_cycle = PressCycle(long_length)
+        # Inherited render state — updated when an entry sets a color/label/dim.
+        # color is None until the first event with a color fires; rendering falls
+        # through to button-level color or LED-off depending on the layer.
+        self.short_color = None
+        self.long_color = None
+        self.short_dim = False
+        self.long_dim = False
+        self.short_label = None
+        self.long_label = None
+        # Per-press "did any event from this cycle fire" flags. Cycles advance
+        # at press-end (short_up or long_up) if their flag is set.
+        self._fired_short = False
+        self._fired_long = False
+
+
+# Map from event names emitted by PressTracker to (cycle_name, slot_name).
+_KEYTIMES_EVENT_MAP = {
+    "short_down": ("short", "down"),
+    "short_up":   ("short", "up"),
+    "long_down":  ("long",  "down"),
+    "long_up":    ("long",  "up"),
+}
+
+
+def dispatch_keytimes_events(events, state, btn_config, message_callback):
+    """Dispatch a sequence of timing events through a keytimes-mode button's config.
+
+    Pure logic — no hardware, no time, no I/O. Tests inject a callback to capture
+    dispatched messages and assert behavior; the live firmware passes a real
+    MIDI/HID dispatch function.
+
+    Args:
+        events: list of event names from PressTracker.update()
+        state: KeytimesButtonState for this button
+        btn_config: validated button config dict (must have mode == "keytimes")
+        message_callback: fn(message_dict) called for each Message to dispatch
+
+    Side effects:
+        - Calls message_callback for each Message in the entries' down/up arrays
+        - Updates state.{short,long}_color/dim/label from entries that set them
+        - Sets state._fired_short / _fired_long
+        - Advances state.short_cycle / long_cycle on press-end events (short_up/long_up)
+    """
+    short_entries = btn_config.get("short", []) or []
+    long_entries = btn_config.get("long", []) or []
+
+    for event in events:
+        cycle_name, slot = _KEYTIMES_EVENT_MAP.get(event, (None, None))
+        if cycle_name is None:
+            continue
+
+        if cycle_name == "short":
+            entries = short_entries
+            cycle = state.short_cycle
+        else:
+            entries = long_entries
+            cycle = state.long_cycle
+
+        if entries:
+            idx = cycle.index
+            if 0 <= idx < len(entries):
+                entry = entries[idx]
+                slot_messages = entry.get(slot, []) or []
+                for msg in slot_messages:
+                    message_callback(msg)
+                # MIDI dispatch, render-state updates, AND cycle advancement all
+                # piggyback on the slot's content: an event whose slot has no messages
+                # does nothing on any axis. The slot the user populates is the slot
+                # where stuff happens. This avoids two surprises:
+                # (1) the short_down "flash" when only *_up slots are populated, and
+                # (2) the short cycle advancing during a long press just because
+                #     short_down fired as an event (with no MIDI to back it up).
+                if slot_messages:
+                    if cycle_name == "short":
+                        state._fired_short = True
+                    else:
+                        state._fired_long = True
+                    # color/dim/label are all per-entry with no carry-forward — a missing
+                    # field clears the layer's state so the render falls back to the
+                    # button-level color/label. Matches the UI's "(inherit)" reading.
+                    if "color" in entry:
+                        if cycle_name == "short":
+                            state.short_color = entry["color"]
+                        else:
+                            state.long_color = entry["color"]
+                    else:
+                        if cycle_name == "short":
+                            state.short_color = None
+                        else:
+                            state.long_color = None
+                    if "dim" in entry:
+                        if cycle_name == "short":
+                            state.short_dim = bool(entry["dim"])
+                        else:
+                            state.long_dim = bool(entry["dim"])
+                    else:
+                        if cycle_name == "short":
+                            state.short_dim = False
+                        else:
+                            state.long_dim = False
+                    if "label" in entry:
+                        if cycle_name == "short":
+                            state.short_label = entry["label"]
+                        else:
+                            state.long_label = entry["label"]
+                    else:
+                        if cycle_name == "short":
+                            state.short_label = None
+                        else:
+                            state.long_label = None
+
+        # On press-end, advance cycles whose events fired during this press, then reset flags.
+        if event in ("short_up", "long_up"):
+            if state._fired_short:
+                state.short_cycle.advance()
+            if state._fired_long:
+                state.long_cycle.advance()
+            state._fired_short = False
+            state._fired_long = False

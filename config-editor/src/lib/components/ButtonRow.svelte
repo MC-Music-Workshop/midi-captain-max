@@ -1,7 +1,8 @@
 <script lang="ts">
   import ColorSelect from './ColorSelect.svelte';
+  import KeytimesEditor from './KeytimesEditor.svelte';
   import type { ButtonConfig, ButtonColor, ButtonMode, OffMode, MessageType } from '$lib/types';
-  import { MESSAGE_TYPE_LABELS } from '$lib/types';
+  import { MESSAGE_TYPE_LABELS, BUTTON_MODE_LABELS } from '$lib/types';
   import { validationErrors, syncButtonStates, selectGroupNames } from '$lib/formStore';
 
   interface Props {
@@ -31,6 +32,7 @@
   // Select mode (radio group) is valid only on plain PC and CC types.
   let canSelectMode = $derived(isPC || isCC);
   let isSelectMode = $derived(button.mode === 'select');
+  let isKeytimesMode = $derived(button.mode === 'keytimes');
   let datalistId = $derived(`${idPrefix}-select-groups`);
 
   function handleLabelChange(e: Event) {
@@ -246,20 +248,22 @@
     {/if}
   </div>
 
-  <div class="field">
-    <label class="field-label" for={fieldId('type')}>Type:</label>
-    <select
-      id={fieldId('type')}
-      class="select"
-      value={button.type ?? 'cc'}
-      onchange={handleTypeChange}
-      disabled={disabled}
-    >
-      {#each Object.entries(MESSAGE_TYPE_LABELS) as [value, label]}
-        <option {value}>{label}</option>
-      {/each}
-    </select>
-  </div>
+  {#if !isKeytimesMode}
+    <div class="field">
+      <label class="field-label" for={fieldId('type')}>Type:</label>
+      <select
+        id={fieldId('type')}
+        class="select"
+        value={button.type ?? 'cc'}
+        onchange={handleTypeChange}
+        disabled={disabled}
+      >
+        {#each Object.entries(MESSAGE_TYPE_LABELS) as [value, label]}
+          <option {value}>{label}</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
 
   <div class="field">
     <label class="field-label" for={fieldId('channel')}>Channel:</label>
@@ -281,6 +285,7 @@
     {/if}
   </div>
 
+  {#if !isKeytimesMode}
   {#if isCC}
     <div class="field">
       <label class="field-label" for={fieldId('cc')}>CC:</label>
@@ -404,21 +409,27 @@
     </div>
   {/if}
 
-  <div class="field">
-    <label class="field-label" for={fieldId('keytimes')}>Keytimes:</label>
-    <input
-      id={fieldId('keytimes')}
-      type="number"
-      class="input-cc"
-      class:error={!!keytimesError}
-      value={button.keytimes ?? 1}
-      onblur={handleKeytimesChange}
-      disabled={disabled}
-      min="1"
-      max="99"
-    />
-    {#if keytimesError}<span class="error-text">{keytimesError}</span>{/if}
-  </div>
+  {#if hasKeytimes}
+    <div class="field">
+      <label class="field-label" for={fieldId('keytimes')}>
+        Keytimes:
+        <span class="legacy-tag" title="Deprecated; will be removed in v3.0. Switch to Mode: Keytimes for the new cycle model.">legacy</span>
+      </label>
+      <input
+        id={fieldId('keytimes')}
+        type="number"
+        class="input-cc"
+        class:error={!!keytimesError}
+        value={button.keytimes ?? 1}
+        onblur={handleKeytimesChange}
+        disabled={disabled}
+        min="1"
+        max="99"
+      />
+      {#if keytimesError}<span class="error-text">{keytimesError}</span>{/if}
+    </div>
+  {/if}
+  {/if}<!-- /!isKeytimesMode -->
 
   <div class="field">
     <span class="field-label">LED Color:</span>
@@ -428,21 +439,20 @@
     />
   </div>
 
-  {#if showMode}
-    <div class="field">
-      <label class="field-label" for={fieldId('mode')}>Mode:</label>
-      <select id={fieldId('mode')} class="select" value={button.mode || (isPCType ? 'flash' : 'toggle')} onchange={handleModeChange} disabled={disabled}>
-        {#if isPCType}
-          <option value="flash">Flash</option>
-        {/if}
-        <option value="toggle">Toggle</option>
-        <option value="momentary">Momentary</option>
-        {#if canSelectMode}
-          <option value="select">Select</option>
-        {/if}
-      </select>
-    </div>
-  {/if}
+  <div class="field">
+    <label class="field-label" for={fieldId('mode')}>Mode:</label>
+    <select id={fieldId('mode')} class="select" value={button.mode || (isPCType ? 'flash' : 'toggle')} onchange={handleModeChange} disabled={disabled}>
+      {#if isPCType}
+        <option value="flash">{BUTTON_MODE_LABELS.flash}</option>
+      {/if}
+      <option value="toggle">{BUTTON_MODE_LABELS.toggle}</option>
+      <option value="momentary">{BUTTON_MODE_LABELS.momentary}</option>
+      {#if canSelectMode}
+        <option value="select">{BUTTON_MODE_LABELS.select}</option>
+      {/if}
+      <option value="keytimes">{BUTTON_MODE_LABELS.keytimes}</option>
+    </select>
+  </div>
 
   {#if canSelectMode && isSelectMode}
     <div class="field">
@@ -484,14 +494,31 @@
   {/if}
 
   <div class="field">
-    <label class="field-label" for={fieldId('off-mode')}>LED Off Mode:</label>
-    <select id={fieldId('off-mode')} class="select" value={button.off_mode || 'dim'} onchange={handleOffModeChange} disabled={disabled}>
+    <label class="field-label" for={fieldId('off-mode')}>
+      {isKeytimesMode ? 'LED Start Mode' : 'LED Off Mode'}:
+    </label>
+    <select id={fieldId('off-mode')} class="select" value={button.off_mode || 'dim'} onchange={handleOffModeChange} disabled={disabled}
+            title={isKeytimesMode
+              ? 'LED state at boot, before any cycle entry has rendered. After the first press, the cycle entry takes over.'
+              : 'LED state when the button is in its off/idle state.'}>
       <option value="dim">Dim</option>
       <option value="off">Off</option>
     </select>
   </div>
 
-  {#if hasKeytimes && !disabled}
+  {#if isKeytimesMode && !disabled}
+    <KeytimesEditor button={button} index={index} globalChannel={globalChannel} />
+  {/if}
+
+  {#if hasKeytimes && !isKeytimesMode}
+    <div class="deprecation-notice" role="status">
+      <strong>Deprecated:</strong>
+      The <code>keytimes</code> field on non-keytimes modes is deprecated and will be removed in v3.0.
+      Switch this button to <strong>Mode: Keytimes (short/long)</strong> to use the new cycle model with full long-press support.
+    </div>
+  {/if}
+
+  {#if hasKeytimes && !isKeytimesMode && !disabled}
     <div class="states-section">
       <span class="states-label">States ({button.states?.length ?? 0}):</span>
       {#each (button.states ?? []) as state, si}
@@ -809,5 +836,37 @@
     font-size: 0.875rem;
     font-weight: 500;
     pointer-events: none;
+  }
+
+  .deprecation-notice {
+    flex-basis: 100%;
+    margin: 0.5rem 0;
+    padding: 0.5rem 0.75rem;
+    background: #fff8e1;
+    border: 1px solid #ffd54f;
+    border-radius: 4px;
+    color: #5a4a00;
+    font-size: 0.8125rem;
+  }
+
+  .deprecation-notice code {
+    background: rgba(0, 0, 0, 0.08);
+    padding: 0 0.25rem;
+    border-radius: 2px;
+    font-family: monospace;
+  }
+
+  .legacy-tag {
+    display: inline-block;
+    margin-left: 0.25rem;
+    padding: 0 0.25rem;
+    background: #fff3cd;
+    border: 1px solid #d4a017;
+    border-radius: 3px;
+    color: #5a4a00;
+    font-size: 0.6875rem;
+    font-weight: normal;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
 </style>

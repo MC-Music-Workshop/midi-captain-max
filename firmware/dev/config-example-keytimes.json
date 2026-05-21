@@ -5,26 +5,29 @@
     "status_text_size": "medium",
     "expression_text_size": "medium"
   },
+  "long_press_threshold_ms": 500,
   "buttons": [
     {
       "label": "VERB",
-      "cc": 20,
       "color": "blue",
-      "keytimes": 3,
-      "states": [
-        {"cc_on": 64, "color": "blue"},
-        {"cc_on": 96, "color": "cyan"},
-        {"cc_on": 127, "color": "white"}
+      "mode": "keytimes",
+      "short": [
+        {"down": [{"type": "cc", "cc": 20, "value": 64}],  "color": "blue"},
+        {"down": [{"type": "cc", "cc": 20, "value": 96}],  "color": "cyan"},
+        {"down": [{"type": "cc", "cc": 20, "value": 127}], "color": "white"}
       ]
     },
     {
       "label": "DELAY",
-      "cc": 21,
       "color": "yellow",
-      "keytimes": 2,
-      "states": [
-        {"cc_on": 64, "color": "yellow"},
-        {"cc_on": 127, "color": "orange"}
+      "mode": "keytimes",
+      "short": [
+        {"up": [{"type": "cc", "cc": 21, "value": 127}], "color": "yellow"},
+        {"up": [{"type": "cc", "cc": 21, "value": 0}],   "color": "off"}
+      ],
+      "long": [
+        {"down": [{"type": "cc", "cc": 22, "value": 64}],  "color": "magenta"},
+        {"down": [{"type": "cc", "cc": 22, "value": 127}], "color": "purple"}
       ]
     },
     {"label": "COMP", "cc": 22, "color": "red"},

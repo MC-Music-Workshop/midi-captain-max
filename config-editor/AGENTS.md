@@ -104,8 +104,22 @@ Key constraints from `config.schema.json`:
 
 ## `mode` vs `off_mode`
 
-- **`mode` (toggle/momentary/flash)**: applies to CC, Note, and PC types. For PC types, MIDI is always sent on press regardless of mode. Flash option only appears for PC types in the GUI.
-- **`off_mode` (dim/off)**: LED appearance when button is "off" — applies to all types.
+- **`mode` (toggle/momentary/flash/select/keytimes)**: applies to CC, Note, and PC types. For PC types, MIDI is always sent on press regardless of mode. Flash option only appears for PC types in the GUI.
+- **`off_mode` (dim/off)**: LED appearance when button is "off" — applies to non-keytimes modes only.
+
+## `mode: "keytimes"` (#48)
+
+The keytimes mode is rendered by `KeytimesEditor.svelte`, which composes per-cycle editors and `KeytimesMessageEditor.svelte` for individual Message entries. When a button is in keytimes mode:
+
+- The legacy CC/Note/PC/HID per-button fields are hidden in `ButtonRow.svelte` (they don't apply — message data lives inside `short[].down[]` / `up[]` Message objects)
+- The Type selector is still shown but has no effect (it's used by other modes)
+- The legacy `keytimes` spinner is hidden (deprecated in favor of `short[]`/`long[]` array lengths)
+- `off_mode` is hidden (color/dim live per cycle entry instead)
+- `KeytimesEditor` renders threshold input, short cycle entries, long cycle entries
+
+Mutations on the nested structure (add/remove entry, add/remove message, change message type) go through dedicated `formStore` helpers (`addKeytimesEntry`, `removeKeytimesEntry`, `addKeytimesMessage`, `removeKeytimesMessage`, `setKeytimesMessageType`) because `updateField()` requires intermediate path components to already exist. Leaf-value edits (color, dim, label, individual message field values) use `updateField()`.
+
+`normalizeButton` strips legacy per-type fields when `mode === 'keytimes'` so save output stays clean even if the button was toggled through other modes before settling on keytimes. For non-keytimes modes, it strips the `short`/`long`/`long_press_threshold_ms` fields.
 
 ## Accessibility Conventions
 

@@ -121,9 +121,9 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Install system dependencies
-        uses: awalsh128/cache-apt-pkgs-action@latest
-        with:
-          packages: libgtk-3-dev libwebkit2gtk-4.1-dev libudev-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libudev-dev
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable

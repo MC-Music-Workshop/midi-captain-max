@@ -36,6 +36,14 @@ use tauri::{command, AppHandle, Manager};
 /// deleted to mirror `deploy.sh`'s `rsync --delete` semantics.
 const MANAGED_DIRS: &[&str] = &["core", "devices", "fonts", "lib"];
 
+/// Highest CircuitPython major version the bundled firmware supports.
+/// Bundled `lib/*.mpy` are mpy format v5 (CP 7) and `boot.py` calls
+/// `supervisor.disable_autoreload()`, which CP 8.0 removed. Installing onto
+/// CP >= 8 produces a silent brick (incompatible mpy + boot.py AttributeError),
+/// so the install path refuses early. CP 9/10 migration is tracked in
+/// MC-Music-Workshop/midi-captain-max#2; bump this constant when that lands.
+const MAX_SUPPORTED_CP_MAJOR: u8 = 7;
+
 /// Bundled filename of the default config template for this device type.
 fn config_source_name(dt: DeviceType) -> &'static str {
     match dt {
@@ -95,6 +103,67 @@ fn bundled_firmware_dir(app: &AppHandle) -> Result<PathBuf, ConfigError> {
         )));
     }
     Ok(firmware_dir)
+}
+
+/// Parse the first `Adafruit CircuitPython X.Y.Z` line out of `boot_out.txt`.
+/// Returns `(major, minor, patch)` on success, `None` if no such line is
+/// found or the version token isn't a clean three-part numeric.
+///
+/// Tolerant of:
+///  - Prefix junk on the line (e.g. a `Code stopped by auto-reload.` first line).
+///  - Pre-release suffixes (`9.0.0-alpha.1`, `7.3.1.dev0`) — only the leading
+///    `<digits>.<digits>.<digits>` is consumed.
+fn parse_circuitpython_version(s: &str) -> Option<(u8, u8, u8)> {
+    for line in s.lines() {
+        let Some(rest) = line.split("Adafruit CircuitPython ").nth(1) else {
+            continue;
+        };
+        let token = rest.split_whitespace().next()?;
+        // Accept up to the first non-digit/non-dot char so `7.3.1.dev0` and
+        // `9.0.0-alpha.1` both yield `7.3.1` / `9.0.0`.
+        let numeric: String = token
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
+        let mut parts = numeric.split('.');
+        let major = parts.next()?.parse().ok()?;
+        let minor = parts.next()?.parse().ok()?;
+        let patch = parts.next()?.parse().ok()?;
+        return Some((major, minor, patch));
+    }
+    None
+}
+
+/// Read `<device_root>/boot_out.txt` and extract the CircuitPython version.
+/// Missing/unreadable/unparseable file returns `None` (preflight then allows
+/// the install — we never block on absence of evidence).
+fn read_device_cp_version(device_root: &Path) -> Option<(u8, u8, u8)> {
+    let path = device_root.join("boot_out.txt");
+    let contents = fs::read_to_string(&path).ok()?;
+    parse_circuitpython_version(&contents)
+}
+
+/// Preflight: refuse the install if the device is on a CircuitPython newer
+/// than the bundled firmware supports. Missing or unparseable `boot_out.txt`
+/// is treated as "unknown, allow install" — see `read_device_cp_version`.
+fn check_cp_version_supported(device_root: &Path) -> Result<(), ConfigError> {
+    let Some((major, minor, patch)) = read_device_cp_version(device_root) else {
+        return Ok(());
+    };
+    if major <= MAX_SUPPORTED_CP_MAJOR {
+        return Ok(());
+    }
+    Err(ConfigError::msg(format!(
+        "MIDI Captain MAX firmware requires CircuitPython 7.x (verified on 7.3.1). \
+         Detected: {major}.{minor}.{patch}. Install blocked to prevent a silent brick \
+         — bundled mpy libraries are format v5 (CP 7 only) and boot.py uses \
+         supervisor.disable_autoreload() which CP 8.0 removed.\n\n\
+         Fix: hold Switch 1 / KEY0 while plugging in USB so the bootloader RPI-RP2 \
+         drive appears, then drag adafruit-circuitpython-raspberry_pi_pico-en_US-7.3.1.uf2 \
+         (from Adafruit's CircuitPython 7.3.1 archive) onto it. The device will reboot \
+         back to CIRCUITPY; re-run install.\n\n\
+         Long-term CP 9/10 migration is tracked in MC-Music-Workshop/midi-captain-max#2."
+    )))
 }
 
 fn detect_device_type(device_root: &Path) -> Option<DeviceType> {
@@ -379,6 +448,12 @@ pub fn install_firmware_from(
         }
     }
 
+    // Refuse early if the device is on a CircuitPython newer than the bundled
+    // firmware supports. Surfacing this as a clear "downgrade CP" error beats
+    // letting the install "succeed" and then crashing at first boot with no
+    // diagnostic. See issue #132.
+    check_cp_version_supported(device_path)?;
+
     let device_type = detect_device_type(device_path).ok_or_else(|| {
         ConfigError::msg(
             "Could not detect device type from config.json on the device. \
@@ -635,6 +710,19 @@ mod tests {
         fs::write(
             dir.join("config.json"),
             format!(r#"{{"device":"{}","custom":"user-edit"}}"#, device).as_bytes(),
+        )
+        .unwrap();
+    }
+
+    fn seed_boot_out(dir: &Path, cp_version: &str) {
+        fs::write(
+            dir.join("boot_out.txt"),
+            format!(
+                "Adafruit CircuitPython {} on 2024-12-12; Raspberry Pi Pico with rp2040\n\
+                 Board ID:raspberry_pi_pico\n",
+                cp_version
+            )
+            .as_bytes(),
         )
         .unwrap();
     }
@@ -1053,5 +1141,158 @@ mod tests {
         // Every other file matches → all skips.
         assert_eq!(r.files_copied, 0);
         assert!(r.files_skipped > 0);
+    }
+
+    // ---- CP-version preflight (issue #132) ----
+
+    #[test]
+    fn parse_cp_version_typical_release() {
+        let s = "Adafruit CircuitPython 7.3.1 on 2022-08-29; Raspberry Pi Pico with rp2040";
+        assert_eq!(parse_circuitpython_version(s), Some((7, 3, 1)));
+    }
+
+    #[test]
+    fn parse_cp_version_cp9() {
+        let s = "Adafruit CircuitPython 9.2.7 on 2024-12-12; Raspberry Pi Pico with rp2040";
+        assert_eq!(parse_circuitpython_version(s), Some((9, 2, 7)));
+    }
+
+    #[test]
+    fn parse_cp_version_cp8() {
+        let s = "Adafruit CircuitPython 8.0.0 on 2023-01-30; Raspberry Pi Pico with rp2040";
+        assert_eq!(parse_circuitpython_version(s), Some((8, 0, 0)));
+    }
+
+    #[test]
+    fn parse_cp_version_skips_noise_line() {
+        let s = "Code stopped by auto-reload. Reloading soon.\n\
+                 \n\
+                 Adafruit CircuitPython 7.3.1 on 2022-08-29; Raspberry Pi Pico with rp2040\n\
+                 Board ID:raspberry_pi_pico";
+        assert_eq!(parse_circuitpython_version(s), Some((7, 3, 1)));
+    }
+
+    #[test]
+    fn parse_cp_version_strips_prerelease_suffix() {
+        let s = "Adafruit CircuitPython 9.0.0-alpha.1 on 2024-01-01; Raspberry Pi Pico with rp2040";
+        assert_eq!(parse_circuitpython_version(s), Some((9, 0, 0)));
+    }
+
+    #[test]
+    fn parse_cp_version_returns_none_when_absent() {
+        assert_eq!(parse_circuitpython_version(""), None);
+        assert_eq!(parse_circuitpython_version("random unrelated text"), None);
+    }
+
+    #[test]
+    fn parse_cp_version_returns_none_when_malformed() {
+        let s = "Adafruit CircuitPython garbage on a board";
+        assert_eq!(parse_circuitpython_version(s), None);
+        let s = "Adafruit CircuitPython 7.3 on a board";
+        assert_eq!(parse_circuitpython_version(s), None);
+    }
+
+    #[test]
+    fn preflight_allows_cp7() {
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        seed_device(device.path(), "std10");
+        seed_boot_out(device.path(), "7.3.1");
+
+        // Should not error — install completes normally.
+        let report = install(bundle.path(), device.path(), false);
+        assert!(report.files_copied > 0);
+    }
+
+    #[test]
+    fn preflight_refuses_cp8() {
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        seed_device(device.path(), "std10");
+        seed_boot_out(device.path(), "8.0.0");
+
+        let mut sink = |_p: InstallProgress| {};
+        let err =
+            install_firmware_from(bundle.path(), device.path(), false, &mut sink).unwrap_err();
+        assert!(
+            err.message.contains("CircuitPython"),
+            "expected CP-version error, got: {}",
+            err.message
+        );
+        assert!(err.message.contains("8.0.0"));
+        assert!(err.message.contains("7.3.1"));
+        assert!(
+            err.message.contains("RPI-RP2"),
+            "error should explain the bootloader recovery path"
+        );
+        // Bundle write must NOT have started.
+        assert!(!device.path().join("boot.py").exists());
+    }
+
+    #[test]
+    fn preflight_refuses_cp9() {
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        seed_device(device.path(), "std10");
+        seed_boot_out(device.path(), "9.2.7");
+
+        let mut sink = |_p: InstallProgress| {};
+        let err =
+            install_firmware_from(bundle.path(), device.path(), false, &mut sink).unwrap_err();
+        assert!(err.message.contains("9.2.7"));
+        assert!(!device.path().join("boot.py").exists());
+    }
+
+    #[test]
+    fn preflight_allows_when_boot_out_missing() {
+        // Mirrors the existing test fixture surface — no `boot_out.txt` on the
+        // simulated device. Preflight must not block; absence of evidence is
+        // not evidence of CP >= 8.
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        seed_device(device.path(), "std10");
+
+        let report = install(bundle.path(), device.path(), false);
+        assert!(report.files_copied > 0);
+    }
+
+    #[test]
+    fn preflight_allows_when_boot_out_unparseable() {
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        seed_device(device.path(), "std10");
+        fs::write(
+            device.path().join("boot_out.txt"),
+            b"some garbage that doesn't mention CircuitPython at all\n",
+        )
+        .unwrap();
+
+        let report = install(bundle.path(), device.path(), false);
+        assert!(report.files_copied > 0);
+    }
+
+    #[test]
+    fn preflight_runs_before_device_type_detection() {
+        // If CP is too new AND config.json is missing/invalid, the CP error
+        // wins — it's the more actionable one for a fresh-from-factory device.
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        // Note: no seed_device() — no config.json at all.
+        seed_boot_out(device.path(), "9.2.7");
+
+        let mut sink = |_p: InstallProgress| {};
+        let err =
+            install_firmware_from(bundle.path(), device.path(), false, &mut sink).unwrap_err();
+        assert!(
+            err.message.contains("CircuitPython"),
+            "CP preflight should fire before device_type check; got: {}",
+            err.message
+        );
     }
 }

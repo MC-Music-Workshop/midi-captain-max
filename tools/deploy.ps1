@@ -154,6 +154,42 @@ if (-not $MountPoint -or -not (Test-Path $MountPoint)) {
 
 Write-Host "Device found at $MountPoint" -ForegroundColor Green
 
+# Preflight: refuse install on CircuitPython >= 8 (issue #132).
+# Bundled lib/*.mpy are mpy format v5 (CP 7-compatible) and boot.py uses
+# supervisor.disable_autoreload(), which CP 8.0 removed. Installing onto
+# CP >= 8 produces a silent brick. Long-term CP 9/10 migration: issue #2.
+$MaxSupportedCpMajor = 7
+$BootOutPath = Join-Path $MountPoint "boot_out.txt"
+if (Test-Path $BootOutPath) {
+    $bootOut = Get-Content $BootOutPath -Raw -ErrorAction SilentlyContinue
+    if ($bootOut -and ($bootOut -match 'Adafruit CircuitPython (\d+)\.(\d+)\.(\d+)')) {
+        $cpMajor = [int]$Matches[1]
+        $cpMinor = [int]$Matches[2]
+        $cpPatch = [int]$Matches[3]
+        if ($cpMajor -gt $MaxSupportedCpMajor) {
+            Write-Host ""
+            Write-Host "CircuitPython $cpMajor.$cpMinor.$cpPatch detected; this firmware requires CP 7.x (verified on 7.3.1)." -ForegroundColor Red
+            Write-Host @"
+
+Install blocked to prevent a silent brick - bundled mpy libraries
+are format v5 (CP 7 only) and boot.py uses supervisor.disable_autoreload(),
+which CP 8.0 removed.
+
+Fix:
+  1. Hold Switch 1 / KEY0 while plugging in USB -> bootloader drive RPI-RP2 appears.
+  2. Download adafruit-circuitpython-raspberry_pi_pico-en_US-7.3.1.uf2 from
+     Adafruit's CircuitPython 7.3.1 archive.
+  3. Drag the .uf2 onto RPI-RP2 -> device reboots back to CIRCUITPY.
+  4. Re-run this script.
+
+Long-term CP 9/10 migration is tracked in issue #2:
+  https://github.com/MC-Music-Workshop/midi-captain-max/issues/2
+"@
+            exit 1
+        }
+    }
+}
+
 # Install libraries if requested
 if ($Install) {
     Write-Host ""

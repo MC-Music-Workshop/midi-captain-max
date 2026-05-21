@@ -210,6 +210,47 @@ fi
 
 echo -e "${GREEN}✓ Device found at $MOUNT_POINT${NC}"
 
+# Preflight: refuse install on CircuitPython >= 8 (issue #132).
+# Bundled lib/*.mpy are mpy format v5 (CP 7-compatible) and boot.py uses
+# supervisor.disable_autoreload(), which CP 8.0 removed. Installing onto
+# CP >= 8 produces a silent brick. Long-term CP 9/10 migration: issue #2.
+MAX_SUPPORTED_CP_MAJOR=7
+if [ -f "$MOUNT_POINT/boot_out.txt" ]; then
+    # boot_out.txt sometimes leads with reload notices before the CircuitPython
+    # banner line, so scan all lines and take the first matching one. `-m1` stops
+    # at the first hit. `|| true` keeps `set -e` happy on no-match.
+    CP_VERSION_LINE=$(grep -m1 'Adafruit CircuitPython' "$MOUNT_POINT/boot_out.txt" 2>/dev/null || true)
+    if [ -n "$CP_VERSION_LINE" ]; then
+        # Extract a clean X.Y.Z; ignore pre-release suffixes like -alpha.1 / .dev0.
+        if [[ "$CP_VERSION_LINE" =~ Adafruit\ CircuitPython\ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            CP_MAJOR="${BASH_REMATCH[1]}"
+            CP_MINOR="${BASH_REMATCH[2]}"
+            CP_PATCH="${BASH_REMATCH[3]}"
+            if [ "$CP_MAJOR" -gt "$MAX_SUPPORTED_CP_MAJOR" ]; then
+                echo ""
+                echo -e "${RED}❌ CircuitPython ${CP_MAJOR}.${CP_MINOR}.${CP_PATCH} detected; this firmware requires CP 7.x (verified on 7.3.1).${NC}"
+                cat <<'EOF'
+
+Install blocked to prevent a silent brick — bundled mpy libraries
+are format v5 (CP 7 only) and boot.py uses supervisor.disable_autoreload(),
+which CP 8.0 removed.
+
+Fix:
+  1. Hold Switch 1 / KEY0 while plugging in USB → bootloader drive RPI-RP2 appears.
+  2. Download adafruit-circuitpython-raspberry_pi_pico-en_US-7.3.1.uf2 from
+     Adafruit's CircuitPython 7.3.1 archive.
+  3. Drag the .uf2 onto RPI-RP2 → device reboots back to CIRCUITPY.
+  4. Re-run this script.
+
+Long-term CP 9/10 migration is tracked in issue #2:
+  https://github.com/MC-Music-Workshop/midi-captain-max/issues/2
+EOF
+                exit 1
+            fi
+        fi
+    fi
+fi
+
 # Show current and incoming firmware versions
 if [ -f "$MOUNT_POINT/VERSION.txt" ]; then
     CURRENT_VERSION=$(cat "$MOUNT_POINT/VERSION.txt")

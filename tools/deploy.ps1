@@ -169,20 +169,22 @@ if (Test-Path $BootOutPath) {
         if ($cpMajor -gt $MaxSupportedCpMajor) {
             Write-Host ""
             Write-Host "CircuitPython $cpMajor.$cpMinor.$cpPatch detected; this firmware requires CP 7.x (verified on 7.3.1)." -ForegroundColor Red
-            Write-Host ""
-            Write-Host "Install blocked to prevent a silent brick - bundled mpy libraries"
-            Write-Host "are format v5 (CP 7 only) and boot.py uses supervisor.disable_autoreload(),"
-            Write-Host "which CP 8.0 removed."
-            Write-Host ""
-            Write-Host "Fix:"
-            Write-Host "  1. Hold Switch 1 / KEY0 while plugging in USB -> bootloader drive RPI-RP2 appears."
-            Write-Host "  2. Download adafruit-circuitpython-raspberry_pi_pico-en_US-7.3.1.uf2 from"
-            Write-Host "     Adafruit's CircuitPython 7.3.1 archive."
-            Write-Host "  3. Drag the .uf2 onto RPI-RP2 -> device reboots back to CIRCUITPY."
-            Write-Host "  4. Re-run this script."
-            Write-Host ""
-            Write-Host "Long-term CP 9/10 migration is tracked in issue #2:"
-            Write-Host "  https://github.com/MC-Music-Workshop/midi-captain-max/issues/2"
+            Write-Host @"
+
+Install blocked to prevent a silent brick - bundled mpy libraries
+are format v5 (CP 7 only) and boot.py uses supervisor.disable_autoreload(),
+which CP 8.0 removed.
+
+Fix:
+  1. Hold Switch 1 / KEY0 while plugging in USB -> bootloader drive RPI-RP2 appears.
+  2. Download adafruit-circuitpython-raspberry_pi_pico-en_US-7.3.1.uf2 from
+     Adafruit's CircuitPython 7.3.1 archive.
+  3. Drag the .uf2 onto RPI-RP2 -> device reboots back to CIRCUITPY.
+  4. Re-run this script.
+
+Long-term CP 9/10 migration is tracked in issue #2:
+  https://github.com/MC-Music-Workshop/midi-captain-max/issues/2
+"@
             exit 1
         }
     }

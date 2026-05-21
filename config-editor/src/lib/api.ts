@@ -8,6 +8,7 @@ import type {
   FirmwareVersions,
   InstallProgress,
   InstallReport,
+  ReflashProgress,
 } from './types';
 
 // Config operations
@@ -65,6 +66,32 @@ export async function installFirmware(
     resetConfig,
     onProgress: channel,
   });
+}
+
+/**
+ * Return the mount path of the RPI-RP2 bootloader drive, or null if not present.
+ * UI polls this while the user does the BOOTSEL/Switch 1 hold + replug to enter
+ * the RP2040 ROM bootloader.
+ */
+export async function rpiRp2MountPath(): Promise<string | null> {
+  return invoke('rpi_rp2_mount_path');
+}
+
+/**
+ * Copy the bundled CircuitPython 7.3.1 .uf2 onto a mounted RPI-RP2 drive.
+ * Caller must have already observed `rpiRp2MountPath()` returning non-null —
+ * the command errors out if the bootloader drive isn't mounted.
+ *
+ * Resolves once bytes are written (or the bootloader has unmounted itself
+ * mid-copy, which counts as success). Reboot back to CIRCUITPY is handled by
+ * the RP2040 ROM bootloader; the UI should poll `scanDevices()` afterward.
+ */
+export async function reflashCircuitpython(
+  onProgress: (p: ReflashProgress) => void,
+): Promise<void> {
+  const channel = new Channel<ReflashProgress>();
+  channel.onmessage = onProgress;
+  return invoke('reflash_circuitpython', { onProgress: channel });
 }
 
 // Event listeners

@@ -94,6 +94,13 @@ export interface InstallReport {
   config_preserved: boolean;
 }
 
+export type ReflashPhase = 'copying' | 'awaitingReboot' | 'done';
+
+export interface ReflashProgress {
+  phase: ReflashPhase;
+  message: string;
+}
+
 // Color mapping for UI
 export const BUTTON_COLORS: Record<ButtonColor, string> = {
   red: '#ff0000',

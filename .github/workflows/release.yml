@@ -141,7 +141,10 @@ jobs:
           
           ls -la dist/
 
-      - name: Create combined bundle (firmware + all GUI installers)
+      - name: Stage CircuitPython .uf2 for the combined bundle (issue #134)
+        run: ./tools/fetch-cp-uf2.sh
+
+      - name: Create combined bundle (firmware + all GUI installers + CP .uf2)
         run: |
           mkdir -p bundle
           # Copy firmware zip contents (extract so bundle is flat, not a zip-in-zip)
@@ -152,6 +155,8 @@ jobs:
               [ -f "$f" ] && cp "$f" bundle/
             done
           done
+          # CP .uf2 for terminal-only users who can't use the GUI reflash button.
+          cp config-editor/src-tauri/resources/circuitpython/*.uf2 bundle/
           # Create the combined zip
           (cd bundle && zip -r "../dist/MIDI-Captain-MAX-${VERSION}-complete.zip" .)
           echo "✓ Complete bundle: MIDI-Captain-MAX-${VERSION}-complete.zip" >> $GITHUB_STEP_SUMMARY

@@ -133,6 +133,13 @@ jobs:
         with:
           workspaces: config-editor/src-tauri
 
+      # Tauri's build script validates that every bundle.resources glob in
+      # tauri.conf.json matches at least one file. resources/circuitpython/*.uf2
+      # is fetched on demand by tools/fetch-cp-uf2.sh (issue #134), so we run
+      # it here too — otherwise `cargo test` fails before any test runs.
+      - name: Stage CircuitPython .uf2 (needed by Tauri build script)
+        run: ./tools/fetch-cp-uf2.sh
+
       - name: Run Rust tests
         working-directory: config-editor/src-tauri
         run: cargo test

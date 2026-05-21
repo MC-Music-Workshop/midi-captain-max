@@ -90,6 +90,14 @@ If anything goes wrong, it is fully recoverable:
 2. Erase the contents.
 3. Restore your backup, or re-run the first-install steps above.
 
+### CircuitPython-version mismatch
+
+If the Config Editor refuses to install firmware with a CircuitPython version error, your device is on a newer CircuitPython than this firmware supports (typical for 2026-batch MCs which shipped with CP 9.2.7 from the factory). MIDI Captain MAX currently targets CP 7.3.1 — see [issue #2](https://github.com/MC-Music-Workshop/midi-captain-max/issues/2) for the planned migration to CP 9/10 and [#132](https://github.com/MC-Music-Workshop/midi-captain-max/issues/132) for the preflight check that blocks the silent-brick.
+
+**Easiest fix:** in the Config Editor, click **Reflash CircuitPython 7.3.1** next to "Install Firmware." The editor walks you through the bootloader hold, copies the bundled `.uf2`, and waits for the device to remount automatically.
+
+**Manual / terminal fallback:** the `MIDI-Captain-MAX-vX.Y.Z-complete.zip` release asset includes the verified 7.3.1 `.uf2`. Hold Switch 1 / KEY0 while plugging in USB to expose the `RPI-RP2` bootloader, drag the `.uf2` onto it, and the device reboots into CIRCUITPY automatically. Then re-run the install.
+
 # Configuration
 
 ## Custom USB Drive Name

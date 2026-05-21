@@ -25,9 +25,18 @@ To reload after config/code changes:
 
 import board
 import digitalio
+import microcontroller
 import storage
 import supervisor
 import time
+
+# NVM byte 0 — "boot in progress" flag. Set to 1 here; code.py clears it
+# to 0 once init reaches steady state (just before the main loop). If we
+# read 1 on entry, the previous boot didn't complete — diagnose by
+# compile-checking code.py below.
+_BOOT_FLAG_BYTE = 0
+_prev_boot_crashed = microcontroller.nvm[_BOOT_FLAG_BYTE] == 1
+microcontroller.nvm[_BOOT_FLAG_BYTE] = 1
 
 # DISABLED for live performance stability - no unexpected resets
 # CP 7.x uses supervisor.disable_autoreload(), not runtime.autoreload
@@ -54,6 +63,39 @@ try:
 except Exception:
     # If config fails to load, use safe defaults (performance mode, no HID)
     pass
+
+# Compile-check code.py — only when the previous boot didn't complete.
+# Healthy boots skip this entirely (compile() of ~1300-line code.py costs
+# hundreds of ms). A SyntaxError in code.py leaves the device with a
+# blank screen and no obvious failure signal — silent brick. On the
+# *next* boot after such a crash, we land here, leave USB drive at
+# CircuitPython's default (enabled, since we haven't called
+# disable_usb_drive yet), and blink red SOS on NeoPixel 0 forever. User
+# reads the error over serial, edits code.py via USB drive, power-cycles.
+try:
+    if _prev_boot_crashed:
+        with open("/code.py") as _f:
+            compile(_f.read(), "code.py", "exec")
+except SyntaxError as _e:
+    print(f"💀 code.py SyntaxError: {_e}")
+    print("   USB drive enabled. Fix code.py via the drive and power-cycle.")
+    import neopixel
+    _pixels = neopixel.NeoPixel(board.GP7, 1, brightness=0.3, auto_write=True)
+    _SHORT = 0.2
+    _LONG = 0.6
+    _GAP = 0.2
+    _MSG_GAP = 1.5
+    _RED = (255, 0, 0)
+    _OFF = (0, 0, 0)
+    # SOS = ... --- ... (3 short, 3 long, 3 short)
+    _PATTERN = (_SHORT, _SHORT, _SHORT, _LONG, _LONG, _LONG, _SHORT, _SHORT, _SHORT)
+    while True:
+        for _dur in _PATTERN:
+            _pixels[0] = _RED
+            time.sleep(_dur)
+            _pixels[0] = _OFF
+            time.sleep(_GAP)
+        time.sleep(_MSG_GAP)
 
 # Enable USB HID (keyboard + mouse) if any configured button uses type="hid".
 # Must be called before USB is fully initialized; boot.py is the only place

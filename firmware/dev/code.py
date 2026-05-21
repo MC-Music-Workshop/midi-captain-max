@@ -1419,6 +1419,12 @@ for i, btn in enumerate(buttons):
 
 print("\nRunning...")
 
+# Mark this boot as having reached steady state. boot.py reads this NVM
+# byte on next power-up; if still 1, the previous boot didn't complete
+# and boot.py runs a compile-check to diagnose a SyntaxError brick.
+import microcontroller
+microcontroller.nvm[0] = 0
+
 # =============================================================================
 # Main Loop
 # =============================================================================

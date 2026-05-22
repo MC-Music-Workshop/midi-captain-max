@@ -38,6 +38,11 @@
   // Poll handles — cleared on state change or cancel.
   let bootloaderPollTimer: ReturnType<typeof setInterval> | null = null;
   let rebootPollTimer: ReturnType<typeof setInterval> | null = null;
+  // Watchdog for the copying phase: a healthy copy + bootloader handoff
+  // finishes in under ~10s. If we're still in `copying` after 60s, surface a
+  // diagnostic CTA rather than letting the user stare at the spinner forever.
+  let copyWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
+  let copyStalled = $state(false);
 
   function clearPollers() {
     if (bootloaderPollTimer !== null) {
@@ -48,6 +53,11 @@
       clearInterval(rebootPollTimer);
       rebootPollTimer = null;
     }
+    if (copyWatchdogTimer !== null) {
+      clearTimeout(copyWatchdogTimer);
+      copyWatchdogTimer = null;
+    }
+    copyStalled = false;
   }
 
   onDestroy(clearPollers);
@@ -83,6 +93,14 @@
       kind: 'copying',
       message: 'Copying CircuitPython 7.3.1 onto the bootloader…',
     };
+    copyStalled = false;
+    copyWatchdogTimer = setTimeout(() => {
+      // Only flip the stalled flag if we're still in copying — if the state
+      // already advanced (or the user cancelled) we don't want to nag them.
+      if (flow.kind === 'copying') {
+        copyStalled = true;
+      }
+    }, 60_000);
     try {
       await reflashCircuitpython((p: ReflashProgress) => {
         // Echo Rust-side progress into our state machine. The Rust command's
@@ -190,6 +208,16 @@
           Don't unplug the device — the bootloader needs the .uf2 to finish
           writing before it can reboot.
         </p>
+        {#if copyStalled}
+          <div class="status error">
+            Copy hasn't completed in 60 seconds. The bootloader may not be
+            accepting the write — try cancelling, unplugging, then re-entering
+            <code>RPI-RP2</code> bootloader mode before retrying.
+          </div>
+        {/if}
+        <div class="actions">
+          <button class="secondary" onclick={cancel}>Cancel</button>
+        </div>
       {:else if flow.kind === 'awaitingReboot'}
         <div class="status">
           <span class="spinner" aria-hidden="true"></span>

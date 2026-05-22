@@ -9,7 +9,8 @@
   } from '$lib/stores';
   import {
     scanDevices, startDeviceWatcher, readConfigRaw, writeConfigRaw,
-    onDeviceConnected, onDeviceDisconnected, restartDevice, ejectDevice
+    onDeviceConnected, onDeviceDisconnected, restartDevice, ejectDevice,
+    rpiRp2MountPath
   } from '$lib/api';
   import type { DetectedDevice } from '$lib/types';
   import ConfigForm from '$lib/components/ConfigForm.svelte';
@@ -24,7 +25,13 @@
   import { loadConfig, validate, normalizeConfig, config } from '$lib/formStore';
 
   let appVersion = $state('');
-  
+
+  // RPI-RP2 (RP2040 ROM bootloader) detection state. Polled at app level so
+  // the reflash affordance only surfaces when the user has actually staged
+  // the device into bootloader mode — no clutter in the normal UI.
+  let rpiRp2DetectedPath = $state<string | null>(null);
+  let rpiRp2PollTimer: ReturnType<typeof setInterval> | null = null;
+
   // Event listener cleanup functions
   let unlistenConnect: (() => void) | undefined;
   let unlistenDisconnect: (() => void) | undefined;
@@ -118,17 +125,33 @@
         }
       };
       document.addEventListener('keydown', keydownHandler);
+
+      // Poll for RPI-RP2 bootloader presence at 2s. Cheap call (one filesystem
+      // read_dir on /Volumes); UI affordance only renders when detected.
+      const pollRpiRp2 = async () => {
+        try {
+          rpiRp2DetectedPath = await rpiRp2MountPath();
+        } catch {
+          // Transient — keep polling on next tick.
+        }
+      };
+      await pollRpiRp2();
+      rpiRp2PollTimer = setInterval(pollRpiRp2, 2000);
     } catch (e: any) {
       $statusMessage = `Error initializing: ${e.message || e}`;
     }
   });
-  
+
   onDestroy(() => {
     // Clean up event listeners to prevent memory leaks
     unlistenConnect?.();
     unlistenDisconnect?.();
     if (keydownHandler) {
       document.removeEventListener('keydown', keydownHandler);
+    }
+    if (rpiRp2PollTimer !== null) {
+      clearInterval(rpiRp2PollTimer);
+      rpiRp2PollTimer = null;
     }
   });
   
@@ -328,7 +351,29 @@
       {/if}
     </div>
   </header>
-  
+
+  {#if rpiRp2DetectedPath}
+    <div class="rpi-banner" role="status">
+      <span class="label">
+        <strong>RPI-RP2 bootloader detected</strong> at
+        <code>{rpiRp2DetectedPath}</code>. Reflash CircuitPython 7.3.1 directly
+        from here — the device will reboot back to <code>CIRCUITPY</code>
+        automatically.
+      </span>
+      <ReflashCircuitPython
+        onComplete={async () => {
+          // Once the device returns to CIRCUITPY, refresh the picker so the
+          // user can immediately hit Install Firmware. The device watcher's
+          // connect event should also cover this; the explicit scan handles
+          // platforms where the watcher lags.
+          $devices = await scanDevices();
+          rpiRp2DetectedPath = null;
+        }}
+      />
+    </div>
+  {/if}
+
+
   <div class="editor-container">
     {#if $selectedDevice && !$isLoading}
       <ConfigForm onSave={saveToDevice}>
@@ -350,22 +395,6 @@
       <div class="no-device">
         <p>No device selected</p>
         <p>Connect a MIDI Captain device and select it above.</p>
-        <div class="no-device-rescue">
-          <p class="rescue-label">
-            Device stuck in <code>RPI-RP2</code> bootloader mode, or
-            recovering from a CircuitPython mismatch? Reflash directly:
-          </p>
-          <ReflashCircuitPython
-            onComplete={async () => {
-              // Re-scan once the device has rebooted back to CIRCUITPY so it
-              // shows up in the picker for the follow-up Install Firmware step.
-              // The device watcher's connect event should also catch the
-              // remount, but an explicit re-scan handles platforms where the
-              // watcher lags.
-              $devices = await scanDevices();
-            }}
-          />
-        </div>
       </div>
     {/if}
   </div>
@@ -502,28 +531,27 @@
     font-style: italic;
   }
 
-  .no-device-rescue {
-    margin-top: 24px;
-    padding: 16px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
+  .rpi-banner {
+    margin: 12px 20px 0;
+    padding: 12px 16px;
+    background: rgba(240, 173, 78, 0.15);
+    border: 1px solid var(--warning);
     border-radius: 6px;
-    max-width: 520px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    font-style: normal;
     color: var(--text-primary);
-  }
-
-  .no-device-rescue .rescue-label {
-    margin: 0;
     font-size: 13px;
     line-height: 1.5;
-    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
   }
 
-  .no-device-rescue code {
+  .rpi-banner .label {
+    flex: 1;
+    min-width: 240px;
+  }
+
+  .rpi-banner code {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     background: var(--bg-tertiary, var(--bg-primary));
     padding: 1px 5px;

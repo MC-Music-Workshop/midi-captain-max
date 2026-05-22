@@ -20,6 +20,7 @@
   import DisplaySection from '$lib/components/DisplaySection.svelte';
   import MidiThruSection from '$lib/components/MidiThruSection.svelte';
   import FirmwareInstaller from '$lib/components/FirmwareInstaller.svelte';
+  import ReflashCircuitPython from '$lib/components/ReflashCircuitPython.svelte';
   import { loadConfig, validate, normalizeConfig, config } from '$lib/formStore';
 
   let appVersion = $state('');
@@ -348,7 +349,23 @@
     {:else}
       <div class="no-device">
         <p>No device selected</p>
-        <p>Connect a MIDI Captain device and select it above</p>
+        <p>Connect a MIDI Captain device and select it above.</p>
+        <div class="no-device-rescue">
+          <p class="rescue-label">
+            Device stuck in <code>RPI-RP2</code> bootloader mode, or
+            recovering from a CircuitPython mismatch? Reflash directly:
+          </p>
+          <ReflashCircuitPython
+            onComplete={async () => {
+              // Re-scan once the device has rebooted back to CIRCUITPY so it
+              // shows up in the picker for the follow-up Install Firmware step.
+              // The device watcher's connect event should also catch the
+              // remount, but an explicit re-scan handles platforms where the
+              // watcher lags.
+              $devices = await scanDevices();
+            }}
+          />
+        </div>
       </div>
     {/if}
   </div>
@@ -483,6 +500,35 @@
   .no-device {
     color: var(--text-secondary);
     font-style: italic;
+  }
+
+  .no-device-rescue {
+    margin-top: 24px;
+    padding: 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    max-width: 520px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-style: normal;
+    color: var(--text-primary);
+  }
+
+  .no-device-rescue .rescue-label {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+  }
+
+  .no-device-rescue code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--bg-tertiary, var(--bg-primary));
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
   }
   
   .editor-container {

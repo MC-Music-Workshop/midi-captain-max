@@ -1,27 +1,33 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { reflashCircuitpython, rpiRp2MountPath, scanDevices } from '$lib/api';
-  import type { ReflashProgress } from '$lib/types';
+  import { enterBootloader, reflashCircuitpython, rpiRp2MountPath, scanDevices } from '$lib/api';
+  import type { DetectedDevice, ReflashProgress } from '$lib/types';
 
   interface Props {
     /** When true, render an attention-grabbing CTA banner above the button.
-     *  Set by FirmwareInstaller when an install was just refused due to a
-     *  CP-version mismatch (issue #132 preflight). */
+     *  Reserved for callers that want to draw the eye to the reflash flow. */
     highlight?: boolean;
     /** Called after a successful reflash so the parent can refresh device
      *  state (re-scan, re-read VERSION.txt etc.). */
     onComplete?: () => void;
+    /** Mounted CIRCUITPY/MIDICAPTAIN device. When provided, the modal first
+     *  tries to drive the device into RP2040 ROM bootloader mode via the
+     *  serial REPL (`enterBootloader`) so the user doesn't have to do it
+     *  themselves. Without this prop the flow assumes RPI-RP2 is already
+     *  mounted (used by the top-level banner). */
+    device?: DetectedDevice | null;
   }
 
-  let { highlight = false, onComplete }: Props = $props();
+  let { highlight = false, onComplete, device = null }: Props = $props();
 
   type State =
     | { kind: 'idle' }
+    | { kind: 'enteringBootloader' }
     | { kind: 'awaitingBootloader' }
     | { kind: 'copying'; message: string }
     | { kind: 'awaitingReboot'; message: string }
     | { kind: 'done' }
-    | { kind: 'error'; message: string };
+    | { kind: 'error'; message: string; showManualFallback: boolean };
 
   let flow = $state<State>({ kind: 'idle' });
   let bootloaderPath = $state<string | null>(null);
@@ -129,13 +135,16 @@
       flow = {
         kind: 'error',
         message: e?.message ?? String(e),
+        // Copy-phase errors aren't a serial-entry problem, so manual entry
+        // instructions wouldn't help — leave the fallback off.
+        showManualFallback: false,
       };
     }
   }
 
   async function startReflash() {
-    // Fast-path: if RPI-RP2 is already mounted (user pre-staged the device into
-    // bootloader mode), skip straight to the copy.
+    // 1. Fast-path: if RPI-RP2 is already mounted (banner case, or user
+    //    manually entered bootloader), skip everything and copy directly.
     try {
       const existing = await rpiRp2MountPath();
       if (existing !== null) {
@@ -144,9 +153,32 @@
         return;
       }
     } catch {
-      // Fall through to polling — the command may transiently fail on first
-      // call while the OS settles.
+      // Transient — fall through to the next step.
     }
+
+    // 2. Device-driven entry: ask CP to reboot into the bootloader for us.
+    if (device) {
+      flow = { kind: 'enteringBootloader' };
+      try {
+        await enterBootloader(device.path);
+      } catch (e: any) {
+        // Serial reach failed — device may be too bricked to honor REPL
+        // commands. Show the manual fallback so the user has a path forward.
+        flow = {
+          kind: 'error',
+          message: e?.message ?? String(e),
+          showManualFallback: true,
+        };
+        return;
+      }
+      flow = { kind: 'awaitingBootloader' };
+      bootloaderPollTimer = setInterval(pollForBootloader, 1000);
+      return;
+    }
+
+    // 3. No device prop: just wait for the user to enter bootloader manually.
+    //    Rare — only happens if the banner case loses the RPI-RP2 mount
+    //    between detection and modal open.
     flow = { kind: 'awaitingBootloader' };
     bootloaderPollTimer = setInterval(pollForBootloader, 1000);
   }
@@ -184,17 +216,26 @@
     <div class="modal">
       <h3 id="reflash-title">Reflash CircuitPython 7.3.1</h3>
 
-      {#if flow.kind === 'awaitingBootloader'}
-        <p>To enter the RP2040 bootloader:</p>
-        <ol>
-          <li>Unplug the device from USB.</li>
-          <li>Hold down <strong>Switch 1</strong> (top-left footswitch) / <strong>KEY0</strong>.</li>
-          <li>Plug USB back in while still holding the switch.</li>
-          <li>Release the switch once a drive named <code>RPI-RP2</code> appears.</li>
-        </ol>
+      {#if flow.kind === 'enteringBootloader'}
         <div class="status">
           <span class="spinner" aria-hidden="true"></span>
-          Waiting for <code>RPI-RP2</code> to mount…
+          Telling the device to reboot into the RP2040 bootloader…
+        </div>
+        <p class="hint">
+          Sending <code>microcontroller.on_next_reset(RunMode.UF2)</code> over
+          the device's serial REPL. The <code>CIRCUITPY</code> drive will
+          disappear and <code>RPI-RP2</code> should mount within ~3 s.
+        </p>
+      {:else if flow.kind === 'awaitingBootloader'}
+        <p>Waiting for the device to reboot into <code>RPI-RP2</code> bootloader mode.</p>
+        <p class="hint">
+          If the device doesn't enter bootloader on its own within ~10 s,
+          unplug it, hold <strong>Switch 1</strong> / <strong>KEY0</strong>,
+          and plug USB back in until <code>RPI-RP2</code> appears.
+        </p>
+        <div class="status">
+          <span class="spinner" aria-hidden="true"></span>
+          Polling for <code>RPI-RP2</code>…
         </div>
         <div class="actions">
           <button class="secondary" onclick={cancel}>Cancel</button>
@@ -248,6 +289,32 @@
         <div class="status error">
           ✗ {statusMessage}
         </div>
+        {#if flow.showManualFallback}
+          <div class="manual-fallback">
+            <p>
+              <strong>Couldn't reach the device over serial.</strong> Try entering
+              bootloader mode manually instead:
+            </p>
+            <ol>
+              <li>Unplug the device from USB.</li>
+              <li>
+                Hold down <strong>Switch 1</strong> (top-left footswitch) /
+                <strong>KEY0</strong>, or — if that doesn't work — press the
+                physical <strong>BOOTSEL</strong> button on the RP2040 module
+                inside the enclosure.
+              </li>
+              <li>Plug USB back in while still holding the button.</li>
+              <li>
+                Release once a drive named <code>RPI-RP2</code> appears in
+                Finder / Explorer.
+              </li>
+            </ol>
+            <p class="hint">
+              Once <code>RPI-RP2</code> is mounted, the top-level reflash banner
+              will appear and the rest of the flow takes over.
+            </p>
+          </div>
+        {/if}
         <div class="actions">
           <button class="secondary" onclick={cancel}>Close</button>
           <button onclick={startReflash}>Try again</button>
@@ -346,6 +413,23 @@
     background: var(--bg-secondary);
     border-radius: 4px;
     margin-top: 8px;
+  }
+
+  .manual-fallback {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .manual-fallback p {
+    margin: 0 0 8px;
+  }
+  .manual-fallback ol {
+    margin: 0 0 8px;
+    padding-left: 22px;
   }
 
   .status.success {

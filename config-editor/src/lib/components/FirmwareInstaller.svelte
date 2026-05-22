@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ask, message } from '@tauri-apps/plugin-dialog';
   import { getFirmwareVersions, installFirmware } from '$lib/api';
+  import ReflashCircuitPython from './ReflashCircuitPython.svelte';
   import type {
     DetectedDevice,
     FirmwareVersions,
@@ -171,6 +172,21 @@
       <strong>Error:</strong> {errorMsg}
     </div>
   {/if}
+
+  <details class="recovery">
+    <summary>Advanced / Recovery</summary>
+    <p class="recovery-blurb">
+      Wrong CircuitPython version, a bad <code>code.py</code>, or a half-broken
+      install? Reflash CircuitPython 7.3.1 directly from here. The editor will
+      ask the device to drop into its RP2040 bootloader, copy the bundled
+      <code>.uf2</code>, and wait for <code>CIRCUITPY</code> to remount — no
+      terminal commands required.
+    </p>
+    <ReflashCircuitPython
+      device={device}
+      onComplete={() => refreshVersions(device)}
+    />
+  </details>
 </section>
 
 <style>
@@ -325,5 +341,41 @@
   .result ul {
     margin: 6px 0 0 0;
     padding-left: 20px;
+  }
+
+  .recovery {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: var(--bg-tertiary, var(--bg-primary));
+    border: 1px dashed var(--border-color);
+    border-radius: 4px;
+    font-size: 13px;
+  }
+
+  .recovery > summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-weight: 600;
+    user-select: none;
+    list-style: revert;
+  }
+
+  .recovery > summary:hover {
+    color: var(--text-primary);
+  }
+
+  .recovery .recovery-blurb {
+    margin: 10px 0 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  .recovery code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--bg-secondary);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+    color: var(--text-primary);
   }
 </style>

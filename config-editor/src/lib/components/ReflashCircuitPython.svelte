@@ -252,9 +252,12 @@
       {:else if flow.kind === 'awaitingBootloader'}
         <p>Waiting for the device to reboot into <code>RPI-RP2</code> bootloader mode.</p>
         <p class="hint">
-          If the device doesn't enter bootloader on its own within ~10 s,
-          unplug it, hold <strong>Switch 1</strong> / <strong>KEY0</strong>,
-          and plug USB back in until <code>RPI-RP2</code> appears.
+          Healthy auto-entry resolves in ~3 s. If nothing happens, see the
+          <a
+            href="https://github.com/MC-Music-Workshop/midi-captain-max/blob/main/docs/recovery-bootloader-entry.md"
+            target="_blank"
+            rel="noopener noreferrer"
+          >manual recovery guide</a>.
         </p>
         <div class="status">
           <span class="spinner" aria-hidden="true"></span>
@@ -262,11 +265,11 @@
         </div>
         {#if bootloaderStalled}
           <div class="status error">
-            No <code>RPI-RP2</code> mount detected after 60 seconds. The device
-            may be powered off, the serial reach may have failed, or the click
-            may have happened mid-power-cycle. Try cancelling and clicking
-            <strong>Reflash CircuitPython 7.3.1</strong> again with the device
-            on and connected.
+            No <code>RPI-RP2</code> mount detected within the timeout. The
+            device may be powered off, the serial reach may have failed, or
+            the click may have happened mid-power-cycle. Cancel, confirm the
+            device is on and connected, and click
+            <strong>Reflash CircuitPython 7.3.1</strong> again.
           </div>
         {/if}
         <div class="actions">
@@ -324,26 +327,26 @@
         {#if flow.showManualFallback}
           <div class="manual-fallback">
             <p>
-              <strong>Couldn't reach the device over serial.</strong> Try entering
-              bootloader mode manually instead:
+              <strong>Couldn't reach the device over serial.</strong> The most
+              reliable next step is to drive the bootloader from a serial
+              terminal by hand — usually works even when the GUI's attempt
+              didn't.
             </p>
-            <ol>
-              <li>Unplug the device from USB.</li>
-              <li>
-                Hold down <strong>Switch 1</strong> (top-left footswitch) /
-                <strong>KEY0</strong>, or — if that doesn't work — press the
-                physical <strong>BOOTSEL</strong> button on the RP2040 module
-                inside the enclosure.
-              </li>
-              <li>Plug USB back in while still holding the button.</li>
-              <li>
-                Release once a drive named <code>RPI-RP2</code> appears in
-                Finder / Explorer.
-              </li>
-            </ol>
+            <p>
+              Full instructions (serial REPL first, physical BOOTSEL as a
+              last resort):
+              <br />
+              <a
+                href="https://github.com/MC-Music-Workshop/midi-captain-max/blob/main/docs/recovery-bootloader-entry.md"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                docs/recovery-bootloader-entry.md
+              </a>
+            </p>
             <p class="hint">
-              Once <code>RPI-RP2</code> is mounted, the top-level reflash banner
-              will appear and the rest of the flow takes over.
+              Once <code>RPI-RP2</code> mounts, the top-level reflash banner
+              picks it up automatically and the rest of the flow takes over.
             </p>
           </div>
         {/if}
@@ -420,15 +423,6 @@
     font-size: 16px;
   }
 
-  .modal ol {
-    margin: 8px 0;
-    padding-left: 22px;
-  }
-
-  .modal li {
-    margin: 4px 0;
-  }
-
   .modal code {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     background: var(--bg-secondary);
@@ -459,9 +453,9 @@
   .manual-fallback p {
     margin: 0 0 8px;
   }
-  .manual-fallback ol {
-    margin: 0 0 8px;
-    padding-left: 22px;
+  .manual-fallback a {
+    color: var(--accent);
+    text-decoration: underline;
   }
 
   .status.success {

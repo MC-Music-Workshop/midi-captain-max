@@ -11,6 +11,7 @@
 use crate::commands::ConfigError;
 use crate::device::{get_volume_name, get_volumes_path};
 use serde::Serialize;
+use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use tauri::ipc::Channel;
 use tauri::{command, AppHandle, Manager};
@@ -101,31 +102,72 @@ fn bundled_uf2_path(app: &AppHandle) -> Result<PathBuf, ConfigError> {
 
 /// Copy the bundled `.uf2` onto the `RPI-RP2` bootloader drive.
 ///
-/// The RP2040 ROM bootloader unmounts the drive mid-write once it has enough
-/// bytes to commit, then reboots into the new firmware. The OS surfaces that
-/// disconnect as an IO error on `fs::copy`'s close. If the drive's gone, that's
-/// the bootloader handing off — treat as success. If the drive's still there
-/// and the copy failed, propagate the error.
+/// Uses explicit `OpenOptions` + `io::copy` + `sync_all` rather than
+/// `std::fs::copy`. The bare `fs::copy` closes the destination via `Drop`,
+/// which on macOS USB MSC volumes does not force a kernel buffer flush —
+/// bytes can sit in the page cache indefinitely. The RP2040 bootloader
+/// waits for the actual write, so without an explicit `sync_all` the UI
+/// hangs in the "copying" state with the device never rebooting. This
+/// mirrors `installer::copy_file_synced` for the same reason.
+///
+/// Tolerance for mid-write disconnect: the bootloader unmounts the drive
+/// once it has enough bytes to commit. The OS surfaces that as either a
+/// `WriteZero`/`BrokenPipe` on `io::copy` or a generic IO error on
+/// `sync_all`. If the drive has vanished, treat as success — the
+/// bootloader took over.
 pub(crate) fn copy_uf2_to_bootloader(
     uf2_src: &Path,
     bootloader: &Path,
 ) -> Result<(), ConfigError> {
     let target = bootloader.join(BUNDLED_UF2_FILENAME);
-    match std::fs::copy(uf2_src, &target) {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            if !bootloader.exists() {
-                // Bootloader has unmounted itself — write was accepted, reboot incoming.
-                Ok(())
-            } else {
-                Err(ConfigError::msg(format!(
-                    "Failed to copy .uf2 onto {}: {}. \
-                     If the device disconnected mid-copy, try again.",
-                    bootloader.display(),
-                    e
-                )))
-            }
-        }
+
+    let mut reader = File::open(uf2_src).map_err(|e| {
+        ConfigError::msg(format!("Failed to open bundled .uf2 at {}: {}", uf2_src.display(), e))
+    })?;
+    let mut writer = match OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&target)
+    {
+        Ok(f) => f,
+        Err(e) => return classify_post_copy_error(bootloader, "open", e),
+    };
+
+    if let Err(e) = std::io::copy(&mut reader, &mut writer) {
+        return classify_post_copy_error(bootloader, "write", e);
+    }
+
+    if let Err(e) = writer.sync_all() {
+        return classify_post_copy_error(bootloader, "sync", e);
+    }
+
+    // Explicitly drop the writer so the kernel finalises the file handle
+    // before we return success. Belt-and-suspenders with sync_all above.
+    drop(writer);
+    Ok(())
+}
+
+/// Classify an IO error that happened at any step of the copy. If the
+/// bootloader drive has unmounted itself (RP2040 took the bytes and is
+/// flashing), treat as success regardless of which step erred. Otherwise
+/// propagate with context about which step failed.
+fn classify_post_copy_error(
+    bootloader: &Path,
+    step: &str,
+    e: std::io::Error,
+) -> Result<(), ConfigError> {
+    if !bootloader.exists() {
+        // Bootloader has unmounted itself — write accepted, reboot incoming.
+        Ok(())
+    } else {
+        Err(ConfigError::msg(format!(
+            "Failed to {} .uf2 onto {}: {}. \
+             If the device disconnected mid-copy, try again.",
+            step,
+            bootloader.display(),
+            e
+        )))
     }
 }
 

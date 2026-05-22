@@ -84,7 +84,7 @@
       if (flow.kind === 'awaitingBootloader') {
         bootloaderStalled = true;
       }
-    }, 60_000);
+    }, 20_000);
   }
 
   onDestroy(clearPollers);

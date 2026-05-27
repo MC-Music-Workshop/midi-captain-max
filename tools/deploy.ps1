@@ -199,11 +199,34 @@ if ($Install) {
     $circupCmd = Get-Command circup -ErrorAction SilentlyContinue
     if (-not $circupCmd) {
         Write-Host "  circup not found. Installing..."
-        pip install circup --quiet 2>$null
+        # Resolve a usable pip: bare `pip`, then `python -m pip`, then `py -m pip`.
+        # Windows Python installs often expose only the `py` launcher (or
+        # `python`) on PATH, not bare `pip`; calling `pip` directly then throws
+        # a terminating CommandNotFoundException under ErrorActionPreference=Stop.
+        $pipRunner = $null
+        if (Get-Command pip -ErrorAction SilentlyContinue) {
+            $pipRunner = @("pip")
+        } elseif (Get-Command python -ErrorAction SilentlyContinue) {
+            $pipRunner = @("python", "-m", "pip")
+        } elseif (Get-Command py -ErrorAction SilentlyContinue) {
+            $pipRunner = @("py", "-m", "pip")
+        }
+        if (-not $pipRunner) {
+            Write-Host "ERROR: Python/pip not found on PATH" -ForegroundColor Red
+            Write-Host "  Install Python 3 from https://www.python.org/downloads/"
+            Write-Host "  (check 'Add python.exe to PATH' during install), then re-run."
+            Write-Host "  Or install circup manually: py -m pip install circup"
+            exit 1
+        }
+        # NB: avoid $pipRunner[1..(Count-1)] - for a 1-element array that is
+        # $pipRunner[1..0], and PowerShell's 1..0 counts DOWN (1,0), corrupting
+        # the call. Select-Object -Skip 1 yields an empty list as intended.
+        $pipArgs = @($pipRunner | Select-Object -Skip 1)
+        & $pipRunner[0] @pipArgs install circup --quiet 2>$null
         $circupCmd = Get-Command circup -ErrorAction SilentlyContinue
         if (-not $circupCmd) {
             Write-Host "ERROR: Failed to install circup" -ForegroundColor Red
-            Write-Host "  Try: pip install circup"
+            Write-Host "  Try: $($pipRunner -join ' ') install circup"
             exit 1
         }
     }

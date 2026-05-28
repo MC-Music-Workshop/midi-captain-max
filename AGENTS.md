@@ -114,7 +114,7 @@ cd config-editor/src-tauri && cargo clippy --lib --no-deps    # Rust
 
 ### Dependencies
 - **`requirements-dev.txt`**: CI/dev tools (ruff, pytest)
-- **`requirements-circuitpython.txt`**: On-device libraries for `circup install -r`
+- **`requirements-circuitpython.txt`**: Maintainer-only list of bundled CircuitPython libs; used to refresh `firmware/dev/lib/` from the Adafruit bundle via `circup install -r`. End-users never need circup — `lib/` ships in the release zip.
 
 ---
 

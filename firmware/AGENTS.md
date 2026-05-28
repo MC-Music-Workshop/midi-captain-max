@@ -21,9 +21,9 @@ Target **CircuitPython 7.x** (7.3.1 verified on devices). Board identifies as `r
 
 `firmware/dev/lib/` ships `.mpy` files in format v5, loadable by CP 7.x. To verify before adding a new lib: `xxd <file>.mpy | head -1` — the second byte is the format version (`05` = v5 = CP 7.x; `06` = v6 = CP 8.x+, will fail on CP 7).
 
-### Never pass `circup install --py`
+### Never mix `.py` source over the bundled `.mpy` libs
 
-`tools/deploy.{sh,ps1}` deliberately omit `--py`. With `--py`, `circup` installs source `.py` over the bundle's `.mpy`, so both forms coexist in `/lib`. CP's resolution is version-dependent and the `.py` source often pulls in modules the runtime doesn't have (e.g. `busdisplay` is CP 9-only) — this bricked a real CP 7.3.1 NANO4.
+`firmware/dev/lib/` ships pre-compiled `.mpy` v5 libraries; the deploy scripts copy them straight to the device. Don't drop `.py` source for the same module alongside (e.g. via `circup install --py`). With both forms in `/lib`, CP's resolution is version-dependent and the `.py` source often pulls in modules the runtime doesn't have (e.g. `busdisplay` is CP 9-only) — this bricked a real CP 7.3.1 NANO4. When refreshing the bundle (maintainer task), pull `.mpy` only.
 
 ### Automating CircuitPython REPL via serial
 

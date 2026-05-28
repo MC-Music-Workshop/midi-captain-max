@@ -8,18 +8,11 @@
 
 .PARAMETER Device
     First-time setup for a device type (one1, duo2, nano4, mini6, std10).
-    Writes the correct config template, installs CircuitPython libraries,
-    and deploys firmware. The go-to for new devices.
+    Writes the correct config template and deploys firmware. The go-to
+    for new devices.
 
 .PARAMETER ResetConfig
     Overwrite config.json with the device-type template defaults.
-    Does not reinstall libraries.
-
-.PARAMETER Install
-    Check/install CircuitPython libraries without touching config.
-
-.PARAMETER LibsOnly
-    Only install libraries (no firmware copy).
 
 .PARAMETER Eject
     Eject device after deploy (forces clean reload).
@@ -32,10 +25,8 @@
 
 .EXAMPLE
     .\deploy.ps1                          # Quick deploy (sync firmware only)
-    .\deploy.ps1 -Device nano4           # First-time NANO4 setup (config + libs + firmware)
+    .\deploy.ps1 -Device nano4           # First-time NANO4 setup (config + firmware)
     .\deploy.ps1 -ResetConfig            # Reset config.json to template defaults
-    .\deploy.ps1 -Install                 # Re-check/install libraries
-    .\deploy.ps1 -LibsOnly               # Just install CircuitPython libs
     .\deploy.ps1 -Eject                   # Deploy + eject (clean disconnect)
     .\deploy.ps1 -MountPoint E:\          # Custom mount point
 #>
@@ -45,11 +36,12 @@ param(
     [ValidateSet("one1", "duo2", "nano4", "mini6", "std10")]
     [string]$Device,
     [switch]$ResetConfig,
-    [switch]$Install,
-    [switch]$LibsOnly,
     [switch]$Eject,
     [switch]$Fresh,
-    [string]$MountPoint
+    [string]$MountPoint,
+    # Deprecated, accepted but ignored: lib/ is bundled in the firmware zip.
+    [switch]$Install,
+    [switch]$LibsOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -60,9 +52,10 @@ if ($Fresh) {
     $ResetConfig = $true
 }
 
-# -Device implies -Install (libraries) and config write
-if ($Device) {
-    $Install = $true
+# -Install / -LibsOnly are deprecated: libraries are bundled in the firmware zip,
+# so circup is no longer needed. Accept the flags for backwards compat and warn.
+if ($Install -or $LibsOnly) {
+    Write-Host "WARNING: -Install / -LibsOnly are deprecated and ignored - libraries are bundled in the firmware zip." -ForegroundColor Yellow
 }
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -83,18 +76,6 @@ if (Test-Path (Join-Path $ProjectRoot "firmware\dev")) {
     Write-Host "Expected firmware\dev\ (dev repo) or code.py (distributed package)"
     exit 1
 }
-
-# Required CircuitPython libraries
-$RequiredLibs = @(
-    "adafruit_midi"
-    "adafruit_display_text"
-    "adafruit_st7789"
-    "neopixel"
-    "adafruit_debouncer"
-)
-
-# If LibsOnly is set, also enable Install
-if ($LibsOnly) { $Install = $true }
 
 Write-Host "=== MIDI Captain Firmware Deploy ===" -ForegroundColor Blue
 Write-Host ""
@@ -187,53 +168,6 @@ Long-term CP 9/10 migration is tracked in issue #2:
 "@
             exit 1
         }
-    }
-}
-
-# Install libraries if requested
-if ($Install) {
-    Write-Host ""
-    Write-Host "Installing CircuitPython libraries..." -ForegroundColor Yellow
-
-    # Check for circup
-    $circupCmd = Get-Command circup -ErrorAction SilentlyContinue
-    if (-not $circupCmd) {
-        Write-Host "  circup not found. Installing..."
-        pip install circup --quiet 2>$null
-        $circupCmd = Get-Command circup -ErrorAction SilentlyContinue
-        if (-not $circupCmd) {
-            Write-Host "ERROR: Failed to install circup" -ForegroundColor Red
-            Write-Host "  Try: pip install circup"
-            exit 1
-        }
-    }
-    Write-Host "circup available" -ForegroundColor Green
-
-    # Install each library
-    # --path: target the device mount point
-    # --allow-unsupported: we target CP 7.x which circup considers EOL.
-    #
-    # We deliberately do NOT pass `--py`. Mixing circup's `.py` source with
-    # the bundle's `.mpy` puts both forms in /lib for the same module, which
-    # is fragile: any disturbance to mtime / directory entry order can flip
-    # which form CircuitPython loads, and the `.py` form often pulls in
-    # newer-CP-only modules (e.g. `busdisplay`) that crash on CP 7.
-    foreach ($lib in $RequiredLibs) {
-        Write-Host "  Installing $lib... " -NoNewline
-        $result = & circup --path $MountPoint --allow-unsupported install $lib 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "done" -ForegroundColor Green
-        } else {
-            Write-Host "(already installed)" -ForegroundColor Yellow
-        }
-    }
-    Write-Host "Libraries installed" -ForegroundColor Green
-
-    # Exit early if libs-only mode
-    if ($LibsOnly) {
-        Write-Host ""
-        Write-Host "Library installation complete!" -ForegroundColor Green
-        exit 0
     }
 }
 

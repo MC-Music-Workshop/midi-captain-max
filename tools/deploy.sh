@@ -7,19 +7,15 @@
 #
 # Options:
 #   --device TYPE   First-time setup for a device type (one1, duo2, nano4, mini6, std10).
-#                   Writes the correct config template, installs CircuitPython
-#                   libraries, and deploys firmware. The go-to for new devices.
+#                   Writes the correct config template and deploys firmware.
+#                   The go-to for new devices.
 #   --reset-config  Overwrite config.json with the device-type template defaults.
-#                   Does not reinstall libraries.
-#   --install       Check/install CircuitPython libraries without touching config.
-#   --libs-only     Only install libraries (no firmware copy).
 #   --eject         Eject device after deploy (forces clean reload).
 #
 # Examples:
 #   ./deploy.sh                          # Quick deploy (sync firmware only)
-#   ./deploy.sh --device nano4           # First-time NANO4 setup (config + libs + firmware)
+#   ./deploy.sh --device nano4           # First-time NANO4 setup (config + firmware)
 #   ./deploy.sh --reset-config           # Reset config.json to template defaults
-#   ./deploy.sh --install                # Re-check/install libraries
 #   ./deploy.sh --eject                  # Deploy + eject (clean disconnect)
 #   ./deploy.sh /Volumes/MIDICAPT        # Custom mount point
 #
@@ -52,19 +48,8 @@ fi
 MOUNT_POINT="/Volumes/CIRCUITPY"
 DO_EJECT=false
 DO_RESET=false
-DO_INSTALL=false
-LIBS_ONLY=false
 DO_RESET_CONFIG=false
 FORCE_DEVICE_TYPE=""
-
-# Required CircuitPython libraries
-REQUIRED_LIBS=(
-    "adafruit_midi"
-    "adafruit_display_text"
-    "adafruit_st7789"
-    "neopixel"
-    "adafruit_debouncer"
-)
 
 # Colors for output
 RED='\033[0;31m'
@@ -96,12 +81,11 @@ while [ $i -lt ${#ARGS[@]} ]; do
                 exit 1
             fi
             ;;
-        --install)
-            DO_INSTALL=true
-            ;;
-        --libs-only)
-            LIBS_ONLY=true
-            DO_INSTALL=true
+        --install|--libs-only)
+            # Removed: lib/ is now bundled in the firmware zip; circup is unnecessary.
+            # Accept the flag for backwards compat and ignore it so older wrappers
+            # don't break. Will be deleted in a future release.
+            echo -e "${YELLOW}⚠️  $arg is deprecated and ignored — libraries are bundled in the firmware zip.${NC}"
             ;;
         --eject)
             DO_EJECT=true
@@ -118,11 +102,9 @@ while [ $i -lt ${#ARGS[@]} ]; do
             echo "Usage: ./deploy.sh [options] [mount_point]"
             echo ""
             echo "Options:"
-            echo "  --device TYPE   First-time setup (config + libs + firmware)"
+            echo "  --device TYPE   First-time setup (config + firmware)"
             echo "                  Valid types: $VALID_DEVICES"
             echo "  --reset-config  Overwrite config.json with template defaults"
-            echo "  --install       Check/install CircuitPython libraries"
-            echo "  --libs-only     Only install libraries (no firmware copy)"
             echo "  --eject         Eject device after deploy (forces clean reload)"
             echo ""
             echo "Quick deploy (no flags) syncs firmware only, preserves config."
@@ -139,11 +121,6 @@ while [ $i -lt ${#ARGS[@]} ]; do
     esac
     i=$((i + 1))
 done
-
-# --device implies --install (libraries) and config write
-if [ -n "$FORCE_DEVICE_TYPE" ]; then
-    DO_INSTALL=true
-fi
 
 echo -e "${BLUE}=== MIDI Captain Firmware Deploy ===${NC}"
 echo ""
@@ -264,50 +241,6 @@ else
     NEW_VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
 fi
 echo "  Upgrading to:     $NEW_VERSION"
-
-# Install libraries if requested (--install or --device)
-if [ "$DO_INSTALL" = true ]; then
-    echo ""
-    echo -e "${YELLOW}📦 Installing CircuitPython libraries...${NC}"
-
-    # Check for circup
-    if ! command -v circup &> /dev/null; then
-        echo "  circup not found. Installing..."
-        pip install circup --quiet
-        if ! command -v circup &> /dev/null; then
-            echo -e "${RED}✗ Failed to install circup${NC}"
-            echo "  Try: pip install circup"
-            exit 1
-        fi
-    fi
-    echo -e "${GREEN}✓ circup available${NC}"
-
-    # Install each library (--path must come before the subcommand)
-    # --allow-unsupported: we target CP 7.x which circup considers EOL.
-    #
-    # We deliberately do NOT pass `--py`. Mixing circup's `.py` source with
-    # the bundle's `.mpy` puts both forms in /lib for the same module, which
-    # is fragile: any disturbance to mtime / directory entry order can flip
-    # which form CircuitPython loads, and the `.py` form often pulls in
-    # newer-CP-only modules (e.g. `busdisplay`) that crash on CP 7.
-    CIRCUP="circup --path $MOUNT_POINT --allow-unsupported"
-    for lib in "${REQUIRED_LIBS[@]}"; do
-        echo -n "  Installing $lib... "
-        if $CIRCUP install "$lib" 2>/dev/null; then
-            echo -e "${GREEN}✓${NC}"
-        else
-            echo -e "${YELLOW}(already installed)${NC}"
-        fi
-    done
-    echo -e "${GREEN}✓ Libraries installed${NC}"
-
-    # Exit early if libs-only mode
-    if [ "$LIBS_ONLY" = true ]; then
-        echo ""
-        echo -e "${GREEN}✅ Library installation complete!${NC}"
-        exit 0
-    fi
-fi
 
 echo ""
 echo "📁 Source: $DEV_DIR"

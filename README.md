@@ -79,6 +79,7 @@ In many cases, the first install still requires a one-time bootstrap because the
    <br>For example, if you have a Nano 4, run `./deploy.sh --device nano4`_.
    - macOS / Linux: `./deploy.sh --device std10|mini6|nano4|duo2|one1`
    - Windows PowerShell: `.\deploy.ps1 -Device std10|mini6|nano4|duo2|one1`
+   - Windows cmd (if PowerShell blocks unsigned scripts): `deploy.bat -Device std10|mini6|nano4|duo2|one1` — invokes `deploy.ps1` with a per-process `ExecutionPolicy Bypass`; does not change any system policy.
 4. Reconnect the device and open the MIDI Captain MAX Config Editor.
 5. From then on, use the **Firmware Installation** section in the app for future updates.
 

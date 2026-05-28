@@ -1,6 +1,10 @@
-# CircuitPython library dependencies
-# Install with circup: circup install -r requirements-circuitpython.txt
-# Or download from: https://circuitpython.org/libraries
+# CircuitPython library dependencies (maintainer reference)
+#
+# These libs are PRE-BUNDLED in firmware/dev/lib/ and ship in the release zip,
+# so end-users do NOT need circup. This file exists only so a maintainer can
+# refresh the bundled .mpy files from the Adafruit bundle:
+#   circup install -r requirements-circuitpython.txt --path firmware/dev/
+# Or download manually from: https://circuitpython.org/libraries
 
 adafruit_midi
 adafruit_display_text

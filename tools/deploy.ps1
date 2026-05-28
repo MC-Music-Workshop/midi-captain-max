@@ -199,25 +199,52 @@ if ($Install) {
     $circupCmd = Get-Command circup -ErrorAction SilentlyContinue
     if (-not $circupCmd) {
         Write-Host "  circup not found. Installing..."
-        # Resolve a usable pip: bare `pip`, then `python -m pip`, then `py -m pip`.
-        # Windows Python installs often expose only the `py` launcher (or
-        # `python`) on PATH, not bare `pip`; calling `pip` directly then throws
-        # a terminating CommandNotFoundException under ErrorActionPreference=Stop.
+        # Resolve a usable pip across three candidate forms:
+        #   `pip`              - bare pip on PATH
+        #   `python -m pip`    - pip via python module
+        #   `py -m pip`        - pip via the Windows py launcher
+        #
+        # Two real-world Windows gotchas to dodge here:
+        #
+        # 1. Bare `pip` is often NOT on PATH on Windows Python installs - calling
+        #    it directly throws a terminating CommandNotFoundException under
+        #    $ErrorActionPreference = 'Stop'.
+        #
+        # 2. `python.exe` on Windows 10/11 may be the Microsoft Store "app
+        #    execution alias" stub at C:\Users\<u>\AppData\Local\Microsoft\
+        #    WindowsApps\python.exe - a 0-byte shim that just prints "Python
+        #    was not found; run without arguments to install from the Microsoft
+        #    Store" and exits non-zero. Get-Command finds it; running it fails.
+        #
+        # So: filter out WindowsApps shims by Source path, then probe each
+        # surviving candidate with `--version`. First one to exit 0 wins.
+        $candidates = @(
+            @("pip"),
+            @("python", "-m", "pip"),
+            @("py", "-m", "pip")
+        )
         $pipRunner = $null
-        if (Get-Command pip -ErrorAction SilentlyContinue) {
-            $pipRunner = @("pip")
-        } elseif (Get-Command python -ErrorAction SilentlyContinue) {
-            $pipRunner = @("python", "-m", "pip")
-        } elseif (Get-Command py -ErrorAction SilentlyContinue) {
-            $pipRunner = @("py", "-m", "pip")
+        foreach ($cand in $candidates) {
+            $cmd = Get-Command $cand[0] -ErrorAction SilentlyContinue
+            if (-not $cmd) { continue }
+            if ($cmd.Source -like '*\WindowsApps\*') { continue }
+            $probeArgs = @($cand | Select-Object -Skip 1) + '--version'
+            & $cand[0] @probeArgs *> $null
+            if ($LASTEXITCODE -eq 0) {
+                $pipRunner = $cand
+                break
+            }
         }
         if (-not $pipRunner) {
-            Write-Host "ERROR: Python/pip not found on PATH" -ForegroundColor Red
+            Write-Host "ERROR: working Python/pip not found on PATH" -ForegroundColor Red
             Write-Host "  Install Python 3 from https://www.python.org/downloads/"
             Write-Host "  (check 'Add python.exe to PATH' during install), then re-run."
+            Write-Host "  Note: the bare 'python.exe' shim from the Microsoft Store"
+            Write-Host "  does not count - install the real interpreter from python.org."
             Write-Host "  Or install circup manually: py -m pip install circup"
             exit 1
         }
+        Write-Host "  Using: $($pipRunner -join ' ')"
         # NB: avoid $pipRunner[1..(Count-1)] - for a 1-element array that is
         # $pipRunner[1..0], and PowerShell's 1..0 counts DOWN (1,0), corrupting
         # the call. Select-Object -Skip 1 yields an empty list as intended.

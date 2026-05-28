@@ -11,17 +11,17 @@
 
 ## Install with the Deploy Script (Recommended)
 
-The deploy script is the easiest way to install or update firmware. It automatically detects your device, installs required libraries, and preserves your settings.
+The deploy script is the easiest way to install or update firmware. It automatically detects your device and preserves your settings. All required CircuitPython libraries are already bundled in this package — no separate library install step is needed.
 
 ### macOS / Linux
 
 Open a terminal in this folder and run:
 
 ```bash
-# First-time install (downloads required libraries)
-./deploy.sh --install
+# First-time setup for a device type (writes the matching config + firmware)
+./deploy.sh --device nano4   # one1 | duo2 | nano4 | mini6 | std10
 
-# Update existing firmware
+# Subsequent updates (firmware only, preserves config)
 ./deploy.sh
 ```
 
@@ -29,34 +29,34 @@ Open a terminal in this folder and run:
 
 | Flag | What it does |
 |------|-------------|
-| `--install` | Full install including CircuitPython libraries |
+| `--device TYPE` | First-time setup: write the device-specific config template + deploy firmware |
+| `--reset-config` | Overwrite config.json with the device-type template defaults |
 | `--eject` | Safely eject the device after deploying |
-| `--fresh` | Reset config.json to factory defaults |
-| `--libs-only` | Only install/update CircuitPython libraries |
 
-### Windows (PowerShell)
+### Windows
 
-Open PowerShell in this folder and run:
+Open `cmd` or PowerShell in this folder and run:
 
-```powershell
-# First-time install (downloads required libraries)
-.\deploy.ps1 -Install
+```cmd
+:: cmd (recommended if PowerShell blocks unsigned scripts)
+deploy.bat -Device nano4
 
-# Update existing firmware
-.\deploy.ps1
+:: PowerShell
+.\deploy.ps1 -Device nano4
 ```
+
+`deploy.bat` invokes PowerShell with `-ExecutionPolicy Bypass` for this one process only — it sidesteps the "running scripts is disabled on this system" error without changing any system policy.
 
 **Options:**
 
 | Flag | What it does |
 |------|-------------|
-| `-Install` | Full install including CircuitPython libraries |
+| `-Device TYPE` | First-time setup: write the device-specific config template + deploy firmware |
+| `-ResetConfig` | Overwrite config.json with the device-type template defaults |
 | `-Eject` | Safely eject the device after deploying |
-| `-Fresh` | Reset config.json to factory defaults |
-| `-LibsOnly` | Only install/update CircuitPython libraries |
 | `-MountPoint E:\` | Use a specific drive letter |
 
-> **Both scripts** auto-detect your device type (STD10 or Mini6) and preserve your existing button mappings, colors, and other settings.
+> **Both scripts** auto-detect your device type from existing config and preserve your existing button mappings, colors, and other settings.
 
 ---
 
@@ -104,6 +104,7 @@ If the drive doesn't appear at all — or if the Config Editor refused to instal
 |---------------|-------------|
 | `deploy.sh` | Install script for macOS/Linux |
 | `deploy.ps1` | Install script for Windows PowerShell |
+| `deploy.bat` | Windows cmd launcher for `deploy.ps1` (bypasses ExecutionPolicy) |
 | `code.py` | Main firmware entry point |
 | `boot.py` | Startup configuration |
 | `config.json` | Default settings (STD10) |

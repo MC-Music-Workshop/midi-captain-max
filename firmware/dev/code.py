@@ -1065,7 +1065,17 @@ def _render_keytimes_led(btn_num, state, btn_config):
         # Label precedence: long override (if non-empty) > short override > button-level label.
         effective_label = (state.long_label or state.short_label or btn_config.get("label", ""))[:6]
         button_labels[idx].text = effective_label
-        button_labels[idx].color = rgb_to_hex(rgb)
+        # Label text must stay readable regardless of the `dim` flag: a dimmed LED
+        # color is 15% brightness — near-black and invisible against the black
+        # display. Recompute the winning layer color at full brightness, and never
+        # render black-on-black (kill-switch / no-color cases fall back to the
+        # button color, then white). The LED + box border below keep the dim color.
+        label_rgb = compute_keytimes_led_color(state.short_color, False,
+                                               state.long_color, False,
+                                               btn_config.get("color"))
+        if not any(label_rgb):
+            label_rgb = get_color(btn_config.get("color") or "white")
+        button_labels[idx].color = rgb_to_hex(label_rgb)
         if idx < len(button_boxes):
             _, box_palette = button_boxes[idx]
             box_palette[1] = rgb_to_hex(rgb)

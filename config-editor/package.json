@@ -4,6 +4,8 @@
   "description": "",
   "type": "module",
   "scripts": {
+    "stage-dev-resources": "../tools/fetch-cp-uf2.sh && ../tools/bundle-firmware-for-dev.sh",
+    "predev": "npm run stage-dev-resources",
     "dev": "svelte-kit sync && vite dev",
     "build": "svelte-kit sync && vite build",
     "preview": "vite preview",

@@ -166,11 +166,13 @@ jobs:
         id: header
         run: |
           echo "PRERELEASE=false" >> $GITHUB_OUTPUT # default to 'latest' for now
+          echo "DRAFT=true" >> $GITHUB_OUTPUT # default to draft; auto-publish only for beta
           if [[ "$VERSION" == *"alpha"* ]]; then
             echo "PRERELEASE=true" >> $GITHUB_OUTPUT
             echo "NOTES=⚠️ **Alpha Release** - For testing only. Not recommended for production use." >> $GITHUB_ENV
           elif [[ "$VERSION" == *"beta"* ]]; then
             echo "PRERELEASE=true" >> $GITHUB_OUTPUT
+            echo "DRAFT=false" >> $GITHUB_OUTPUT # beta releases auto-publish
             echo "NOTES=🧪 **Beta Release** - Feature complete, undergoing final testing." >> $GITHUB_ENV
           elif [[ "$VERSION" == *"rc"* ]]; then
             echo "PRERELEASE=true" >> $GITHUB_OUTPUT
@@ -215,7 +217,7 @@ jobs:
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          draft: ${{ steps.header.outputs.DRAFT }}
           prerelease:  ${{ steps.header.outputs.PRERELEASE }}
           make_latest: ${{ steps.header.outputs.PRERELEASE != 'true' }}
           files: dist/*
@@ -226,10 +228,16 @@ jobs:
       - name: Print Release
         run: |
           {
-            echo "## Draft release \`$VERSION\` created"
-            echo ""
-            echo "Release URL: ${{ steps.create_release.outputs.url }}"
-            echo ""
-            echo "**Next steps:** Download and test the artifacts, then publish the release."
+            if [ "${{ steps.header.outputs.DRAFT }}" = "true" ]; then
+              echo "## Draft release \`$VERSION\` created"
+              echo ""
+              echo "Release URL: ${{ steps.create_release.outputs.url }}"
+              echo ""
+              echo "**Next steps:** Download and test the artifacts, then publish the release."
+            else
+              echo "## Release \`$VERSION\` published"
+              echo ""
+              echo "Release URL: ${{ steps.create_release.outputs.url }}"
+            fi
           } >> $GITHUB_STEP_SUMMARY
 

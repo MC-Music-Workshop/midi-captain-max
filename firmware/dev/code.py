@@ -1042,15 +1042,36 @@ def _dispatch_keytimes_message(msg, default_channel, btn_num):
 def _render_keytimes_led(btn_num, state, btn_config):
     """Update LED + display for a mode: "keytimes" button based on its current state.
 
-    Uses compute_keytimes_led_color() to apply the two-layer render rule. Label
-    precedence: long_label > short_label > button-level label.
+    Render is driven by state.last_fired — the timing class ("short"/"long") whose
+    most recent event actually fired. That class fully owns BOTH the LED color and
+    the label text until the other class fires; before the first press (last_fired
+    is None) both fall back to the button-level color/label.
+
+    This is deliberately NOT the old "long decorates over short" precedence
+    (`long_label or short_label`). A text label shows one string and the LED one
+    color, so the long layer can't "compose" on top — it just clobbers. Under the
+    old rule the long layer was never cleared, so the first long press left the
+    long label/color stuck on every subsequent short press (#143 follow-up).
     """
     idx = btn_num - 1
     if idx < 0 or idx >= BUTTON_COUNT:
         return
 
-    rgb = compute_keytimes_led_color(state.short_color, state.short_dim,
-                                     state.long_color, state.long_dim,
+    # Suppress the inactive layer so the last-fired class owns the render. Passing
+    # the other layer's color as None makes compute_keytimes_led_color() fall
+    # through to the active layer, then the button-level color.
+    if state.last_fired == "long":
+        a_short_color, a_short_dim = None, False
+        a_long_color, a_long_dim = state.long_color, state.long_dim
+    elif state.last_fired == "short":
+        a_short_color, a_short_dim = state.short_color, state.short_dim
+        a_long_color, a_long_dim = None, False
+    else:
+        a_short_color, a_short_dim = None, False
+        a_long_color, a_long_dim = None, False
+
+    rgb = compute_keytimes_led_color(a_short_color, a_short_dim,
+                                     a_long_color, a_long_dim,
                                      btn_config.get("color"))
 
     led_idx = switch_to_led(btn_num)
@@ -1062,16 +1083,23 @@ def _render_keytimes_led(btn_num, state, btn_config):
         pixels.show()
 
     if HAS_TFT and idx < len(button_labels):
-        # Label precedence: long override (if non-empty) > short override > button-level label.
-        effective_label = (state.long_label or state.short_label or btn_config.get("label", ""))[:6]
+        # Label follows the same last-fired class. long falls back to short_label
+        # then button label (a labelless long entry shows the prior short label);
+        # short falls straight to the button label.
+        if state.last_fired == "long":
+            effective_label = (state.long_label or state.short_label or btn_config.get("label", ""))[:6]
+        elif state.last_fired == "short":
+            effective_label = (state.short_label or btn_config.get("label", ""))[:6]
+        else:
+            effective_label = btn_config.get("label", "")[:6]
         button_labels[idx].text = effective_label
         # Label text must stay readable regardless of the `dim` flag: a dimmed LED
         # color is 15% brightness — near-black and invisible against the black
         # display. Recompute the winning layer color at full brightness, and never
         # render black-on-black (kill-switch / no-color cases fall back to the
         # button color, then white). The LED + box border below keep the dim color.
-        label_rgb = compute_keytimes_led_color(state.short_color, False,
-                                               state.long_color, False,
+        label_rgb = compute_keytimes_led_color(a_short_color, False,
+                                               a_long_color, False,
                                                btn_config.get("color"))
         if not any(label_rgb):
             label_rgb = get_color(btn_config.get("color") or "white")

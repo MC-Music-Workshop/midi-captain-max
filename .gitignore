@@ -29,6 +29,9 @@ emulator/devices/
 emulator/*.log
 emulator/*.uf2
 emulator/*.img
+# Active diagram staged from diagram-<device>.json by test.sh/run.sh
+# (wokwi-cli reads <projectdir>/diagram.json; the per-device sources are tracked)
+emulator/diagram.json
 
 # Bundled firmware for Config Editor — populated by CI or tools/bundle-firmware-for-dev.sh
 config-editor/src-tauri/resources/firmware/*

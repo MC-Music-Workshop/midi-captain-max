@@ -1,3 +1,11 @@
+> **Status (current):** Spike complete and promoted to a real test harness. The
+> emulator now runs **action→outcome hardware tests** — it presses simulated
+> footswitches and asserts on the MIDI the firmware emits — across the STD10,
+> Mini6, and NANO4 variants, wired into `.github/workflows/release.yml`. See
+> [README.md](README.md) for usage. The sections below preserve the original
+> spike narrative; the "Action-Outcome Harness" section near the end records how
+> the open questions were resolved.
+
 ## What Just Happened
 
 This was a spike to find a working emulator for testing MIDI Captain firmware without a physical device. Here's the journey:
@@ -101,19 +109,50 @@ Some Pico devices (running compiled C/C++ firmware) use BOOTSEL to flash a UF2 a
 
 **Recommendation:** Keep file-copy delivery for users, UF2 bundle for emulator only. Address "test what you ship" by ensuring the CI build uses the same source tree as `deploy.sh`.
 
-### Next Steps
+## Action-Outcome Harness
 
-1. **Merge the spike to main** — The approach is proven and working.
+The spike's three "next steps" are done. The boot smoke test became a real
+action→outcome harness, and the open question is answered.
 
-2. **Add a GitHub Actions workflow** — A CI workflow that runs `setup.sh` to build the UF2, then `test.sh` via `wokwi-cli` with a `WOKWI_CLI_TOKEN` secret. Validates firmware boots and initializes correctly on each push/PR.
+**Open question — resolved: yes, serial output is enough.** The firmware already
+prints a parseable line for every event it sends, e.g.
+`[MIDI TX] Ch1 CC20=127 (switch 1, toggle)`. No firmware test mode was needed.
 
-3. **Build a test framework for action-outcome testing** — The current boot test is a sanity check ("did we brick it?"). Real testing requires:
-   - A way to define test scenarios: input actions (button presses, encoder turns, expression pedal values) mapped to expected outcomes (MIDI messages sent, display text, LED colors)
-   - Easy maintenance: adding a new button config shouldn't require rewriting test infrastructure
-   - The Wokwi automation YAML (`test-boot.yaml`) is a starting point but limited and alpha-stage
-   - **Open question:** Does Wokwi's serial output give enough observability to assert on MIDI output? Or do we need a test harness in the firmware itself (e.g., a test mode that logs actions to serial in a parseable format)?
+**Architecture — scenarios drive inputs, test.sh asserts the log.** The first
+instinct (assert each press with scenario `wait-serial`) turned out to be
+unreliable: `wait-serial` only matches serial that arrives *after* the step
+starts, so a press-triggered line races the step and is intermittently missed,
+hanging the run. So the scenario only *drives inputs* (boot waits + `set-control`
+presses with delays), and `test.sh` asserts the emitted MIDI *post-hoc* by
+grepping the serial log against `scenarios/<device>.expected`. Boot banners are
+still asserted via `wait-serial` (reliable — that wait is active from sim start).
 
-### Commits on `wokwi-emulator-spike`
+**What was built:**
 
-1. `2ca619f` — Initial scaffolding (diagram, scripts, configs)
-2. `c44c350` — Working emulator with `build-uf2.py` and all fixes
+- `scenarios/<device>.yaml` — boots, confirms device detection, presses
+  footswitches (`set-control`) with settle/hold delays.
+- `scenarios/<device>.expected` — the literal serial lines `test.sh` greps for.
+- `configs/test-<device>.json` — deterministic per-device configs (a known mix of
+  toggle + momentary buttons on wirable pins) so assertions are stable.
+- `diagram-<device>.json` — per-device hardware models (STD10, Mini6, NANO4).
+- `test.sh <device>` / `test-all.sh` — build the per-device UF2, run its scenario,
+  grep the log; `test-all.sh` loops the matrix.
+- `release.yml` `hardware-test` job — a `device: [std10, mini6, nano4]` matrix.
+
+**Findings that cost real debugging time (now in README "Gotchas"):**
+
+- `wait-serial` is **future-only** (matches only serial after the step starts) and
+  races press-triggered output — hence the post-hoc log-grep design above.
+- `wait-serial` patterns are **regex anchored at line start**; plain (metachar-free)
+  patterns match as substrings anywhere. (`grep -F` in test.sh avoids this.)
+- `--diagram-file` is **ignored** by wokwi-cli 0.26.1; it only reads
+  `<projectdir>/diagram.json`. The scripts stage the device diagram there.
+- Every **momentary** button broadcasts `CC=0` once at boot (a phantom release
+  edge from `Switch.last_state` init); toggles are silent. Assertions target lines
+  unique to the test action to avoid this — but it's real MIDI the firmware sends
+  on power-up, possibly worth a separate look.
+- Wokwi cloud boot time is **variable** (10s..40s+); timeouts are generous.
+
+**Future work:** encoder-turn and expression-pedal scenarios (STD10 only);
+DUO2/ONE1 diagrams + configs; asserting LED/display state (needs screenshots or a
+firmware-side readout, neither wired up yet).

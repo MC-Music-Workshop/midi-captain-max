@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "author": "MIDI Captain MAX",
+  "editor": "wokwi",
+  "comment": "Mini6 (6-switch). Switches 2 (TM) and 3 (TR) are on board.LED/GP25 and board.VBUS_SENSE/GP24, internal Pico pins absent from Wokwi, so they are omitted — only the wirable switches appear. See firmware/dev/devices/mini6.py.",
+  "parts": [
+    {
+      "type": "wokwi-pi-pico",
+      "id": "pico",
+      "top": 0,
+      "left": 0,
+      "attrs": { "env": "circuitpython-7.3.3" }
+    },
+    { "type": "wokwi-pushbutton", "id": "btn1", "top": -80, "left": -40, "attrs": { "label": "TL" } },
+    { "type": "wokwi-pushbutton", "id": "btn4", "top": 200, "left": -40, "attrs": { "label": "BL" } },
+    { "type": "wokwi-pushbutton", "id": "btn5", "top": 200, "left": 60, "attrs": { "label": "BM" } },
+    { "type": "wokwi-pushbutton", "id": "btn6", "top": 200, "left": 160, "attrs": { "label": "BR" } },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led0",
+      "top": 80,
+      "left": 320,
+      "attrs": {}
+    }
+  ],
+  "connections": [
+    ["pico:GP1", "btn1:1.l", "green", []],
+    ["pico:GND.1", "btn1:2.l", "black", []],
+    ["pico:GP9", "btn4:1.l", "blue", []],
+    ["pico:GND.1", "btn4:2.l", "black", []],
+    ["pico:GP10", "btn5:1.l", "blue", []],
+    ["pico:GND.1", "btn5:2.l", "black", []],
+    ["pico:GP11", "btn6:1.l", "blue", []],
+    ["pico:GND.1", "btn6:2.l", "black", []],
+    ["pico:GP7", "led0:DIN", "orange", []],
+    ["pico:GND.1", "led0:VSS", "black", []],
+    ["pico:VBUS", "led0:VDD", "red", []]
+  ],
+  "serialMonitor": { "display": "auto" }
+}

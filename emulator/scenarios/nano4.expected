@@ -1,0 +1,6 @@
+# Serial lines that MUST appear after scenarios/nano4.yaml (literal grep -F).
+# Only lines unique to a test action (see std10.expected for rationale).
+CC20=127 (switch 1, toggle)
+CC20=0 (switch 1, toggle)
+CC22=127 (switch 3, momentary)
+CC23=127 (switch 4, toggle)

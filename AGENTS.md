@@ -52,6 +52,7 @@ Helmut's code was a starting point, not a constraint. We are free to completely 
 | `firmware/dev/lib/` | CircuitPython libraries (CP 7.x `.mpy` format) |
 | `config-editor/` | Config editor app (Tauri 2 + SvelteKit 5) |
 | `tests/` | pytest test suite with CircuitPython hardware mocks |
+| `emulator/` | Wokwi hardware test harness (real firmware on a simulated RP2040) — see `emulator/README.md` |
 | `docs/` | Architecture notes, MIDI protocol docs, hardware findings |
 | `tools/` | Helper scripts (packaging, validation, deployment) |
 

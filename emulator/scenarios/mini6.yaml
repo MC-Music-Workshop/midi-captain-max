@@ -1,0 +1,38 @@
+version: 1
+name: mini6-hardware-test
+# Mini6 (6-switch) hardware test — DRIVES INPUTS ONLY; test.sh asserts the emitted
+# MIDI by grepping the serial log against scenarios/mini6.expected. See std10.yaml
+# for why (wokwi wait-serial can't reliably catch press-triggered output).
+#
+# Hardware mapping (firmware/dev/devices/mini6.py + emulator/diagram-mini6.json):
+#   switch 1 -> GP1  (btn1) toggle     CC20  (press ON, press OFF)
+#   switch 4 -> GP9  (btn4) momentary  CC23  (press 127, release 0)
+#   switch 5 -> GP10 (btn5) toggle     CC24  (press ON)
+# Switches 2/3 are on board.LED/GP25 and board.VBUS_SENSE/GP24 (internal Pico pins
+# absent from Wokwi), omitted. Mini6 has no encoder or expression pedals.
+steps:
+  - wait-serial: "Hardware detected: mini6"
+  - wait-serial: "Running..."
+  - delay: 1000ms
+
+  # Switch 1 (GP1) toggle: press ON, release, press OFF, release
+  - set-control: { part-id: btn1, control: pressed, value: 1 }
+  - delay: 500ms
+  - set-control: { part-id: btn1, control: pressed, value: 0 }
+  - delay: 500ms
+  - set-control: { part-id: btn1, control: pressed, value: 1 }
+  - delay: 500ms
+  - set-control: { part-id: btn1, control: pressed, value: 0 }
+  - delay: 500ms
+
+  # Switch 4 (GP9) momentary: press, release
+  - set-control: { part-id: btn4, control: pressed, value: 1 }
+  - delay: 500ms
+  - set-control: { part-id: btn4, control: pressed, value: 0 }
+  - delay: 500ms
+
+  # Switch 5 (GP10) toggle: press ON, release
+  - set-control: { part-id: btn5, control: pressed, value: 1 }
+  - delay: 500ms
+  - set-control: { part-id: btn5, control: pressed, value: 0 }
+  - delay: 500ms

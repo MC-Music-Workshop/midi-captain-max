@@ -245,6 +245,55 @@ class TestDispatchColorState:
         assert state.short_label == "VERB+"
 
 
+class TestLastFired:
+    """state.last_fired drives which timing class owns the LED + label render.
+
+    Regression for the beta.9 "long label always sticks" bug (#143 follow-up):
+    a long entry's label/color must not bleed onto subsequent short presses.
+    """
+
+    def test_unset_before_any_press(self):
+        state = _make_state(1, 1)
+        assert state.last_fired is None
+
+    def test_short_press_sets_short(self):
+        state = _make_state(1, 1)
+        cb, _ = _msg_collector()
+        cfg = {"mode": "keytimes", "short": [{"up": [CC(20, 127)]}]}
+        dispatch_keytimes_events(["short_down", "short_up"], state, cfg, cb)
+        assert state.last_fired == "short"
+
+    def test_long_press_sets_long(self):
+        state = _make_state(1, 1)
+        cb, _ = _msg_collector()
+        cfg = {"mode": "keytimes", "long": [{"down": [CC(21, 127)]}]}
+        dispatch_keytimes_events(["short_down", "long_down", "long_up"], state, cfg, cb)
+        assert state.last_fired == "long"
+
+    def test_short_after_long_flips_back_to_short(self):
+        # The user's PUP config: short msg in `up`, long msg in `down`. A long
+        # press then a short tap must leave last_fired == "short" so the render
+        # shows the short label, not the stuck long label.
+        state = _make_state(1, 1)
+        cb, _ = _msg_collector()
+        cfg = {"mode": "keytimes",
+               "short": [{"up": [CC(20, 1)], "label": "PUP"}],
+               "long": [{"down": [CC(20, 4)], "label": "BUP"}]}
+        dispatch_keytimes_events(["short_down", "long_down", "long_up"], state, cfg, cb)
+        assert state.last_fired == "long"
+        dispatch_keytimes_events(["short_down", "short_up"], state, cfg, cb)
+        assert state.last_fired == "short"
+
+    def test_empty_slot_does_not_change_last_fired(self):
+        # short_down on an entry whose down slot is empty fires nothing, so it
+        # must not claim last_fired (mirrors the slot-has-content rule).
+        state = _make_state(1, 1)
+        cb, _ = _msg_collector()
+        cfg = {"mode": "keytimes", "short": [{"up": [CC(20, 127)]}]}
+        dispatch_keytimes_events(["short_down"], state, cfg, cb)
+        assert state.last_fired is None
+
+
 class TestDispatchReverbShimmerScenario:
     """End-to-end trace of the reverb+shimmer scenario.
 

@@ -100,8 +100,12 @@ def compute_keytimes_led_color(short_color, short_dim, long_color, long_dim, but
     The 'dim' flag on whichever layer wins applies via dim_color() (15% brightness).
     For the button-level fallback, dim applies if either layer's dim flag is set —
     the user can dim an inherit-color entry without specifying a color.
-    The button-level fallback mirrors the label precedence used in code.py:
-    `long_label or short_label or btn_config["label"]`.
+
+    NOTE: the short>long precedence below resolves whatever layers the CALLER
+    passes. _render_keytimes_led() suppresses the inactive layer (passes its color
+    as None) so the last-fired timing class owns the render — see its docstring.
+    Passing both layers populated keeps the original "long decorates over short"
+    composition, which the unit tests exercise directly.
 
     Args:
         short_color: color name from short cycle layer, or None if unset

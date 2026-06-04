@@ -65,7 +65,11 @@ elif button.color is set:    LED = button.color (fallback for "(inherit)" entrie
 else:                        LED = off
 ```
 
-An entry with no `color` field — "(inherit)" in the editor — means **no override**: the layer's color clears on that entry and the LED falls back to the button-level `color` field. This mirrors the label rendering precedence (`long_label or short_label or button.label`) and matches the boot-time dim glow. An explicit `"off"` is distinct from unset: `"off"` overrides; `(inherit)` does not.
+An entry with no `color` field — "(inherit)" in the editor — means **no override**: the layer's color clears on that entry and the LED falls back to the button-level `color` field. An explicit `"off"` is distinct from unset: `"off"` overrides; `(inherit)` does not.
+
+> **Revision (beta.9 follow-up, #143):** the rule above describes `compute_keytimes_led_color()`, which resolves whatever layers it's handed. At *render* time `_render_keytimes_led()` no longer hands it both layers — it passes only the **last-fired** timing class (short or long), suppressing the other. So the last press's class fully owns BOTH the LED color and the label text until the other class fires; before the first press both fall back to the button-level color/label.
+>
+> Why: a text label shows one string and the LED one color, so a long layer can't *compose* on top of short — it just clobbers. The original `long_label or short_label` precedence never cleared the long layer, so the first long press left the long label/color stuck on every subsequent short press. Tester report: "Long label always sticks" — repro is long-press then short-press (order-dependent, which is why it evaded earlier testing). Last-fired ownership fixes both the label and the LED.
 
 Note: this is *not* "inherit the previous entry's color". An earlier draft of #48 carried the previous entry's color forward, but that caused a wrap-around surprise — a kill-switch `"off"` entry would persist through subsequent inherit entries because the inherit didn't clear the layer. The current rule is per-entry: each press resets the layer to exactly what the entry specifies, or to the button-level fallback if the entry specifies nothing.
 
@@ -196,6 +200,8 @@ Pedalboard mental model: the short cycle is the *primary* effect indicator. The 
 Concretely, this preserves the user's traced expectation: with reverb (short=white) + shimmer (long=blue), the LED is blue while both are on. Hit short again to turn reverb off (short=`off`); LED goes dark even though shimmer is still on, because there's no primary effect to color.
 
 **Rejected:** symmetric override ("long always wins when set"). Loses the kill-switch semantic and surprises users who turn off the primary effect.
+
+> **Superseded at render time (beta.9, #143):** "long always wins when set" is exactly the bug that shipped — `long_label or short_label` with no clear path meant the long layer stuck after the first long press. The composition rationale above still describes `compute_keytimes_led_color()` in isolation, but the live render now shows only the last-fired class (see the Color Render Rule revision note). The reverb+shimmer trace still holds because each step's expectation matches the most recent press; what changes is that a stale long layer no longer bleeds onto later short presses.
 
 **Rejected:** RGB blending of short + long colors. Cute but unpredictable and impossible to reason about during a gig.
 

@@ -255,6 +255,11 @@ class KeytimesButtonState:
         # at press-end (short_up or long_up) if their flag is set.
         self._fired_short = False
         self._fired_long = False
+        # Timing class ("short"/"long") of the most recent event that actually
+        # fired (slot had messages). Drives LED + label render: the last class
+        # exercised fully owns the display until the other class fires. None
+        # until the first press, when the render falls back to button-level color/label.
+        self.last_fired = None
 
 
 # Map from event names emitted by PressTracker to (cycle_name, slot_name).
@@ -282,7 +287,7 @@ def dispatch_keytimes_events(events, state, btn_config, message_callback):
     Side effects:
         - Calls message_callback for each Message in the entries' down/up arrays
         - Updates state.{short,long}_color/dim/label from entries that set them
-        - Sets state._fired_short / _fired_long
+        - Sets state._fired_short / _fired_long and state.last_fired ("short"/"long")
         - Advances state.short_cycle / long_cycle on press-end events (short_up/long_up)
     """
     short_entries = btn_config.get("short", []) or []
@@ -315,6 +320,7 @@ def dispatch_keytimes_events(events, state, btn_config, message_callback):
                 # (2) the short cycle advancing during a long press just because
                 #     short_down fired as an event (with no MIDI to back it up).
                 if slot_messages:
+                    state.last_fired = cycle_name
                     if cycle_name == "short":
                         state._fired_short = True
                     else:

@@ -13,7 +13,7 @@ Once MIDI Captain MAX is installed, manual firmware updates are no longer needed
 
 You can download either:
 
-- The appropriate Config Editor installer for your OS: `.dmg` for macOS, `.exe` or `.msi` for Windows. **The Config Editor includes the bundled firmware, so you don't need to download it separately**, or
+- The appropriate Config Editor installer for your OS: `.dmg` for macOS, `.exe` or `.msi` for Windows, `.AppImage` (portable) or `.deb` (Debian/Ubuntu) for Linux. **The Config Editor includes the bundled firmware, so you don't need to download it separately**, or
 - The `MIDI-Captain-MAX-v1.10.0-complete.zip` package if you want the GUI and the firmware as separate packages.<br>For example, if you need to use the deploy script for the first install, or for an unsupported OS, this package includes everything you need. (The GUI still includes the bundled firmware; the zip is just for convenience if you want to use the deploy script instead of the GUI installer.)
 
 ## Updating an Existing MIDI Captain MAX Install

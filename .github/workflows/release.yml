@@ -138,7 +138,34 @@ jobs:
           else
             echo "::warning::Config Editor NSIS installer not found in CI artifacts"
           fi
-          
+
+          # Find and rename config editor AppImage + deb (Linux). Copy the
+          # detached GPG signature (.asc) alongside each, renamed to match the
+          # friendly asset name — gpg verifies by content, so renaming is safe.
+          APPIMAGE_FILE=$(find ci-artifacts -name "*.AppImage" | head -1)
+          if [ -n "$APPIMAGE_FILE" ]; then
+            cp "$APPIMAGE_FILE" "dist/MIDI-Captain-MAX-Config-Editor-${VERSION}.AppImage"
+            echo "✓ Config Editor AppImage: MIDI-Captain-MAX-Config-Editor-${VERSION}.AppImage" >> $GITHUB_STEP_SUMMARY
+            if [ -f "${APPIMAGE_FILE}.asc" ]; then
+              cp "${APPIMAGE_FILE}.asc" "dist/MIDI-Captain-MAX-Config-Editor-${VERSION}.AppImage.asc"
+              echo "✓ AppImage signature: MIDI-Captain-MAX-Config-Editor-${VERSION}.AppImage.asc" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "::warning::Config Editor AppImage not found in CI artifacts"
+          fi
+
+          DEB_FILE=$(find ci-artifacts -name "*.deb" | head -1)
+          if [ -n "$DEB_FILE" ]; then
+            cp "$DEB_FILE" "dist/MIDI-Captain-MAX-Config-Editor-${VERSION}.deb"
+            echo "✓ Config Editor deb: MIDI-Captain-MAX-Config-Editor-${VERSION}.deb" >> $GITHUB_STEP_SUMMARY
+            if [ -f "${DEB_FILE}.asc" ]; then
+              cp "${DEB_FILE}.asc" "dist/MIDI-Captain-MAX-Config-Editor-${VERSION}.deb.asc"
+              echo "✓ deb signature: MIDI-Captain-MAX-Config-Editor-${VERSION}.deb.asc" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "::warning::Config Editor deb not found in CI artifacts"
+          fi
+
           ls -la dist/
 
       - name: Stage CircuitPython .uf2 for the combined bundle (issue #134)
@@ -149,8 +176,8 @@ jobs:
           mkdir -p bundle
           # Copy firmware zip contents (extract so bundle is flat, not a zip-in-zip)
           cp "dist/midicaptain-firmware-${VERSION}.zip" bundle/
-          # Copy all GUI installers that were found
-          for ext in dmg msi exe; do
+          # Copy all GUI installers that were found (incl. Linux + .asc sigs)
+          for ext in dmg msi exe AppImage deb asc; do
             for f in dist/*."$ext"; do
               [ -f "$f" ] && cp "$f" bundle/
             done

@@ -8,7 +8,7 @@
 - Validates Python syntax + CircuitPython 7.x compatibility guard (greps for banned constructs)
 - Writes `VERSION.txt` into firmware zip from `git describe`
 - Runs pytest suite (`tests/`)
-- Builds Config Editor for macOS and Windows (Tauri + SvelteKit)
+- Builds Config Editor for macOS, Windows, and Linux (Tauri + SvelteKit)
 - Validates all `firmware/dev/config*.json` against `config.schema.json`
 - Checks `types.generated.ts` is up to date
 
@@ -104,12 +104,16 @@ All distribution paths must include the same set of files and write `VERSION.txt
 
 ## Code Signing
 
-See [docs/macos-code-signing.md](../docs/macos-code-signing.md) for full setup. Team ID: `9WNXKEF4SM`.
+See [docs/macos-code-signing.md](../docs/macos-code-signing.md) for macOS setup (Team ID: `9WNXKEF4SM`) and [docs/linux-build.md](../docs/linux-build.md) for Linux GPG signing.
 
 **Notarization 403:** Apple updated the Developer Program License Agreement — Account Holder must accept at App Store Connect, then re-run the failed CI job. No code change needed.
+
+**Linux GPG signing** (`build-config-editor-linux`) mirrors `boomerang-plugin`: imports `GPG_PRIVATE_KEY` (ASCII-armored, not base64), detached-signs each artifact (`.asc`) with `GPG_PASSPHRASE`, then verifies. Both secrets optional — unset → unsigned build with a warning, like the macOS cert. Signatures are over file content, so `release.yml` renames artifact + `.asc` together safely.
 
 ---
 
 ## Linux CI Dependencies
 
-`libudev-dev` required by the `serialport` crate. Cached via `awalsh128/cache-apt-pkgs-action`.
+`libudev-dev` required by the `serialport` crate (used by `test-config-editor-rust` and `build-config-editor-linux`).
+
+**`build-config-editor-linux` pins `ubuntu-22.04`** (not `ubuntu-latest`): AppImage/deb link against the runner's glibc, so the oldest supported runner maximizes user-distro compatibility. Builds `--bundles appimage,deb` only (no rpm — runner has no `rpmbuild`). Needs `libwebkit2gtk-4.1-dev` + `libfuse2`, with `APPIMAGE_EXTRACT_AND_RUN=1` for the FUSE-less runner.

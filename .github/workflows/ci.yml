@@ -478,3 +478,156 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "See \`docs/windows-build.md\` for code signing setup." >> $GITHUB_STEP_SUMMARY
 
+  build-config-editor-linux:
+    name: Build Config Editor (Linux)
+    # Pin to 22.04 (not ubuntu-latest): the AppImage/deb link against the
+    # runner's glibc, so building on the oldest supported runner keeps the
+    # artifacts runnable on the widest range of user distros.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    needs: [lint, build-zip]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Stage firmware for Config Editor
+        uses: ./.github/actions/stage-firmware-for-editor
+        with:
+          version: ${{ needs.lint.outputs.version }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          cache: npm
+          cache-dependency-path: config-editor/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: config-editor/src-tauri
+
+      - name: Install system dependencies
+        run: |
+          # Tauri 2 Linux build deps (webkit2gtk 4.1 + bundler tooling) plus
+          # libudev-dev for the serialport crate. libfuse2 lets the AppImage
+          # bundler run linuxdeploy on the FUSE-less runner.
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            libudev-dev \
+            libfuse2 \
+            file \
+            build-essential \
+            curl \
+            wget
+
+      - name: Install frontend dependencies
+        run: |
+          cd config-editor
+          npm install
+
+      - name: Patch version in config editor
+        uses: ./.github/actions/patch-config-editor-version
+        with:
+          semver: ${{ needs.lint.outputs.semver }}
+
+      - name: Build Tauri app (AppImage + deb)
+        env:
+          # Run the bundler's linuxdeploy AppImage by extraction instead of via
+          # FUSE — GitHub runners have no FUSE device.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          cd config-editor
+          npm run tauri build -- --bundles appimage,deb
+          ls -lah src-tauri/target/release/bundle/appimage/ src-tauri/target/release/bundle/deb/
+
+      - name: Import GPG key
+        id: import-gpg
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          # Mirrors the Linux signing mechanism from boomerang-plugin.
+          if [ -z "$GPG_PRIVATE_KEY" ]; then
+            echo "::warning::No GPG key configured — Linux artifacts will not be signed"
+            echo "can_sign=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+
+          KEY_ID=$(gpg --list-secret-keys --keyid-format=long | grep sec | awk '{print $2}' | cut -d'/' -f2 | head -1)
+          if [ -z "$KEY_ID" ]; then
+            echo "::error::Failed to import GPG secret key."
+            exit 1
+          fi
+
+          echo "KEY_ID=$KEY_ID" >> "$GITHUB_OUTPUT"
+          echo "can_sign=true" >> "$GITHUB_OUTPUT"
+          echo "✓ GPG key imported ($KEY_ID)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Sign Linux artifacts
+        if: steps.import-gpg.outputs.can_sign == 'true'
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          cd config-editor/src-tauri/target/release/bundle
+          # Detached, ASCII-armored signature per artifact; verify each one.
+          while IFS= read -r artifact; do
+            echo "Signing: $artifact"
+            echo "$GPG_PASSPHRASE" | gpg --batch --yes --passphrase-fd 0 \
+              --pinentry-mode loopback --armor --detach-sign \
+              --output "${artifact}.asc" "$artifact"
+
+            gpg --verify "${artifact}.asc" "$artifact" 2>&1 | tee verify.log
+            if grep -q "Good signature" verify.log; then
+              echo "✓ Signature verified: $(basename "$artifact").asc" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::Signature verification failed for $artifact"
+              exit 1
+            fi
+          done < <(find appimage deb -type f \( -name "*.AppImage" -o -name "*.deb" \))
+          rm -f verify.log
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: config-editor-appimage
+          path: |
+            config-editor/src-tauri/target/release/bundle/appimage/*.AppImage
+            config-editor/src-tauri/target/release/bundle/appimage/*.AppImage.asc
+          retention-days: 90
+
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: config-editor-deb
+          path: |
+            config-editor/src-tauri/target/release/bundle/deb/*.deb
+            config-editor/src-tauri/target/release/bundle/deb/*.deb.asc
+          retention-days: 90
+
+      - name: Build summary
+        run: |
+          echo "## Linux Build Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "✓ Successfully built Config Editor for Linux" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Artifacts" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **AppImage** (portable, runs on most distros)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **deb** (Debian / Ubuntu package)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.import-gpg.outputs.can_sign }}" = "true" ]; then
+            echo "🔏 Artifacts signed with detached GPG signatures (\`.asc\`)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "⚠️ Unsigned — set \`GPG_PRIVATE_KEY\` / \`GPG_PASSPHRASE\` secrets to sign. See \`docs/linux-build.md\`." >> "$GITHUB_STEP_SUMMARY"
+          fi
+

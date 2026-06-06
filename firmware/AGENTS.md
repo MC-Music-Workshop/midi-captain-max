@@ -25,6 +25,14 @@ Target **CircuitPython 7.x** (7.3.1 verified on devices). Board identifies as `r
 
 `firmware/dev/lib/` ships pre-compiled `.mpy` v5 libraries; the deploy scripts copy them straight to the device. Don't drop `.py` source for the same module alongside (e.g. via `circup install --py`). With both forms in `/lib`, CP's resolution is version-dependent and the `.py` source often pulls in modules the runtime doesn't have (e.g. `busdisplay` is CP 9-only) — this bricked a real CP 7.3.1 NANO4. When refreshing the bundle (maintainer task), pull `.mpy` only.
 
+### `lib/` is the single source of truth for on-device libraries
+
+End-users must NOT need Python, pip, or `circup` to deploy this firmware. `firmware/dev/lib/` ships pre-compiled `.mpy` v5 libraries directly in the release zip; `tools/deploy.{sh,ps1,bat}` only copy files — they do not fetch.
+
+Dead-code lesson (issue #140, PR #145): the deploy scripts carried a `circup` install path for ~3 months *after* the libs were bundled (`250e8b6` Feb 2026 → removed in `087a150` May 2026). It silently required Python on every Windows user's machine until one without Python reported it. Before adding any "fetch X at deploy time" step in the future, first ask whether the artifact can be bundled in `ci.yml`'s `zip -j` step instead.
+
+The Tauri GUI installer (`config-editor/src-tauri/src/installer.rs`) already takes the bundled-libs path. Keep `deploy.{sh,ps1}` aligned with it.
+
 ### Automating CircuitPython REPL via serial
 
 Used by the GUI installer's pre-flight halt + post-install soft-reboot, and by `restart_device`:

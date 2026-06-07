@@ -36,6 +36,9 @@ from adafruit_midi.control_change import ControlChange
 from adafruit_midi.program_change import ProgramChange
 from adafruit_midi.note_on import NoteOn
 from adafruit_midi.note_off import NoteOff
+# Imported to register the SysEx message type so receive() parses incoming
+# F0...F7 and MIDI thru can forward it; not dispatched locally.
+from adafruit_midi.system_exclusive import SystemExclusive
 
 # Import core modules (testable logic)
 from core.colors import COLORS, get_color, dim_color, rgb_to_hex, get_off_color, get_off_color_for_display, compute_keytimes_led_color

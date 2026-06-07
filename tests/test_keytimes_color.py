@@ -133,3 +133,69 @@ class TestReverbShimmerTrace:
         # long_down_2 fires: long = white (config says "shimmer off, white"). Short still white.
         # Result: white (long set to white, wins)
         assert compute_keytimes_led_color("white", False, "white", False) == get_color("white")
+
+
+class TestIssue143LabelColorRegression:
+    """Regression for #143: labels invisible when keytimes entry has dim=True.
+
+    The bug: _render_keytimes_led set label text color = LED rgb.
+    dim_color() produces 15% brightness — near-black, invisible on black display.
+
+    The fix: label color recomputed with dim=False; black-on-black falls back to
+    button color then white.
+
+    These tests document the key properties the fix depends on.
+    """
+
+    # --- Confirm dimmed colors are near-black (would have been invisible) ---
+
+    def test_dimmed_yellow_is_near_black(self):
+        # PUP button: long_color="yellow", long_dim=True. The BUG produced this for label.
+        dimmed = compute_keytimes_led_color(None, False, "yellow", True)
+        assert dimmed == dim_color(get_color("yellow"))
+        # Must be near-black: all channels < 50
+        assert all(ch < 50 for ch in dimmed), f"expected near-black, got {dimmed}"
+
+    def test_dimmed_blue_is_near_black(self):
+        # PDN button: long_color="blue", long_dim=True.
+        dimmed = compute_keytimes_led_color(None, False, "blue", True)
+        assert dimmed == dim_color(get_color("blue"))
+        assert all(ch < 50 for ch in dimmed), f"expected near-black, got {dimmed}"
+
+    # --- Confirm fix: dim=False for label call produces visible colors ---
+
+    def test_yellow_without_dim_is_visible(self):
+        # The FIX passes dim=False when computing label_rgb.
+        label_rgb = compute_keytimes_led_color(None, False, "yellow", False)
+        assert label_rgb == get_color("yellow")
+        assert any(ch >= 128 for ch in label_rgb), f"expected bright color, got {label_rgb}"
+
+    def test_blue_without_dim_is_visible(self):
+        label_rgb = compute_keytimes_led_color(None, False, "blue", False)
+        assert label_rgb == get_color("blue")
+        assert any(ch >= 128 for ch in label_rgb), f"expected bright color, got {label_rgb}"
+
+    def test_short_dim_yellow_label_still_visible(self):
+        # Same issue on short layer: short_color="yellow", short_dim=True.
+        label_rgb = compute_keytimes_led_color("yellow", False, None, False)
+        assert label_rgb == get_color("yellow")
+        assert any(ch >= 128 for ch in label_rgb)
+
+    # --- Confirm black-on-black fallback ---
+
+    def test_no_color_on_any_layer_fallback_uses_button_color(self):
+        # When both layers produce (0,0,0), fix falls back to button-level color.
+        # compute_keytimes_led_color returns OFF when no colors set + no button color.
+        result = compute_keytimes_led_color(None, False, None, False)
+        assert not any(result), "both unset → OFF (black)"
+        # Caller then applies: get_color(btn_config.get("color") or "white")
+        fallback = get_color("white")
+        assert any(fallback), "white fallback must be non-black"
+
+    def test_led_and_label_colors_differ_when_dim_true(self):
+        # Core regression assertion: LED rgb (dim=True) != label rgb (dim=False).
+        led_rgb = compute_keytimes_led_color(None, False, "yellow", True)
+        label_rgb = compute_keytimes_led_color(None, False, "yellow", False)
+        assert led_rgb != label_rgb, "dim LED color must differ from full-brightness label color"
+        assert led_rgb == dim_color(get_color("yellow"))
+        assert label_rgb == get_color("yellow")

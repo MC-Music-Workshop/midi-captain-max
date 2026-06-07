@@ -914,7 +914,9 @@ def _process_midi_msg(msg, source="USB"):
                         update_select_group(i + 1, btn_config.get("select_group", ""))
                     update_status(f"RX CC{cc}={val}")
                     break
-                new_state = button_states[i].on_midi_receive(val)
+                cc_on = btn_config.get("cc_on", 127)
+                cc_off = btn_config.get("cc_off", 0)
+                new_state = button_states[i].on_midi_receive(val, cc_on, cc_off)
                 set_button_state(i + 1, new_state)
                 update_status(f"RX CC{cc}={val}")
                 break

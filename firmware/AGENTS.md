@@ -127,7 +127,7 @@ For reverse engineering history, see [docs/midicaptain_reverse_engineering_hando
 - **Channel API gotcha**: `midi.send(ControlChange(cc, val, channel=X))` does **NOT** work — the library ignores `msg.channel`. Channel must be passed to `send()`: `midi.send(ControlChange(cc, val), channel=X)`. This caused issue #95 where all output was stuck on channel 1.
 - **`in_channel`**: both USB and serial MIDI objects should use `in_channel=None` (receive all channels)
 - Both `handle_midi()` reads USB and DIN ports; USB→DIN and DIN→USB forwarding happens there
-- `_process_midi_msg` is source-agnostic; CC value >63 = ON, ≤63 = OFF. NoteOn/Off and PC are also handled.
+- `_process_midi_msg` is source-agnostic; CC RX matches configured `cc_on`/`cc_off` exactly, with a `>63` fallback for other values. NoteOn/Off and PC are also handled.
 - **Message-type registration gotcha**: `adafruit_midi` only parses message types whose module has been imported — each module self-registers on import. `receive()` returns `None` for any unparsed type, so the thru matrix silently drops it. SysEx thru was broken until `from adafruit_midi.system_exclusive import SystemExclusive` was added to `code.py` (registration side-effect only; not dispatched locally). To RX or forward a new type, import its module even if otherwise unused. The `lib/` `.mpy` shipping the type is necessary but not sufficient — the import is what registers it.
 - SysEx longer than `in_buf_size` (DIN: 64) is truncated/dropped on receive.
 

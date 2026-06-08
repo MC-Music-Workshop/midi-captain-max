@@ -33,7 +33,19 @@ The app will copy the firmware, reload the device, and update it in place.
 
 If your MIDI Captain is still running the factory Paint Audio firmware, the Config Editor may show `OEM (no VERSION.txt file)`.
 
-In many cases, the first install still requires a one-time bootstrap because the OEM firmware does not provide a MIDI Captain MAX `config.json` for device-type detection.
+The first install requires a one-time deploy script run to write a `config.json` with your device type — the GUI installer cannot detect device type without it.
+
+### If the Config Editor shows a CircuitPython version error (2026-batch devices)
+
+2026-batch devices shipped with CP 9.2.7. The **Install Firmware** button will block with a version error. Fix this first:
+
+1. In the **Firmware Installation** section, open **Advanced / Recovery**.
+2. Click **Reflash CircuitPython 7.3.1**. The editor sends a command over serial, reboots the device into its RP2040 bootloader, copies the bundled `.uf2`, and waits for `CIRCUITPY` to remount — no physical button hold needed.
+3. Once `CIRCUITPY` remounts, continue to the deploy script steps below (the device is already mounted; skip step 1).
+
+If the editor can't reach the device over serial, see the [manual bootloader entry guide](https://github.com/MC-Music-Workshop/midi-captain-max/blob/main/docs/recovery-bootloader-entry.md) (doc pending)
+
+### Deploy script — required for all OEM first installs
 
 1. Hold Button 1 / KEY0 while plugging in USB to enter the OEM USB settings mode. A `MIDICAPTAIN` drive should appear.
 2. Download and extract `MIDI-Captain-MAX-v1.10.0-complete.zip` from the Assets section below.

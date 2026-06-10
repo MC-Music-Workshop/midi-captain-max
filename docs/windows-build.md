@@ -231,7 +231,8 @@ npm run tauri build
 |----------|--------|------------|-----------|
 | macOS | `macos-latest` | ~15 min | `.dmg`, `.app` |
 | Windows | `windows-latest` | ~20 min | `.msi`, `-setup.exe` |
-| Linux | `ubuntu-22.04` | ~15 min | `.AppImage`, `.deb` (GPG-signed) — see `docs/linux-build.md` |
+| Linux amd64 | `ubuntu-22.04` | ~15 min | `.AppImage`, `.deb` (GPG-signed) — see `docs/linux-build.md` |
+| Linux arm64 | `ubuntu-22.04-arm` | ~15 min | `.AppImage`, `.deb` (GPG-signed) — see `docs/linux-build.md` |
 
 ## Resources
 

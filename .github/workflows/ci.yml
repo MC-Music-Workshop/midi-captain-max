@@ -479,11 +479,19 @@ jobs:
           echo "See \`docs/windows-build.md\` for code signing setup." >> $GITHUB_STEP_SUMMARY
 
   build-config-editor-linux:
-    name: Build Config Editor (Linux)
+    name: Build Config Editor (Linux ${{ matrix.arch }})
     # Pin to 22.04 (not ubuntu-latest): the AppImage/deb link against the
     # runner's glibc, so building on the oldest supported runner keeps the
     # artifacts runnable on the widest range of user distros.
-    runs-on: ubuntu-22.04
+    # Native matrix: amd64 + arm64. GitHub's arm64 hosted runner
+    # (ubuntu-22.04-arm) is free for public repos, so no cross-compilation.
+    strategy:
+      fail-fast: false   # an arm64 hiccup shouldn't kill the amd64 build
+      matrix:
+        include:
+          - { runner: ubuntu-22.04,     arch: amd64 }
+          - { runner: ubuntu-22.04-arm, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     needs: [lint, build-zip]
     permissions:
@@ -600,7 +608,7 @@ jobs:
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v7
         with:
-          name: config-editor-appimage
+          name: config-editor-appimage-${{ matrix.arch }}
           path: |
             config-editor/src-tauri/target/release/bundle/appimage/*.AppImage
             config-editor/src-tauri/target/release/bundle/appimage/*.AppImage.asc
@@ -609,7 +617,7 @@ jobs:
       - name: Upload deb artifact
         uses: actions/upload-artifact@v7
         with:
-          name: config-editor-deb
+          name: config-editor-deb-${{ matrix.arch }}
           path: |
             config-editor/src-tauri/target/release/bundle/deb/*.deb
             config-editor/src-tauri/target/release/bundle/deb/*.deb.asc

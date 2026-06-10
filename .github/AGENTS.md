@@ -117,3 +117,5 @@ See [docs/macos-code-signing.md](../docs/macos-code-signing.md) for macOS setup 
 `libudev-dev` required by the `serialport` crate (used by `test-config-editor-rust` and `build-config-editor-linux`).
 
 **`build-config-editor-linux` pins `ubuntu-22.04`** (not `ubuntu-latest`): AppImage/deb link against the runner's glibc, so the oldest supported runner maximizes user-distro compatibility. Builds `--bundles appimage,deb` only (no rpm — runner has no `rpmbuild`). Needs `libwebkit2gtk-4.1-dev` + `libfuse2`, with `APPIMAGE_EXTRACT_AND_RUN=1` for the FUSE-less runner.
+
+**2-arch matrix** (`fail-fast: false`): `amd64`/`ubuntu-22.04` + `arm64`/`ubuntu-22.04-arm` (native, free for public repos). Upload artifact names are arch-suffixed — `config-editor-{appimage,deb}-${{ matrix.arch }}` — so the two legs don't collide. `release.yml` loops `for arch in amd64 arm64`, globbing the artifact *directory* (`config-editor-appimage-${arch}`) not the filename, since Tauri stamps `aarch64` into AppImage names but `arm64` into deb names. Each release ships 4 binaries + 4 `.asc` (amd64/arm64 × AppImage/deb), named `..._${arch}.{AppImage,deb}`.

@@ -23,10 +23,24 @@ Linux signing mechanism used in
 
 ### Runner
 
-The build runs on **`ubuntu-22.04`**, not `ubuntu-latest`. The AppImage and deb
-link against the runner's `glibc`; building on the oldest supported runner keeps
-the artifacts runnable on the widest range of user distros. Newer runners would
+The Linux job is a **2-arch matrix** built natively (no cross-compilation):
+
+| Arch | Runner | Targets |
+|------|--------|---------|
+| `amd64` | `ubuntu-22.04` | x86-64 desktops/laptops |
+| `arm64` | `ubuntu-22.04-arm` | Raspberry Pi 4/5 (64-bit), Asahi Linux, ARM Chromebooks/Crostini, Ampere |
+
+The matrix uses `fail-fast: false` so an arm64-runner hiccup doesn't block the
+amd64 release asset. `dtolnay/rust-toolchain@stable` picks the host target on
+each runner automatically — do **not** hardcode `--target`.
+
+Both legs pin **`22.04`**, not `ubuntu-latest`. The AppImage and deb link
+against the runner's `glibc`; building on the oldest supported runner keeps the
+artifacts runnable on the widest range of user distros. Newer runners would
 raise the minimum `glibc` and break on older systems.
+
+> **Caveat:** GitHub's `ubuntu-22.04-arm` hosted runner is **free for public
+> repos only**. If this repo ever goes private, arm64 runs bill minutes.
 
 ### System dependencies
 
@@ -114,23 +128,27 @@ gpg --verify MIDI-Captain-MAX-Config-Editor-<version>.AppImage.asc \
 
 ## Build Artifacts
 
+Release assets are arch-suffixed: each arch ships an AppImage + deb (plus their
+`.asc` signatures), for 4 binaries + 4 signatures per release.
+
 ### AppImage
 
-**Filename format:** `MIDI-Captain-MAX-Config-Editor-{version}.AppImage`
+**Filename format:** `MIDI-Captain-MAX-Config-Editor-{version}_{arch}.AppImage`
+(`{arch}` is `amd64` or `arm64`)
 
 ```bash
-chmod +x MIDI-Captain-MAX-Config-Editor-<version>.AppImage
-./MIDI-Captain-MAX-Config-Editor-<version>.AppImage
+chmod +x MIDI-Captain-MAX-Config-Editor-<version>_<arch>.AppImage
+./MIDI-Captain-MAX-Config-Editor-<version>_<arch>.AppImage
 ```
 
 ### deb
 
-**Filename format:** `MIDI-Captain-MAX-Config-Editor-{version}.deb`
+**Filename format:** `MIDI-Captain-MAX-Config-Editor-{version}_{arch}.deb`
 
 ```bash
-sudo apt install ./MIDI-Captain-MAX-Config-Editor-<version>.deb
+sudo apt install ./MIDI-Captain-MAX-Config-Editor-<version>_<arch>.deb
 # or
-sudo dpkg -i MIDI-Captain-MAX-Config-Editor-<version>.deb
+sudo dpkg -i MIDI-Captain-MAX-Config-Editor-<version>_<arch>.deb
 ```
 
 ## Troubleshooting
@@ -174,7 +192,19 @@ npm run tauri build -- --bundles appimage,deb
 |----------|--------|-----------|
 | macOS | `macos-latest` | `.dmg`, `.app` (signed + notarized) |
 | Windows | `windows-latest` | `.msi`, `-setup.exe` (unsigned) |
-| Linux | `ubuntu-22.04` | `.AppImage`, `.deb` (GPG detached `.asc`) |
+| Linux amd64 | `ubuntu-22.04` | `.AppImage`, `.deb` (GPG detached `.asc`) |
+| Linux arm64 | `ubuntu-22.04-arm` | `.AppImage`, `.deb` (GPG detached `.asc`) |
+
+## Testing the arm64 build on Apple Silicon
+
+The arm64 AppImage can be smoke-tested natively (no emulation) in a UTM VM on an
+Apple Silicon Mac:
+
+1. [UTM](https://mac.getutm.app/) → **Create a New VM → Virtualize** (native
+   arm64, not Emulate).
+2. Install an arm64 Linux ISO (e.g. Ubuntu 22.04+ arm64 desktop).
+3. Download the `*_arm64.AppImage`, `chmod +x`, run it.
+4. USB-passthrough the MIDI Captain into the VM to exercise device detection.
 
 ## Resources
 

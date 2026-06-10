@@ -46,12 +46,14 @@ raise the minimum `glibc` and break on older systems.
 
 Tauri 2 needs the WebKitGTK 4.1 stack and bundler tooling; the `serialport`
 crate needs `libudev-dev`; the AppImage bundler runs `linuxdeploy` (itself an
-AppImage), which needs `libfuse2` on the FUSE-less runner:
+AppImage), which needs `libfuse2` on the FUSE-less runner, and requires
+`xdg-utils` (`/usr/bin/xdg-open`) — preinstalled on the amd64 runner image but
+not the arm64 one:
 
 ```bash
 sudo apt-get install -y \
   libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
-  librsvg2-dev libxdo-dev libssl-dev libudev-dev libfuse2 \
+  librsvg2-dev libxdo-dev libssl-dev libudev-dev libfuse2 xdg-utils \
   file build-essential curl wget
 ```
 
@@ -174,7 +176,7 @@ The build runner's `glibc` is newer than the target system. Keep the build on
 # Install deps (Debian/Ubuntu)
 sudo apt-get install -y \
   libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
-  librsvg2-dev libxdo-dev libssl-dev libudev-dev libfuse2 \
+  librsvg2-dev libxdo-dev libssl-dev libudev-dev libfuse2 xdg-utils \
   file build-essential curl wget
 
 cd config-editor

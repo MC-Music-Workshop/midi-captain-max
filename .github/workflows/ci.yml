@@ -522,7 +522,9 @@ jobs:
         run: |
           # Tauri 2 Linux build deps (webkit2gtk 4.1 + bundler tooling) plus
           # libudev-dev for the serialport crate. libfuse2 lets the AppImage
-          # bundler run linuxdeploy on the FUSE-less runner.
+          # bundler run linuxdeploy on the FUSE-less runner. xdg-utils provides
+          # /usr/bin/xdg-open, which the AppImage bundler requires — it's
+          # preinstalled on the amd64 runner image but NOT the arm64 one.
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
@@ -533,6 +535,7 @@ jobs:
             libssl-dev \
             libudev-dev \
             libfuse2 \
+            xdg-utils \
             file \
             build-essential \
             curl \

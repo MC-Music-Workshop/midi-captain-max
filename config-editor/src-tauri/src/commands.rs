@@ -55,13 +55,40 @@ fn get_path_volume_name(path: &Path) -> Option<String> {
     None
 }
 
+/// True if `parent` is a recognized removable-media base directory — the
+/// directory whose immediate children are volume mount points.
+/// macOS: `/Volumes`. Linux: `/media/<user>`, `/run/media/<user>` (the
+/// per-user dirs udisks/udisks2 mount under — see `device::get_volumes_path`).
+///
+/// A plain prefix test (`starts_with("/run/media/")`) is too loose: it also
+/// matches the mount point's own children, so the volume name resolves to
+/// `config.json` instead of the label. The `<user>`-nested bases must match
+/// at exactly one component deep, no deeper. Bare legacy `/media/<label>`
+/// is intentionally not supported — it is lexically indistinguishable from
+/// `/media/<user>` and no current Linux automounter uses it.
+#[cfg(not(target_os = "windows"))]
+fn is_media_base(parent: &Path) -> bool {
+    let s = parent.to_string_lossy();
+    if s == "/Volumes" {
+        return true;
+    }
+    // /media/<user> or /run/media/<user>: base + exactly one component
+    for base in ["/media/", "/run/media/"] {
+        if let Some(rest) = s.strip_prefix(base) {
+            if !rest.is_empty() && !rest.contains('/') {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 #[cfg(not(target_os = "windows"))]
 fn get_path_volume_name(path: &Path) -> Option<String> {
-    // On Unix, find the volume under /Volumes/ or /media/
+    // On Unix, find the volume mount point under a recognized media base
     for ancestor in path.ancestors() {
         if let Some(parent) = ancestor.parent() {
-            let parent_str = parent.to_string_lossy();
-            if parent_str == "/Volumes" || parent_str.starts_with("/media/") || parent_str.starts_with("/run/media/") {
+            if is_media_base(parent) {
                 return ancestor.file_name()?.to_str().map(|s| s.to_string());
             }
         }
@@ -194,18 +221,9 @@ fn get_volume_path(path: &Path) -> Option<PathBuf> {
 
 #[cfg(not(target_os = "windows"))]
 fn get_volume_path(path: &Path) -> Option<PathBuf> {
-    // On Unix, find the mount point under /Volumes/, /media/, or /run/media/
+    // On Unix, find the mount point under a recognized media base
     path.ancestors()
-        .find(|p| {
-            if let Some(parent) = p.parent() {
-                let parent_str = parent.to_string_lossy();
-                parent_str == "/Volumes" 
-                    || parent_str.starts_with("/media/") 
-                    || parent_str.starts_with("/run/media/")
-            } else {
-                false
-            }
-        })
+        .find(|p| p.parent().map(is_media_base).unwrap_or(false))
         .map(|p| p.to_path_buf())
 }
 
@@ -589,4 +607,55 @@ fn eject_volume(volume_path: &Path) -> Result<(), ConfigError> {
     }
 
     Ok(())
+}
+
+#[cfg(all(test, not(target_os = "windows")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn macos_volume_name_and_path() {
+        let p = Path::new("/Volumes/CIRCUITPY/config.json");
+        assert_eq!(get_path_volume_name(p).as_deref(), Some("CIRCUITPY"));
+        assert_eq!(get_volume_path(p), Some(PathBuf::from("/Volumes/CIRCUITPY")));
+    }
+
+    // Regression: /run/media/<user>/LABEL nests the volume one level below the
+    // per-user base. A loose prefix match resolved the volume to "config.json".
+    #[test]
+    fn run_media_user_nested_volume() {
+        let p = Path::new("/run/media/alice/MIDICAPTAIN/config.json");
+        assert_eq!(get_path_volume_name(p).as_deref(), Some("MIDICAPTAIN"));
+        assert_eq!(
+            get_volume_path(p),
+            Some(PathBuf::from("/run/media/alice/MIDICAPTAIN"))
+        );
+    }
+
+    #[test]
+    fn media_user_nested_volume() {
+        let p = Path::new("/media/alice/MIDICAPTAIN/config.json");
+        assert_eq!(get_path_volume_name(p).as_deref(), Some("MIDICAPTAIN"));
+        assert_eq!(
+            get_volume_path(p),
+            Some(PathBuf::from("/media/alice/MIDICAPTAIN"))
+        );
+    }
+
+    #[test]
+    fn non_media_path_has_no_volume() {
+        let p = Path::new("/home/alice/config.json");
+        assert_eq!(get_path_volume_name(p), None);
+        assert_eq!(get_volume_path(p), None);
+    }
+
+    #[test]
+    fn is_media_base_rejects_too_deep() {
+        assert!(is_media_base(Path::new("/run/media/alice")));
+        assert!(is_media_base(Path::new("/media/alice")));
+        assert!(is_media_base(Path::new("/Volumes")));
+        // Mount point itself is not a base — its children are not volumes
+        assert!(!is_media_base(Path::new("/run/media/alice/MIDICAPTAIN")));
+        assert!(!is_media_base(Path::new("/media/alice/MIDICAPTAIN")));
+    }
 }

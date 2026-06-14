@@ -49,6 +49,13 @@
   // diagnostic CTA rather than letting the user stare at the spinner forever.
   let copyWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
   let copyStalled = $state(false);
+  // Same idea for `awaitingBootloader`: healthy auto-entry resolves in ~3s,
+  // manual entry in however long the user takes to do the switch-hold dance.
+  // 60s with no RPI-RP2 mount is long enough that something's wrong (device
+  // powered off mid-entry, broken serial, mistaken click) — surface a banner
+  // with manual recovery instructions instead of spinning indefinitely.
+  let bootloaderWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
+  let bootloaderStalled = $state(false);
 
   function clearPollers() {
     if (bootloaderPollTimer !== null) {
@@ -63,7 +70,21 @@
       clearTimeout(copyWatchdogTimer);
       copyWatchdogTimer = null;
     }
+    if (bootloaderWatchdogTimer !== null) {
+      clearTimeout(bootloaderWatchdogTimer);
+      bootloaderWatchdogTimer = null;
+    }
     copyStalled = false;
+    bootloaderStalled = false;
+  }
+
+  function startBootloaderWatchdog() {
+    bootloaderStalled = false;
+    bootloaderWatchdogTimer = setTimeout(() => {
+      if (flow.kind === 'awaitingBootloader') {
+        bootloaderStalled = true;
+      }
+    }, 60_000);
   }
 
   onDestroy(clearPollers);
@@ -173,6 +194,7 @@
       }
       flow = { kind: 'awaitingBootloader' };
       bootloaderPollTimer = setInterval(pollForBootloader, 1000);
+      startBootloaderWatchdog();
       return;
     }
 
@@ -181,6 +203,7 @@
     //    between detection and modal open.
     flow = { kind: 'awaitingBootloader' };
     bootloaderPollTimer = setInterval(pollForBootloader, 1000);
+    startBootloaderWatchdog();
   }
 
   function cancel() {
@@ -237,6 +260,15 @@
           <span class="spinner" aria-hidden="true"></span>
           Polling for <code>RPI-RP2</code>…
         </div>
+        {#if bootloaderStalled}
+          <div class="status error">
+            No <code>RPI-RP2</code> mount detected after 60 seconds. The device
+            may be powered off, the serial reach may have failed, or the click
+            may have happened mid-power-cycle. Try cancelling and clicking
+            <strong>Reflash CircuitPython 7.3.1</strong> again with the device
+            on and connected.
+          </div>
+        {/if}
         <div class="actions">
           <button class="secondary" onclick={cancel}>Cancel</button>
         </div>

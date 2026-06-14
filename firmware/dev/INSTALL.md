@@ -86,15 +86,15 @@ If the drive doesn't appear at all — or if the Config Editor refused to instal
 
 > **Why 7.3.1 specifically?** This firmware's bundled libraries are mpy format v5 and `boot.py` uses CP 7-only APIs. CP 8.0 and later silently break it. See issue #132 for details and #2 for the planned migration to CP 9/10.
 
-**Easiest: use the Config Editor's "Reflash CircuitPython 7.3.1" button** (next to "Install Firmware"). It walks you through the bootloader hold, copies the bundled `.uf2`, and waits for the device to come back to `CIRCUITPY` automatically.
+**Easiest: open the Config Editor → Firmware Installation → expand "Advanced / Recovery" → click "Reflash CircuitPython 7.3.1".** The editor drives the device into the RP2040 bootloader over its serial REPL, copies the bundled `.uf2`, and waits for `CIRCUITPY` to remount automatically. No terminal work required.
 
-**Manual / terminal:**
+**Manual / terminal** — only needed if the GUI's auto-entry fails (device too broken to honour REPL commands, no CDC serial available). Full recipe with serial REPL commands and the physical-BOOTSEL fallback:
 
-1. **Hold Switch 1** (top-left footswitch) while plugging in USB — a drive called **RPI-RP2** will appear.
-2. Grab `adafruit-circuitpython-raspberry_pi_pico-en_US-7.3.1.uf2` from the `MIDI-Captain-MAX-vX.Y.Z-complete.zip` release asset (or run `./tools/fetch-cp-uf2.sh` from a repo checkout to download + checksum-verify it).
-3. Copy the `.uf2` file onto the **RPI-RP2** drive.
-4. The device will reboot on its own and appear as **CIRCUITPY**.
-5. Now copy the firmware files (or run the deploy script).
+→ [`docs/recovery-bootloader-entry.md`](../../docs/recovery-bootloader-entry.md)
+
+Then copy `adafruit-circuitpython-raspberry_pi_pico-en_US-7.3.1.uf2` (from the `MIDI-Captain-MAX-vX.Y.Z-complete.zip` release asset, or run `./tools/fetch-cp-uf2.sh` from a repo checkout) onto the `RPI-RP2` drive. The device reboots back to `CIRCUITPY` on its own.
+
+> ⚠️ **Switch 1 / KEY0 does not enter the RP2040 bootloader on Captain devices.** Earlier versions of this doc said it did; that was wrong. Switch 1 only triggers the running CircuitPython firmware's "expose USB drive" branch, not the chip's ROM BOOTSEL pin. To reach `RPI-RP2`, use the serial REPL sequence in the recovery guide above, or the physical BOOTSEL button on the RP2040 module inside the enclosure.
 
 ---
 

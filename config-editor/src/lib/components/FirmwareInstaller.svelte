@@ -176,11 +176,15 @@
   <details class="recovery">
     <summary>Advanced / Recovery</summary>
     <p class="recovery-blurb">
-      Wrong CircuitPython version, a bad <code>code.py</code>, or a half-broken
-      install? Reflash CircuitPython 7.3.1 directly from here. The editor will
-      ask the device to drop into its RP2040 bootloader, copy the bundled
-      <code>.uf2</code>, and wait for <code>CIRCUITPY</code> to remount — no
-      terminal commands required.
+      Reflashes the entire CircuitPython runtime — only needed when CP itself
+      is the problem (wrong version, corrupted CP install, or a different
+      firmware on the chip). For a bad <code>code.py</code> or config, the
+      <strong>Install Firmware</strong> button above is the fix.
+    </p>
+    <p class="recovery-blurb">
+      Click below and the editor will ask the device to drop into its RP2040
+      bootloader, copy the bundled <code>.uf2</code>, and wait for
+      <code>CIRCUITPY</code> to remount — no terminal commands required.
     </p>
     <ReflashCircuitPython
       device={device}

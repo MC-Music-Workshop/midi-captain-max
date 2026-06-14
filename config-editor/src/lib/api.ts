@@ -40,6 +40,17 @@ export async function ejectDevice(path: string): Promise<void> {
   return invoke('eject_device', { path });
 }
 
+/**
+ * Trigger the connected CircuitPython device to reboot into its RP2040 ROM
+ * bootloader. After this resolves, the device's CIRCUITPY drive will
+ * disappear and an RPI-RP2 drive should appear within a few seconds — used
+ * by the GUI recovery flow so the user doesn't have to type
+ * `microcontroller.on_next_reset(RunMode.UF2)` from a serial terminal.
+ */
+export async function enterBootloader(path: string): Promise<void> {
+  return invoke('enter_bootloader', { path });
+}
+
 // Device operations
 export async function scanDevices(): Promise<DetectedDevice[]> {
   return invoke('scan_devices');

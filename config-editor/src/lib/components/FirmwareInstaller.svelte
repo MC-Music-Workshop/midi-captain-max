@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ask, message } from '@tauri-apps/plugin-dialog';
   import { getFirmwareVersions, installFirmware } from '$lib/api';
+  import ReflashCircuitPython from './ReflashCircuitPython.svelte';
   import type {
     DetectedDevice,
     FirmwareVersions,
@@ -21,6 +22,11 @@
   let progress = $state<InstallProgress | null>(null);
   let report = $state<InstallReport | null>(null);
   let errorMsg = $state('');
+  // True when the last install was refused because the device's CircuitPython
+  // version is unsupported (issue #132 preflight). Detected via the machine
+  // code in ConfigError.details[0], not the human message. Gates the inline
+  // "Reflash CircuitPython 7.3.1" CTA so the fix is one click from the refusal.
+  let cpMismatch = $state(false);
   let versions = $state<FirmwareVersions | null>(null);
 
   // Re-fetch versions whenever the selected device changes or after a fresh
@@ -77,6 +83,7 @@
     progress = null;
     report = null;
     errorMsg = '';
+    cpMismatch = false;
 
     try {
       report = await installFirmware(device.path, resetConfig, (p) => {
@@ -86,6 +93,8 @@
       await refreshVersions(device);
     } catch (e: any) {
       errorMsg = e?.message ?? String(e);
+      // Backend stamps this code on the CP-version preflight refusal (#132).
+      cpMismatch = Array.isArray(e?.details) && e.details[0] === 'cp_version_unsupported';
       await message(`Firmware install failed:\n\n${errorMsg}`, { title: 'Install Failed', kind: 'error' });
     } finally {
       installing = false;
@@ -170,7 +179,41 @@
     <div class="result error">
       <strong>Error:</strong> {errorMsg}
     </div>
+    {#if cpMismatch}
+      <!-- #132 refusal → reflash CTA, surfaced right at the error so the fix
+           is one click away rather than buried in Advanced / Recovery below. -->
+      <div class="cp-mismatch-cta">
+        <ReflashCircuitPython
+          highlight
+          device={device}
+          onComplete={() => {
+            errorMsg = '';
+            cpMismatch = false;
+            refreshVersions(device);
+          }}
+        />
+      </div>
+    {/if}
   {/if}
+
+  <details class="recovery">
+    <summary>Advanced / Recovery</summary>
+    <p class="recovery-blurb">
+      Reflashes the entire CircuitPython runtime — only needed when CP itself
+      is the problem (wrong version, corrupted CP install, or a different
+      firmware on the chip). For a bad <code>code.py</code> or config, the
+      <strong>Install Firmware</strong> button above is the fix.
+    </p>
+    <p class="recovery-blurb">
+      Click below and the editor will ask the device to drop into its RP2040
+      bootloader, copy the bundled <code>.uf2</code>, and wait for
+      <code>CIRCUITPY</code> to remount — no terminal commands required.
+    </p>
+    <ReflashCircuitPython
+      device={device}
+      onComplete={() => refreshVersions(device)}
+    />
+  </details>
 </section>
 
 <style>
@@ -322,8 +365,48 @@
     color: var(--error-text);
   }
 
+  .cp-mismatch-cta {
+    margin-top: 8px;
+  }
+
   .result ul {
     margin: 6px 0 0 0;
     padding-left: 20px;
+  }
+
+  .recovery {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: var(--bg-tertiary, var(--bg-primary));
+    border: 1px dashed var(--border-color);
+    border-radius: 4px;
+    font-size: 13px;
+  }
+
+  .recovery > summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-weight: 600;
+    user-select: none;
+    list-style: revert;
+  }
+
+  .recovery > summary:hover {
+    color: var(--text-primary);
+  }
+
+  .recovery .recovery-blurb {
+    margin: 10px 0 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  .recovery code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--bg-secondary);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+    color: var(--text-primary);
   }
 </style>

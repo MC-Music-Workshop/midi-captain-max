@@ -504,6 +504,69 @@ pub fn restart_device(path: String) -> Result<(), ConfigError> {
     soft_reboot_via_serial(path_obj)
 }
 
+/// Tell the device to reboot directly into the RP2040 ROM bootloader on its
+/// next reset. After this returns, the CIRCUITPY drive disappears and an
+/// `RPI-RP2` drive should mount within ~3 s, ready to accept a `.uf2`.
+///
+/// Sequence over serial (same Ctrl-C + sacrificial CRLF pattern as
+/// `halt_and_disable_autoreload` — without the CRLF, CP's "Press any key
+/// to enter the REPL" prompt swallows the first byte of our import):
+///   1. Ctrl-C
+///   2. CRLF (consumed by the prompt)
+///   3. `import microcontroller`
+///   4. `microcontroller.on_next_reset(microcontroller.RunMode.UF2)`
+///   5. `microcontroller.reset()`
+///
+/// `reset()` doesn't return — the USB connection drops as the chip resets.
+/// We don't read a confirmation; the caller polls `rpi_rp2_mount_path` to
+/// know when the bootloader is ready.
+fn enter_bootloader_via_serial(path: &Path) -> Result<(), ConfigError> {
+    let mut port = open_device_serial(path)?;
+
+    port.write_all(&[0x03]).map_err(|e| ConfigError {
+        message: format!("Failed to send interrupt: {}", e),
+        details: None,
+    })?;
+    std::thread::sleep(Duration::from_millis(500));
+
+    // Sacrificial CRLF — consumed by CP's "press any key to enter REPL" prompt.
+    port.write_all(b"\r\n").map_err(|e| ConfigError {
+        message: format!("Failed to enter REPL: {}", e),
+        details: None,
+    })?;
+    std::thread::sleep(Duration::from_millis(200));
+
+    // Write the whole script in one go so we don't race the REPL's line echo
+    // between sends. CP's REPL executes each line on CR.
+    let script = b"import microcontroller\r\
+                   microcontroller.on_next_reset(microcontroller.RunMode.UF2)\r\
+                   microcontroller.reset()\r";
+    port.write_all(script).map_err(|e| ConfigError {
+        message: format!("Failed to send bootloader-entry script: {}", e),
+        details: None,
+    })?;
+
+    // Best-effort flush — the device may already be resetting, in which case
+    // the flush errors. Swallow it; the caller's RPI-RP2 poll resolves the
+    // actual outcome.
+    let _ = port.flush();
+    std::thread::sleep(Duration::from_millis(200));
+
+    Ok(())
+}
+
+/// Tauri command: trigger the connected CircuitPython device to reboot into
+/// its RP2040 ROM bootloader. Used by the GUI recovery flow so the user
+/// doesn't have to open a serial terminal and type the reset script
+/// themselves.
+#[command]
+pub fn enter_bootloader(path: String) -> Result<(), ConfigError> {
+    validate_device_path(&path)?;
+    let path_obj = Path::new(&path);
+    verify_device_connected(path_obj)?;
+    enter_bootloader_via_serial(path_obj)
+}
+
 /// Safely eject/unmount the device volume.
 #[command]
 pub fn eject_device(path: String) -> Result<(), ConfigError> {

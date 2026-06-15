@@ -157,6 +157,14 @@ Mirrors `deploy.sh`'s copy order. Key rules:
 - **Manifest reflects what's on the device, not what's in the bundle.** Build `final_manifest` during plan execution from Copy/Skip ops only; for `config_preserved` cases hash the actual on-device `config.json`.
 - **Pre-flight halt is best-effort.** `commands::halt_and_disable_autoreload` is wrapped in `let _ =` — serial port may be held by `tio`/`screen`, and `boot.py` already disables autoreload.
 
+## Reflash CircuitPython / Bootloader Entry (`enter_bootloader`, `ReflashCircuitPython.svelte`)
+
+Drives a device into RP2040 ROM bootloader mode over serial (`microcontroller.on_next_reset(RunMode.UF2)` + `reset()`), then copies the bundled CP 7.3.1 `.uf2`.
+
+- **The reset drops USB mid-command — serial-entry errors are NOT failures.** `reset()` kills the USB connection while the serial write/flush is still in flight, so `enter_bootloader` routinely returns an error ("Device was disconnected") even when entry *succeeded*. Don't dead-end the flow on it: fall through to polling for the `RPI-RP2` mount, which is the real source of truth. Escalate to an error only if no bootloader mount appears within the watchdog window.
+- **Reflashing the `.uf2` reformats the CIRCUITPY filesystem** — `code.py`, `config.json`, `lib/` are all wiped. The intended recovery flow is reflash CP → then reinstall MCM via Install Firmware. Back up custom `config.json` first.
+- **CTA wiring for the #132 refusal**: the CP-version preflight (`installer.rs`) stamps `CP_VERSION_UNSUPPORTED_CODE` ("cp_version_unsupported") into `ConfigError.details[0]`. `FirmwareInstaller.svelte` matches that code (not the human message) to surface the reflash CTA at the error. `details` is otherwise unused by the install path — it's the machine-signal channel.
+
 ## Tauri Windows Installer
 
 `tauri.conf.json` `bundle.windows.nsis.installMode`:

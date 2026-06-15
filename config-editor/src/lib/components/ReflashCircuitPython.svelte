@@ -56,6 +56,12 @@
   // with manual recovery instructions instead of spinning indefinitely.
   let bootloaderWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
   let bootloaderStalled = $state(false);
+  // Message from a failed `enterBootloader` call, held pending verdict. A reset
+  // that *succeeds* drops USB mid-command, so the serial call routinely reports
+  // an error ("Device was disconnected") even though entry worked — the RPI-RP2
+  // mount poll is the real source of truth. We stash the message and let the
+  // watchdog escalate to the manual fallback only if no bootloader appears.
+  let entryError: string | null = null;
 
   function clearPollers() {
     if (bootloaderPollTimer !== null) {
@@ -76,12 +82,22 @@
     }
     copyStalled = false;
     bootloaderStalled = false;
+    entryError = null;
   }
 
   function startBootloaderWatchdog() {
     bootloaderStalled = false;
     bootloaderWatchdogTimer = setTimeout(() => {
-      if (flow.kind === 'awaitingBootloader') {
+      if (flow.kind !== 'awaitingBootloader') return;
+      if (entryError !== null) {
+        // Serial entry errored AND no bootloader mounted within the window —
+        // a genuine serial-reach failure (vs. the expected reset disconnect,
+        // which would have produced an RPI-RP2 mount by now). Surface the
+        // stashed message with the manual-recovery fallback.
+        const message = entryError;
+        clearPollers();
+        flow = { kind: 'error', message, showManualFallback: true };
+      } else {
         bootloaderStalled = true;
       }
     }, 20_000);
@@ -180,17 +196,16 @@
     // 2. Device-driven entry: ask CP to reboot into the bootloader for us.
     if (device) {
       flow = { kind: 'enteringBootloader' };
+      entryError = null;
       try {
         await enterBootloader(device.path);
       } catch (e: any) {
-        // Serial reach failed — device may be too bricked to honor REPL
-        // commands. Show the manual fallback so the user has a path forward.
-        flow = {
-          kind: 'error',
-          message: e?.message ?? String(e),
-          showManualFallback: true,
-        };
-        return;
+        // A successful reset drops USB mid-command, so this routinely throws
+        // ("Device was disconnected") even though entry worked. Don't dead-end
+        // — fall through to the RPI-RP2 poll, which is the source of truth.
+        // Stash the message; the watchdog escalates to the manual fallback
+        // only if no bootloader actually appears within the window.
+        entryError = e?.message ?? String(e);
       }
       flow = { kind: 'awaitingBootloader' };
       bootloaderPollTimer = setInterval(pollForBootloader, 1000);

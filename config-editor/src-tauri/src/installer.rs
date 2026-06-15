@@ -44,6 +44,13 @@ const MANAGED_DIRS: &[&str] = &["core", "devices", "fonts", "lib"];
 /// MC-Music-Workshop/midi-captain-max#2; bump this constant when that lands.
 const MAX_SUPPORTED_CP_MAJOR: u8 = 7;
 
+/// Machine-readable code stamped into `ConfigError.details[0]` when an install
+/// is refused for an unsupported CircuitPython version. The GUI matches on this
+/// (not the human-readable message, which is free to reword) to surface the
+/// "Reflash CircuitPython 7.3.1" CTA next to the refusal — see
+/// `FirmwareInstaller.svelte`. `details` is otherwise unused by the install path.
+pub const CP_VERSION_UNSUPPORTED_CODE: &str = "cp_version_unsupported";
+
 /// Bundled filename of the default config template for this device type.
 fn config_source_name(dt: DeviceType) -> &'static str {
     match dt {
@@ -153,17 +160,21 @@ fn check_cp_version_supported(device_root: &Path) -> Result<(), ConfigError> {
     if major <= MAX_SUPPORTED_CP_MAJOR {
         return Ok(());
     }
-    Err(ConfigError::msg(format!(
-        "MIDI Captain MAX firmware requires CircuitPython 7.x (verified on 7.3.1). \
-         Detected: {major}.{minor}.{patch}. Install blocked to prevent a silent brick \
-         — bundled mpy libraries are format v5 (CP 7 only) and boot.py uses \
-         supervisor.disable_autoreload() which CP 8.0 removed.\n\n\
-         Fix: hold Switch 1 / KEY0 while plugging in USB so the bootloader RPI-RP2 \
-         drive appears, then drag adafruit-circuitpython-raspberry_pi_pico-en_US-7.3.1.uf2 \
-         (from Adafruit's CircuitPython 7.3.1 archive) onto it. The device will reboot \
-         back to CIRCUITPY; re-run install.\n\n\
-         Long-term CP 9/10 migration is tracked in MC-Music-Workshop/midi-captain-max#2."
-    )))
+    Err(ConfigError {
+        message: format!(
+            "MIDI Captain MAX firmware requires CircuitPython 7.x (verified on 7.3.1). \
+             Detected: {major}.{minor}.{patch}. Install blocked to prevent a silent brick \
+             — bundled mpy libraries are format v5 (CP 7 only) and boot.py uses \
+             supervisor.disable_autoreload() which CP 8.0 removed.\n\n\
+             Fix: use the \"Reflash CircuitPython 7.3.1\" button below to reflash directly, \
+             or hold Switch 1 / KEY0 while plugging in USB so the bootloader RPI-RP2 \
+             drive appears, then drag adafruit-circuitpython-raspberry_pi_pico-en_US-7.3.1.uf2 \
+             (from Adafruit's CircuitPython 7.3.1 archive) onto it. The device will reboot \
+             back to CIRCUITPY; re-run install.\n\n\
+             Long-term CP 9/10 migration is tracked in MC-Music-Workshop/midi-captain-max#2."
+        ),
+        details: Some(vec![CP_VERSION_UNSUPPORTED_CODE.to_string()]),
+    })
 }
 
 fn detect_device_type(device_root: &Path) -> Option<DeviceType> {

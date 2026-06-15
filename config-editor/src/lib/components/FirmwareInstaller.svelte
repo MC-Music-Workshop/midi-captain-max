@@ -22,6 +22,11 @@
   let progress = $state<InstallProgress | null>(null);
   let report = $state<InstallReport | null>(null);
   let errorMsg = $state('');
+  // True when the last install was refused because the device's CircuitPython
+  // version is unsupported (issue #132 preflight). Detected via the machine
+  // code in ConfigError.details[0], not the human message. Gates the inline
+  // "Reflash CircuitPython 7.3.1" CTA so the fix is one click from the refusal.
+  let cpMismatch = $state(false);
   let versions = $state<FirmwareVersions | null>(null);
 
   // Re-fetch versions whenever the selected device changes or after a fresh
@@ -78,6 +83,7 @@
     progress = null;
     report = null;
     errorMsg = '';
+    cpMismatch = false;
 
     try {
       report = await installFirmware(device.path, resetConfig, (p) => {
@@ -87,6 +93,8 @@
       await refreshVersions(device);
     } catch (e: any) {
       errorMsg = e?.message ?? String(e);
+      // Backend stamps this code on the CP-version preflight refusal (#132).
+      cpMismatch = Array.isArray(e?.details) && e.details[0] === 'cp_version_unsupported';
       await message(`Firmware install failed:\n\n${errorMsg}`, { title: 'Install Failed', kind: 'error' });
     } finally {
       installing = false;
@@ -171,6 +179,21 @@
     <div class="result error">
       <strong>Error:</strong> {errorMsg}
     </div>
+    {#if cpMismatch}
+      <!-- #132 refusal → reflash CTA, surfaced right at the error so the fix
+           is one click away rather than buried in Advanced / Recovery below. -->
+      <div class="cp-mismatch-cta">
+        <ReflashCircuitPython
+          highlight
+          device={device}
+          onComplete={() => {
+            errorMsg = '';
+            cpMismatch = false;
+            refreshVersions(device);
+          }}
+        />
+      </div>
+    {/if}
   {/if}
 
   <details class="recovery">
@@ -340,6 +363,10 @@
     background: var(--error-bg);
     border: 1px solid var(--error-border);
     color: var(--error-text);
+  }
+
+  .cp-mismatch-cta {
+    margin-top: 8px;
   }
 
   .result ul {

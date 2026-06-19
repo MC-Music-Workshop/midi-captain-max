@@ -249,6 +249,8 @@ Select-mode buttons enforce mutual exclusivity within a named group: pressing on
 
 **MIDI RX:** `_process_midi_msg` matches incoming PC by `(channel, program)` and CC by `(channel, cc, value == cc_on)` to a select-mode button and calls `update_select_group` (LED-only, no MIDI echo). `select_repress` is intentionally **not** consulted on RX — it governs local-press behavior only. RX is idempotent LED-and-state-only, which avoids feedback loops with hosts that echo their own messages.
 
+**Press-timing (#125):** `select` and `keytimes` are intentionally **separate, mutually-exclusive mode families** — a button is one or the other, no `short[]`/`long[]` on select and no `select_group` on keytimes. Decided flat for simplicity; hybrid + per-entry alternatives are documented (with the four open state-machine questions) in [docs/plans/2026-06-19-issue-125-select-presstiming-decision.md](../docs/plans/2026-06-19-issue-125-select-presstiming-decision.md) for a future revisit.
+
 **Deferred to #47** (multi-message-per-press): off-message on sibling deactivation; PC `deselect` repress firmware behavior.
 
 **Future page handling:** when pages land, page-restore must repaint LEDs from `button_states[i].state` for select-mode buttons — do NOT reinit from config defaults, or latched group state is lost.

@@ -6,72 +6,176 @@
     "expression_text_size": "medium"
   },
   "long_press_threshold_ms": 500,
-  "buttons": [
+  "active_page": 0,
+  "pages": [
     {
-      "label": "VERB",
-      "color": "blue",
-      "mode": "keytimes",
-      "short": [
-        {"down": [{"type": "cc", "cc": 20, "value": 64}],  "color": "blue"},
-        {"down": [{"type": "cc", "cc": 20, "value": 96}],  "color": "cyan"},
-        {"down": [{"type": "cc", "cc": 20, "value": 127}], "color": "white"}
-      ]
-    },
-    {
-      "label": "DELAY",
-      "color": "yellow",
-      "mode": "keytimes",
-      "short": [
-        {"up": [{"type": "cc", "cc": 21, "value": 127}], "color": "yellow"},
-        {"up": [{"type": "cc", "cc": 21, "value": 0}],   "color": "off"}
+      "buttons": [
+        {
+          "label": "VERB",
+          "color": "blue",
+          "mode": "keytimes",
+          "short": [
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 20,
+                  "value": 64
+                }
+              ],
+              "color": "blue"
+            },
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 20,
+                  "value": 96
+                }
+              ],
+              "color": "cyan"
+            },
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 20,
+                  "value": 127
+                }
+              ],
+              "color": "white"
+            }
+          ]
+        },
+        {
+          "label": "DELAY",
+          "color": "yellow",
+          "mode": "keytimes",
+          "short": [
+            {
+              "up": [
+                {
+                  "type": "cc",
+                  "cc": 21,
+                  "value": 127
+                }
+              ],
+              "color": "yellow"
+            },
+            {
+              "up": [
+                {
+                  "type": "cc",
+                  "cc": 21,
+                  "value": 0
+                }
+              ],
+              "color": "off"
+            }
+          ],
+          "long": [
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 22,
+                  "value": 64
+                }
+              ],
+              "color": "magenta"
+            },
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 22,
+                  "value": 127
+                }
+              ],
+              "color": "purple"
+            }
+          ]
+        },
+        {
+          "label": "COMP",
+          "cc": 22,
+          "color": "red"
+        },
+        {
+          "label": "DIST",
+          "cc": 23,
+          "color": "magenta"
+        },
+        {
+          "label": "TREM",
+          "cc": 24,
+          "color": "white",
+          "mode": "momentary"
+        },
+        {
+          "label": "WOW",
+          "cc": 25,
+          "color": "orange",
+          "off_mode": "off"
+        },
+        {
+          "label": "OCT",
+          "cc": 26,
+          "color": "cyan"
+        },
+        {
+          "label": "FREQ",
+          "cc": 27,
+          "color": "red",
+          "off_mode": "off"
+        },
+        {
+          "label": "PLATE",
+          "cc": 28,
+          "color": "purple"
+        },
+        {
+          "label": "ROOM",
+          "cc": 29,
+          "color": "white",
+          "mode": "momentary"
+        }
       ],
-      "long": [
-        {"down": [{"type": "cc", "cc": 22, "value": 64}],  "color": "magenta"},
-        {"down": [{"type": "cc", "cc": 22, "value": 127}], "color": "purple"}
-      ]
-    },
-    {"label": "COMP", "cc": 22, "color": "red"},
-    {"label": "DIST", "cc": 23, "color": "magenta"},
-    {"label": "TREM", "cc": 24, "color": "white", "mode": "momentary"},
-    {"label": "WOW", "cc": 25, "color": "orange", "off_mode": "off"},
-    {"label": "OCT", "cc": 26, "color": "cyan"},
-    {"label": "FREQ", "cc": 27, "color": "red", "off_mode": "off"},
-    {"label": "PLATE", "cc": 28, "color": "purple"},
-    {"label": "ROOM", "cc": 29, "color": "white", "mode": "momentary"}
-  ],
-  "encoder": {
-    "enabled": true,
-    "cc": 11,
-    "label": "ENC",
-    "min": 0,
-    "max": 127,
-    "initial": 64,
-    "steps": null,
-    "push": {
-      "enabled": true,
-      "cc": 14,
-      "label": "PUSH",
-      "mode": "momentary"
+      "encoder": {
+        "enabled": true,
+        "cc": 11,
+        "label": "ENC",
+        "min": 0,
+        "max": 127,
+        "initial": 64,
+        "steps": null,
+        "push": {
+          "enabled": true,
+          "cc": 14,
+          "label": "PUSH",
+          "mode": "momentary"
+        }
+      },
+      "expression": {
+        "exp1": {
+          "enabled": true,
+          "cc": 12,
+          "label": "EXP1",
+          "min": 0,
+          "max": 127,
+          "polarity": "normal",
+          "threshold": 2
+        },
+        "exp2": {
+          "enabled": true,
+          "cc": 13,
+          "label": "EXP2",
+          "min": 0,
+          "max": 127,
+          "polarity": "normal",
+          "threshold": 2
+        }
+      }
     }
-  },
-  "expression": {
-    "exp1": {
-      "enabled": true,
-      "cc": 12,
-      "label": "EXP1",
-      "min": 0,
-      "max": 127,
-      "polarity": "normal",
-      "threshold": 2
-    },
-    "exp2": {
-      "enabled": true,
-      "cc": 13,
-      "label": "EXP2",
-      "min": 0,
-      "max": 127,
-      "polarity": "normal",
-      "threshold": 2
-    }
-  }
+  ]
 }

@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import type { MidiCaptainConfig, ButtonConfig, EncoderConfig, DeviceType, KeytimesEntry, KeytimesMessage, MessageType } from './types';
+import type { MidiCaptainConfig, ButtonConfig, EncoderConfig, DeviceType, KeytimesEntry, KeytimesMessage, MessageType, Page } from './types';
 import { validateConfig } from './validation';
 
 interface FormState {
@@ -8,20 +8,49 @@ interface FormState {
   historyIndex: number;
   validationErrors: Map<string, string>;
   isDirty: boolean;
-  _hiddenButtons?: ButtonConfig[];
-  _hiddenEncoder?: EncoderConfig;
+  // Per-page button tails / encoders stashed when shrinking to a smaller device,
+  // so switching back restores them. Indexed by page.
+  _hiddenButtons?: ButtonConfig[][];
+  _hiddenEncoder?: (EncoderConfig | undefined)[];
 }
 
 const HISTORY_LIMIT = 50;
 const DEBOUNCE_MS = 500;
 
-// Initialize with first checkpoint
+// Initialize with first checkpoint. Canonical pages-only shape: one empty page.
 const initialConfig: MidiCaptainConfig = {
   device: 'std10',
-  buttons: [],
-  encoder: undefined,
-  expression: undefined,
+  active_page: 0,
+  pages: [{ buttons: [] }],
 };
+
+// --- Active-page indirection (#15) ---
+//
+// The editor renders one page at a time. These helpers are the single place that
+// resolves "the active page", so the rest of the store (and every component path)
+// stays page-agnostic. When page-switching UI lands (P4), only `active_page`
+// changes — every read/write here follows automatically.
+
+function activePageIndex(cfg: MidiCaptainConfig): number {
+  const len = cfg.pages?.length ?? 0;
+  if (len === 0) return 0;
+  const ap = cfg.active_page ?? 0;
+  return Math.max(0, Math.min(len - 1, ap));
+}
+
+function activePage(cfg: MidiCaptainConfig): Page {
+  return cfg.pages[activePageIndex(cfg)];
+}
+
+// Paths whose first segment is page-scoped control-surface data get prefixed with
+// the active page; device-wide paths (display, global_channel, usb_drive_name,
+// midi_thru_*, dev_mode, long_press_threshold_ms) pass through unchanged.
+const PAGE_SCOPED_PATH = /^(buttons|encoder|expression)(\.|\[|$)/;
+
+function pageScopedPath(cfg: MidiCaptainConfig, path: string): string {
+  if (!PAGE_SCOPED_PATH.test(path)) return path;
+  return `pages[${activePageIndex(cfg)}].${path}`;
+}
 
 const initialState: FormState = {
   config: initialConfig,
@@ -35,6 +64,9 @@ const formState = writable<FormState>(initialState);
 
 export { formState };
 export const config = derived(formState, $state => $state.config);
+// The page the editor is currently rendering. Components read page-scoped data
+// (buttons/encoder/expression) from here rather than reaching into $config.
+export const currentPage = derived(formState, $state => activePage($state.config));
 export const isDirty = derived(formState, $state => $state.isDirty);
 export const validationErrors = derived(formState, $state => $state.validationErrors);
 export const canUndo = derived(formState, $state => $state.historyIndex > 0);
@@ -49,7 +81,9 @@ export const canRedo = derived(formState, $state =>
 // value across mode flips and we want it to remain suggestable.
 export const selectGroupNames = derived(formState, $state => {
   const groups = new Set<string>();
-  for (const btn of $state.config.buttons) {
+  // Select groups are per-page; the editor only renders the active page, so
+  // suggest groups from that page.
+  for (const btn of activePage($state.config).buttons) {
     if (btn.select_group) {
       groups.add(btn.select_group);
     }
@@ -70,7 +104,8 @@ function _nextUiId(): number {
 // Walk a config and assign `__uiId` to any keytimes entry/message that lacks one.
 // Mutates in place; safe to call on a freshly structuredCloned config.
 function _attachUiIds(cfg: MidiCaptainConfig): void {
-  for (const btn of cfg.buttons) {
+  for (const page of cfg.pages ?? []) {
+   for (const btn of page.buttons) {
     for (const cycle of ['short', 'long'] as const) {
       const entries = (btn as unknown as Record<string, unknown>)[cycle];
       if (!Array.isArray(entries)) continue;
@@ -85,12 +120,17 @@ function _attachUiIds(cfg: MidiCaptainConfig): void {
         }
       }
     }
+   }
   }
 }
 
 export function loadConfig(newConfig: MidiCaptainConfig) {
-  // Ensure display always exists so DisplaySection can traverse into it
-  const config = { ...newConfig, display: newConfig.display ?? {} };
+  // Ensure display always exists so DisplaySection can traverse into it.
+  // Guarantee at least one page and clamp active_page so the pages[active]
+  // paths that updateField builds are always traversable.
+  const pages = newConfig.pages?.length ? newConfig.pages : [{ buttons: [] }];
+  const active_page = Math.max(0, Math.min(pages.length - 1, newConfig.active_page ?? 0));
+  const config = { ...newConfig, pages, active_page, display: newConfig.display ?? {} };
   const cloned = structuredClone(config);
   _attachUiIds(cloned);
   formState.update(_state => ({
@@ -216,8 +256,8 @@ export function updateField(path: string, value: any) {
   // Update value immediately
   formState.update(state => {
     const newConfig = structuredClone(state.config);
-    setNestedValue(newConfig, path, value);
-    
+    setNestedValue(newConfig, pageScopedPath(newConfig, path), value);
+
     return {
       ...state,
       config: newConfig,
@@ -254,7 +294,7 @@ function _defaultMessage(type: MessageType): KeytimesMessage {
 function _updateButton(buttonIndex: number, mutate: (btn: ButtonConfig) => void) {
   formState.update(state => {
     const newConfig = structuredClone(state.config);
-    const btn = newConfig.buttons[buttonIndex];
+    const btn = activePage(newConfig).buttons[buttonIndex];
     if (!btn) return state;
     mutate(btn);
     return { ...state, config: newConfig, isDirty: true };
@@ -352,7 +392,7 @@ export function syncButtonStates(buttonIndex: number, keytimes: number) {
 
   formState.update(state => {
     const newConfig = structuredClone(state.config);
-    const btn = newConfig.buttons[buttonIndex];
+    const btn = activePage(newConfig).buttons[buttonIndex];
     if (!btn) return state;
 
     if (keytimes <= 1) {
@@ -393,6 +433,13 @@ function createDefaultButtons(startIndex: number, endIndex: number): ButtonConfi
   return defaults;
 }
 
+// Slice/pad a button array to exactly `count` entries.
+function padButtons(buttons: ButtonConfig[], count: number): ButtonConfig[] {
+  const out = buttons.slice(0, count);
+  while (out.length < count) out.push(createDefaultButton(out.length));
+  return out;
+}
+
 // Button count per device type
 const DEVICE_BUTTON_COUNT: Record<DeviceType, number> = {
   one1: 1,
@@ -431,74 +478,59 @@ export const DEVICE_HAS_TFT: Record<DeviceType, boolean> = {
 
 export function setDevice(deviceType: DeviceType) {
   formState.update(state => {
-    const newState = { ...state };
     const currentDevice = state.config.device;
     const targetCount = DEVICE_BUTTON_COUNT[deviceType];
+    const hasEncoder = DEVICE_HAS_ENCODER[deviceType];
 
     // Same device: no-op
     if (deviceType === currentDevice) {
       return state;
     }
 
-    // First-time initialization (no current device set)
+    const newState = { ...state };
+    // Device button count and encoder support apply to EVERY page — a config has
+    // one device, so all pages share the same control-surface shape.
+    const pages = structuredClone(state.config.pages);
+
+    // First-time initialization (no current device set): just size each page.
     if (!currentDevice) {
-      const buttons = state.config.buttons.slice(0, targetCount);
-      while (buttons.length < targetCount) {
-        buttons.push(createDefaultButton(buttons.length));
+      for (const page of pages) {
+        page.buttons = padButtons(page.buttons, targetCount);
+        if (!hasEncoder && page.encoder) page.encoder = { ...page.encoder, enabled: false };
       }
-      newState.config = {
-        ...state.config,
-        device: deviceType,
-        buttons,
-        encoder: !DEVICE_HAS_ENCODER[deviceType] && state.config.encoder
-          ? { ...state.config.encoder, enabled: false }
-          : state.config.encoder,
-      };
+      newState.config = { ...state.config, device: deviceType, pages };
       return pushHistory(newState);
     }
 
     const currentCount = DEVICE_BUTTON_COUNT[currentDevice];
 
-    // Switching to a device with fewer buttons: preserve extras
     if (targetCount < currentCount) {
-      if (state.config.buttons.length > targetCount) {
-        newState._hiddenButtons = state.config.buttons.slice(targetCount);
-      }
-      if (state.config.encoder && DEVICE_HAS_ENCODER[currentDevice]) {
-        newState._hiddenEncoder = structuredClone(state.config.encoder);
-      }
-      newState.config = {
-        ...state.config,
-        device: deviceType,
-        buttons: state.config.buttons.slice(0, targetCount),
-        encoder: !DEVICE_HAS_ENCODER[deviceType] && state.config.encoder
-          ? { ...state.config.encoder, enabled: false }
-          : state.config.encoder,
-      };
-    }
-
-    // Switching to a device with more buttons: restore preserved or create defaults
-    else {
-      const buttons = state.config.buttons.slice(0, currentCount);
-      while (buttons.length < currentCount) {
-        buttons.push(createDefaultButton(buttons.length));
-      }
-
-      // Restore hidden buttons or create defaults for the extra slots
-      const extra = state._hiddenButtons || createDefaultButtons(currentCount, targetCount - 1);
-      newState.config = {
-        ...state.config,
-        device: deviceType,
-        buttons: [...buttons, ...extra].slice(0, targetCount),
-        encoder: DEVICE_HAS_ENCODER[deviceType]
-          ? (state._hiddenEncoder || state.config.encoder)
-          : state.config.encoder,
-      };
-
+      // Shrinking: stash each page's truncated tail + encoder so switching back restores them.
+      const hiddenButtons: ButtonConfig[][] = [];
+      const hiddenEncoder: (EncoderConfig | undefined)[] = [];
+      pages.forEach((page, i) => {
+        hiddenButtons[i] = page.buttons.slice(targetCount);
+        hiddenEncoder[i] = DEVICE_HAS_ENCODER[currentDevice] ? structuredClone(page.encoder) : undefined;
+        page.buttons = page.buttons.slice(0, targetCount);
+        if (!hasEncoder && page.encoder) page.encoder = { ...page.encoder, enabled: false };
+      });
+      newState._hiddenButtons = hiddenButtons;
+      newState._hiddenEncoder = hiddenEncoder;
+    } else {
+      // Growing: restore stashed tails (per page) or pad with defaults.
+      pages.forEach((page, i) => {
+        const base = padButtons(page.buttons, currentCount);
+        const extra = state._hiddenButtons?.[i] ?? createDefaultButtons(currentCount, targetCount - 1);
+        page.buttons = [...base, ...extra].slice(0, targetCount);
+        if (hasEncoder) {
+          page.encoder = state._hiddenEncoder?.[i] ?? page.encoder;
+        }
+      });
       delete newState._hiddenButtons;
       delete newState._hiddenEncoder;
     }
 
+    newState.config = { ...state.config, device: deviceType, pages };
     return pushHistory(newState);
   });
 }
@@ -602,8 +634,18 @@ export function normalizeConfig(cfg: MidiCaptainConfig): MidiCaptainConfig {
   // Deep clone so the ephemeral `__uiId` strip below (and any other mutations)
   // don't reach back into the live store.
   const cloned = structuredClone(cfg);
-  const normalized: MidiCaptainConfig = { ...cloned, buttons: cloned.buttons.map(normalizeButton) };
-  // Strip display if no fields were set (avoids writing `"display": {}` for untouched configs)
+  // Normalize each page's buttons; strip empty per-page display overrides.
+  const normalized: MidiCaptainConfig = {
+    ...cloned,
+    pages: cloned.pages.map(page => {
+      const p: Page = { ...page, buttons: page.buttons.map(normalizeButton) };
+      if (p.display && Object.values(p.display).every(v => v === undefined)) {
+        delete p.display;
+      }
+      return p;
+    }),
+  };
+  // Strip device-wide display if no fields were set (avoids writing `"display": {}`)
   if (normalized.display && Object.values(normalized.display).every(v => v === undefined)) {
     delete normalized.display;
   }

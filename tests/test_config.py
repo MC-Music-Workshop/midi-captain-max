@@ -20,7 +20,55 @@ from core.config import (
     get_encoder_config,
     get_expression_config,
     get_button_state_config,
+    to_pages,
+    get_active_page,
 )
+
+
+class TestToPages:
+    """Tests for the legacy->pages converter and active-page accessor (#15)."""
+
+    def test_wraps_legacy_flat_config(self):
+        cfg = to_pages({
+            "device": "std10",
+            "buttons": [{"label": "B1", "cc": 20, "color": "red"}],
+            "encoder": {"enabled": True, "cc": 11, "label": "ENC"},
+            "usb_drive_name": "MYDRIVE",
+        })
+        assert cfg["pages"][0]["buttons"][0]["label"] == "B1"
+        assert cfg["pages"][0]["encoder"]["cc"] == 11
+        assert cfg["active_page"] == 0
+        # Device-wide key stays top-level.
+        assert cfg["usb_drive_name"] == "MYDRIVE"
+        # Legacy top-level control-surface keys are gone.
+        assert "buttons" not in cfg
+        assert "encoder" not in cfg
+
+    def test_idempotent(self):
+        once = to_pages({
+            "buttons": [{"label": "B1", "cc": 20, "color": "red"}],
+            "encoder": {"enabled": True, "cc": 11, "label": "ENC"},
+        })
+        twice = to_pages(json.loads(json.dumps(once)))
+        assert once == twice
+
+    def test_strips_stray_legacy_keys_when_paged(self):
+        cfg = to_pages({
+            "buttons": [{"label": "STALE", "cc": 99, "color": "red"}],
+            "pages": [{"buttons": [{"label": "REAL", "cc": 20, "color": "green"}]}],
+            "active_page": 0,
+        })
+        assert "buttons" not in cfg
+        assert cfg["pages"][0]["buttons"][0]["label"] == "REAL"
+
+    def test_get_active_page_clamps_out_of_range(self):
+        cfg = {"pages": [{"buttons": []}], "active_page": 7}
+        # Returns the only page without raising.
+        assert get_active_page(cfg) is cfg["pages"][0]
+
+    def test_get_active_page_empty_pages_is_safe(self):
+        assert get_active_page({"pages": []}) == {"buttons": []}
+        assert get_active_page({}) == {"buttons": []}
 
 
 class TestConfigValidation:
@@ -548,21 +596,24 @@ class TestValidateConfig:
     def test_extends_short_button_array(self):
         """Fills in missing buttons if fewer than button_count."""
         cfg = validate_config({"buttons": [{"label": "A"}]}, button_count=3)
-        
-        assert len(cfg["buttons"]) == 3
-        assert cfg["buttons"][0]["label"] == "A"
-        assert cfg["buttons"][1]["label"] == "2"
-        assert cfg["buttons"][2]["label"] == "3"
-    
+
+        page = cfg["pages"][0]
+        assert len(page["buttons"]) == 3
+        assert page["buttons"][0]["label"] == "A"
+        assert page["buttons"][1]["label"] == "2"
+        assert page["buttons"][2]["label"] == "3"
+
     def test_preserves_extra_config_keys(self):
-        """Keeps encoder, expression, etc."""
+        """Keeps device-wide extra keys top-level; encoder moves into the page."""
         cfg = validate_config({
             "buttons": [],
             "encoder": {"cc": 11},
             "custom": "value"
         }, button_count=2)
-        
-        assert cfg["encoder"] == {"cc": 11}
+
+        # encoder is per-page control-surface data → lives under the page now.
+        assert cfg["pages"][0]["encoder"] == {"cc": 11}
+        # unknown device-wide keys are preserved at the top level.
         assert cfg["custom"] == "value"
     
     def test_global_channel_default(self):
@@ -586,7 +637,7 @@ class TestValidateConfig:
     def test_buttons_inherit_global_channel(self):
         """Buttons inherit global channel when not specified."""
         cfg = validate_config({"buttons": [{}], "global_channel": 3}, button_count=1)
-        assert cfg["buttons"][0]["channel"] == 3
+        assert cfg["pages"][0]["buttons"][0]["channel"] == 3
 
 
 class TestEncoderConfig:
@@ -608,11 +659,11 @@ class TestEncoderConfig:
     def test_overrides_defaults(self):
         """Config values override defaults."""
         enc = get_encoder_config({
-            "encoder": {
+            "pages": [{"encoder": {
                 "cc": 55,
                 "steps": 5,
                 "push": {"cc": 77, "mode": "toggle"}
-            }
+            }}]
         })
         
         assert enc["cc"] == 55
@@ -630,19 +681,19 @@ class TestEncoderConfig:
         """Encoder can override global channel."""
         enc = get_encoder_config({
             "global_channel": 5,
-            "encoder": {"channel": 12}
+            "pages": [{"encoder": {"channel": 12}}]
         })
         assert enc["channel"] == 12
     
     def test_encoder_push_cc_values(self):
         """Encoder push can have custom cc_on and cc_off values."""
         enc = get_encoder_config({
-            "encoder": {
+            "pages": [{"encoder": {
                 "push": {
                     "cc_on": 100,
                     "cc_off": 20
                 }
-            }
+            }}]
         })
         assert enc["push"]["cc_on"] == 100
         assert enc["push"]["cc_off"] == 20

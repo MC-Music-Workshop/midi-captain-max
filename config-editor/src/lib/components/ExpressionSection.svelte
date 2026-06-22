@@ -1,10 +1,10 @@
 <script lang="ts">
   import Accordion from './Accordion.svelte';
   import ExpressionPedal from './ExpressionPedal.svelte';
-  import { config, updateField, DEVICE_HAS_EXPRESSION } from '$lib/formStore';
+  import { config, currentPage, updateField, DEVICE_HAS_EXPRESSION } from '$lib/formStore';
 
   let deviceType = $derived($config.device);
-  let expression = $derived($config.expression);
+  let expression = $derived($currentPage.expression);
   let isDisabled = $derived(!DEVICE_HAS_EXPRESSION[deviceType ?? 'std10']);
   let message = $derived(isDisabled ? `Not available on ${(deviceType ?? '').toUpperCase()}` : undefined);
 

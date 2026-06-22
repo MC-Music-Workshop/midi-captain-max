@@ -5,31 +5,90 @@
     "status_text_size": "medium",
     "expression_text_size": "medium"
   },
-  "buttons": [
-    {"label": "CC20",   "type": "cc",     "cc": 20,      "color": "red"},
-    {"label": "TREM",   "type": "note",   "note": 60,    "velocity_on": 127, "velocity_off": 0, "color": "blue", "mode": "momentary"},
-    {"label": "CHORD",  "type": "note",   "note": 48,    "color": "cyan", "mode": "toggle"},
-    {"label": "PATCH1", "type": "pc",     "program": 0,  "color": "green"},
-    {"label": "PATCH2", "type": "pc",     "program": 1,  "color": "yellow"},
-    {"label": "PATCH3", "type": "pc",     "program": 2,  "color": "magenta"},
-    {"label": "PATCH4", "type": "pc",     "program": 3,  "color": "white"},
-    {"label": "PATCH5", "type": "pc",     "program": 4,  "color": "orange"},
-    {"label": "PC UP",  "type": "pc_inc", "pc_step": 1,  "color": "orange"},
-    {"label": "PC DN",  "type": "pc_dec", "pc_step": 1,  "color": "purple"}
-  ],
-  "encoder": {
-    "enabled": true,
-    "cc": 11,
-    "label": "ENC",
-    "min": 0,
-    "max": 127,
-    "initial": 64,
-    "steps": null,
-    "push": {
-      "enabled": true,
-      "cc": 14,
-      "label": "PUSH",
-      "mode": "momentary"
+  "active_page": 0,
+  "pages": [
+    {
+      "buttons": [
+        {
+          "label": "CC20",
+          "type": "cc",
+          "cc": 20,
+          "color": "red"
+        },
+        {
+          "label": "TREM",
+          "type": "note",
+          "note": 60,
+          "velocity_on": 127,
+          "velocity_off": 0,
+          "color": "blue",
+          "mode": "momentary"
+        },
+        {
+          "label": "CHORD",
+          "type": "note",
+          "note": 48,
+          "color": "cyan",
+          "mode": "toggle"
+        },
+        {
+          "label": "PATCH1",
+          "type": "pc",
+          "program": 0,
+          "color": "green"
+        },
+        {
+          "label": "PATCH2",
+          "type": "pc",
+          "program": 1,
+          "color": "yellow"
+        },
+        {
+          "label": "PATCH3",
+          "type": "pc",
+          "program": 2,
+          "color": "magenta"
+        },
+        {
+          "label": "PATCH4",
+          "type": "pc",
+          "program": 3,
+          "color": "white"
+        },
+        {
+          "label": "PATCH5",
+          "type": "pc",
+          "program": 4,
+          "color": "orange"
+        },
+        {
+          "label": "PC UP",
+          "type": "pc_inc",
+          "pc_step": 1,
+          "color": "orange"
+        },
+        {
+          "label": "PC DN",
+          "type": "pc_dec",
+          "pc_step": 1,
+          "color": "purple"
+        }
+      ],
+      "encoder": {
+        "enabled": true,
+        "cc": 11,
+        "label": "ENC",
+        "min": 0,
+        "max": 127,
+        "initial": 64,
+        "steps": null,
+        "push": {
+          "enabled": true,
+          "cc": 14,
+          "label": "PUSH",
+          "mode": "momentary"
+        }
+      }
     }
-  }
+  ]
 }

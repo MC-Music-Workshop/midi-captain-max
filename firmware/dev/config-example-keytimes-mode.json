@@ -6,106 +6,264 @@
     "expression_text_size": "medium"
   },
   "long_press_threshold_ms": 500,
-  "buttons": [
+  "active_page": 0,
+  "pages": [
     {
-      "label": "VERB",
-      "color": "blue",
-      "mode": "keytimes",
-      "short": [
-        {"up": [{"type": "cc", "cc": 20, "value": 127}], "color": "white"},
-        {"up": [{"type": "cc", "cc": 20, "value": 0}],   "color": "off"}
-      ],
-      "long": [
-        {"down": [{"type": "cc", "cc": 21, "value": 127}], "color": "blue"},
-        {"down": [{"type": "cc", "cc": 21, "value": 0}],   "color": "white"}
-      ]
-    },
-    {
-      "label": "LEAD",
-      "color": "red",
-      "mode": "keytimes",
-      "short": [
-        {"down": [{"type": "pc", "program": 10}], "color": "green",  "label": "CLEAN"},
-        {"down": [{"type": "pc", "program": 11}], "color": "orange", "label": "CRNCH"},
-        {"down": [{"type": "pc", "program": 12}], "color": "red",    "label": "LEAD"}
-      ],
-      "long": [
-        {"down": [{"type": "cc", "cc": 30, "value": 64}],  "color": "cyan",    "label": "HALL"},
-        {"down": [{"type": "cc", "cc": 30, "value": 127}], "color": "magenta", "label": "PLATE"}
-      ]
-    },
-    {
-      "label": "TAP",
-      "color": "white",
-      "mode": "keytimes",
-      "long_press_threshold_ms": 700,
-      "short": [
-        {"down": [{"type": "cc", "cc": 64, "value": 127}], "color": "white"}
-      ],
-      "long": [
-        {"down": [{"type": "cc", "cc": 65, "value": 127}], "color": "purple", "label": "TUNER"}
-      ]
-    },
-    {
-      "label": "MUTE",
-      "color": "yellow",
-      "mode": "keytimes",
-      "short": [
+      "buttons": [
         {
-          "down": [{"type": "cc", "cc": 66, "value": 127}],
-          "up":   [{"type": "cc", "cc": 66, "value": 0}],
-          "color": "yellow"
+          "label": "VERB",
+          "color": "blue",
+          "mode": "keytimes",
+          "short": [
+            {
+              "up": [
+                {
+                  "type": "cc",
+                  "cc": 20,
+                  "value": 127
+                }
+              ],
+              "color": "white"
+            },
+            {
+              "up": [
+                {
+                  "type": "cc",
+                  "cc": 20,
+                  "value": 0
+                }
+              ],
+              "color": "off"
+            }
+          ],
+          "long": [
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 21,
+                  "value": 127
+                }
+              ],
+              "color": "blue"
+            },
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 21,
+                  "value": 0
+                }
+              ],
+              "color": "white"
+            }
+          ]
+        },
+        {
+          "label": "LEAD",
+          "color": "red",
+          "mode": "keytimes",
+          "short": [
+            {
+              "down": [
+                {
+                  "type": "pc",
+                  "program": 10
+                }
+              ],
+              "color": "green",
+              "label": "CLEAN"
+            },
+            {
+              "down": [
+                {
+                  "type": "pc",
+                  "program": 11
+                }
+              ],
+              "color": "orange",
+              "label": "CRNCH"
+            },
+            {
+              "down": [
+                {
+                  "type": "pc",
+                  "program": 12
+                }
+              ],
+              "color": "red",
+              "label": "LEAD"
+            }
+          ],
+          "long": [
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 30,
+                  "value": 64
+                }
+              ],
+              "color": "cyan",
+              "label": "HALL"
+            },
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 30,
+                  "value": 127
+                }
+              ],
+              "color": "magenta",
+              "label": "PLATE"
+            }
+          ]
+        },
+        {
+          "label": "TAP",
+          "color": "white",
+          "mode": "keytimes",
+          "long_press_threshold_ms": 700,
+          "short": [
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 64,
+                  "value": 127
+                }
+              ],
+              "color": "white"
+            }
+          ],
+          "long": [
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 65,
+                  "value": 127
+                }
+              ],
+              "color": "purple",
+              "label": "TUNER"
+            }
+          ]
+        },
+        {
+          "label": "MUTE",
+          "color": "yellow",
+          "mode": "keytimes",
+          "short": [
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 66,
+                  "value": 127
+                }
+              ],
+              "up": [
+                {
+                  "type": "cc",
+                  "cc": 66,
+                  "value": 0
+                }
+              ],
+              "color": "yellow"
+            }
+          ]
+        },
+        {
+          "label": "DLY",
+          "color": "cyan",
+          "mode": "keytimes",
+          "short": [
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 67,
+                  "value": 127
+                }
+              ],
+              "color": "cyan"
+            },
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 67,
+                  "value": 0
+                }
+              ],
+              "color": "cyan",
+              "dim": true
+            }
+          ]
+        },
+        {
+          "label": "COMP",
+          "cc": 22,
+          "color": "green"
+        },
+        {
+          "label": "OD",
+          "cc": 23,
+          "color": "orange"
+        },
+        {
+          "label": "OCT",
+          "cc": 24,
+          "color": "purple"
+        },
+        {
+          "label": "MOD",
+          "cc": 25,
+          "color": "magenta"
+        },
+        {
+          "label": "ROOM",
+          "cc": 26,
+          "color": "white"
         }
-      ]
-    },
-    {
-      "label": "DLY",
-      "color": "cyan",
-      "mode": "keytimes",
-      "short": [
-        {"down": [{"type": "cc", "cc": 67, "value": 127}], "color": "cyan"},
-        {"down": [{"type": "cc", "cc": 67, "value": 0}],   "color": "cyan", "dim": true}
-      ]
-    },
-    {"label": "COMP", "cc": 22, "color": "green"},
-    {"label": "OD", "cc": 23, "color": "orange"},
-    {"label": "OCT", "cc": 24, "color": "purple"},
-    {"label": "MOD", "cc": 25, "color": "magenta"},
-    {"label": "ROOM", "cc": 26, "color": "white"}
-  ],
-  "encoder": {
-    "enabled": true,
-    "cc": 11,
-    "label": "ENC",
-    "min": 0,
-    "max": 127,
-    "initial": 64,
-    "steps": null,
-    "push": {
-      "enabled": true,
-      "cc": 14,
-      "label": "PUSH",
-      "mode": "momentary"
+      ],
+      "encoder": {
+        "enabled": true,
+        "cc": 11,
+        "label": "ENC",
+        "min": 0,
+        "max": 127,
+        "initial": 64,
+        "steps": null,
+        "push": {
+          "enabled": true,
+          "cc": 14,
+          "label": "PUSH",
+          "mode": "momentary"
+        }
+      },
+      "expression": {
+        "exp1": {
+          "enabled": true,
+          "cc": 12,
+          "label": "EXP1",
+          "min": 0,
+          "max": 127,
+          "polarity": "normal",
+          "threshold": 2
+        },
+        "exp2": {
+          "enabled": true,
+          "cc": 13,
+          "label": "EXP2",
+          "min": 0,
+          "max": 127,
+          "polarity": "normal",
+          "threshold": 2
+        }
+      }
     }
-  },
-  "expression": {
-    "exp1": {
-      "enabled": true,
-      "cc": 12,
-      "label": "EXP1",
-      "min": 0,
-      "max": 127,
-      "polarity": "normal",
-      "threshold": 2
-    },
-    "exp2": {
-      "enabled": true,
-      "cc": 13,
-      "label": "EXP2",
-      "min": 0,
-      "max": 127,
-      "polarity": "normal",
-      "threshold": 2
-    }
-  }
+  ]
 }

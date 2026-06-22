@@ -79,12 +79,14 @@ export interface MIDICaptainConfig {
    */
   dev_mode?: boolean;
   /**
-   * Button configurations. Array length must match device type: std10=10, mini6=6, nano4=4, duo2=2, one1=1.
+   * Ordered list of pages (banks). Each page is a full control-surface snapshot (buttons + optional encoder/expression). The device renders one page at a time; switch the active page on-device or via the editor. Must contain 1-20 pages — the lower bound and the RAM-validated cap of 20 are enforced by the firmware/editor validators (not as schema minItems/maxItems, which would generate an unwieldy tuple type).
    */
-  buttons: ButtonConfig[];
-  encoder?: EncoderConfig;
-  expression?: ExpressionPedals;
-  display?: DisplayConfig;
+  pages: Page[];
+  /**
+   * Index of the page rendered at boot (0-based). Clamped to a valid index at load time; out-of-range values do not crash the device.
+   */
+  active_page?: number;
+  display?: DisplayConfig1;
   /**
    * Global default long-press threshold in milliseconds for keytimes-mode buttons. Per-button overrides allowed via the button's long_press_threshold_ms field.
    */
@@ -105,6 +107,26 @@ export interface MIDICaptainConfig {
    * MIDI Thru: echo messages received on USB MIDI back to the USB output (host loopback). Default false; enabling can cause duplicate notes or feedback when the DAW has MIDI echo enabled.
    */
   midi_thru_usb_to_usb?: boolean;
+}
+/**
+ * One page (bank): a full control-surface snapshot. The device renders one page at a time.
+ */
+export interface Page {
+  /**
+   * Optional human-readable page label for the editor and config file. Not shown on the device LCD; not used by firmware routing.
+   */
+  name?: string;
+  /**
+   * Button configurations for this page. Array length must match device type: std10=10, mini6=6, nano4=4, duo2=2, one1=1.
+   */
+  buttons: ButtonConfig[];
+  encoder?: EncoderConfig;
+  expression?: ExpressionPedals;
+  /**
+   * MIDI channel. Stored as 0-15, displayed as 1-16 in UI.
+   */
+  global_channel?: number;
+  display?: DisplayConfig;
 }
 export interface ButtonConfig {
   /**
@@ -260,7 +282,7 @@ export interface KeytimesEntry {
   label?: string;
 }
 /**
- * Rotary encoder configuration. Only supported on STD10.
+ * Per-page rotary encoder configuration. Only supported on STD10.
  */
 export interface EncoderConfig {
   /**
@@ -331,7 +353,7 @@ export interface EncoderPush {
   cc_off?: number;
 }
 /**
- * Expression pedal configurations. Only supported on STD10.
+ * Per-page expression pedal configurations. Only supported on STD10.
  */
 export interface ExpressionPedals {
   exp1: ExpressionConfig;
@@ -372,9 +394,26 @@ export interface ExpressionConfig {
   channel?: number;
 }
 /**
- * Display and text rendering settings.
+ * Optional per-page override of the device-wide display settings. Resolution lands in a later phase; carried but inert for now.
  */
 export interface DisplayConfig {
+  /**
+   * Button label text size.
+   */
+  button_text_size?: "small" | "medium" | "large";
+  /**
+   * Status display text size.
+   */
+  status_text_size?: "small" | "medium" | "large";
+  /**
+   * Expression pedal text size.
+   */
+  expression_text_size?: "small" | "medium" | "large";
+}
+/**
+ * Display and text rendering settings.
+ */
+export interface DisplayConfig1 {
   /**
    * Button label text size.
    */

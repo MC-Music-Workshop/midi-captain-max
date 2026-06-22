@@ -278,7 +278,9 @@ def load_config():
 
 
 config = load_config()
-buttons = get_active_page(config).get("buttons", [])
+# Resolve the active page once (clamps + may warn); reused for encoder/expression below.
+active_page = get_active_page(config)
+buttons = active_page.get("buttons", [])
 print(f"Loaded {len(buttons)} button configs")
 
 # MIDI Thru routing matrix (read once at boot).
@@ -461,7 +463,7 @@ except Exception:
     pass  # usb_hid not available — no HID buttons in config
 
 # Encoder config (per-page; from the active page or defaults)
-enc_config = get_active_page(config).get("encoder", {"enabled": True, "cc": 11, "label": "ENC", "min": 0, "max": 127, "initial": 64})
+enc_config = active_page.get("encoder", {"enabled": True, "cc": 11, "label": "ENC", "min": 0, "max": 127, "initial": 64})
 enc_push_config = enc_config.get("push", {"enabled": True, "cc": 14, "label": "PUSH", "mode": "momentary"})
 
 CC_ENCODER = enc_config.get("cc", 11)
@@ -483,7 +485,7 @@ ENC_PUSH_CC_OFF = enc_push_config.get("cc_off", 0)
 ENC_STEPS = enc_config.get("steps", None)
 
 # Expression pedal config (per-page; from the active page or defaults)
-exp_config = get_active_page(config).get("expression", {})
+exp_config = active_page.get("expression", {})
 exp1_config = exp_config.get("exp1", {"enabled": True, "cc": 12, "label": "EXP1", "min": 0, "max": 127, "polarity": "normal", "threshold": 2})
 exp2_config = exp_config.get("exp2", {"enabled": True, "cc": 13, "label": "EXP2", "min": 0, "max": 127, "polarity": "normal", "threshold": 2})
 

@@ -70,6 +70,16 @@ class TestToPages:
         assert get_active_page({"pages": []}) == {"buttons": []}
         assert get_active_page({}) == {"buttons": []}
 
+    def test_get_active_page_non_dict_page_is_safe(self):
+        # Corrupt/hand-edited config: a non-dict page must not crash callers.
+        assert get_active_page({"pages": [5]}) == {"buttons": []}
+        assert get_active_page({"pages": ["x"]}) == {"buttons": []}
+
+    def test_get_active_page_bool_active_page_does_not_select_page_one(self):
+        # bool is a subclass of int — active_page:true must NOT silently pick pages[1].
+        cfg = {"pages": [{"buttons": [{"label": "A"}]}, {"buttons": [{"label": "B"}]}], "active_page": True}
+        assert get_active_page(cfg)["buttons"][0]["label"] == "A"
+
 
 class TestConfigValidation:
     """Test config parsing and validation logic."""

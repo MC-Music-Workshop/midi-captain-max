@@ -278,10 +278,9 @@ def load_config():
 
 
 config = load_config()
-# Resolve the active page once (clamps + may warn); reused for encoder/expression below.
-active_page = get_active_page(config)
-buttons = active_page.get("buttons", [])
-print(f"Loaded {len(buttons)} button configs")
+# Per-page state is initialized by switch_page() at boot; placeholders until then.
+active_page = {}
+buttons = []
 
 # MIDI Thru routing matrix (read once at boot).
 # Cross routes default True; USB->USB defaults False (host loopback risk).
@@ -462,71 +461,46 @@ try:
 except Exception:
     pass  # usb_hid not available — no HID buttons in config
 
-# Encoder config (per-page; from the active page or defaults)
-enc_config = active_page.get("encoder", {"enabled": True, "cc": 11, "label": "ENC", "min": 0, "max": 127, "initial": 64})
-enc_push_config = enc_config.get("push", {"enabled": True, "cc": 14, "label": "PUSH", "mode": "momentary"})
+# Encoder/expression config — placeholders; switch_page() sets real values at boot.
+enc_config = {}
+enc_push_config = {}
+CC_ENCODER = 11
+CC_ENCODER_PUSH = 14
+ENC_MIN = 0
+ENC_MAX = 127
+ENC_INITIAL = 64
+ENC_ENABLED = False
+ENC_PUSH_ENABLED = False
+ENC_PUSH_MODE = "momentary"
+ENC_CHANNEL = 0
+ENC_PUSH_CHANNEL = 0
+ENC_PUSH_CC_ON = 127
+ENC_PUSH_CC_OFF = 0
+ENC_STEPS = None
 
-CC_ENCODER = enc_config.get("cc", 11)
-CC_ENCODER_PUSH = enc_push_config.get("cc", 14)
-ENC_MIN = enc_config.get("min", 0)
-ENC_MAX = enc_config.get("max", 127)
-ENC_INITIAL = enc_config.get("initial", 64)
-ENC_ENABLED = enc_config.get("enabled", True) and HAS_ENCODER
-ENC_PUSH_ENABLED = enc_push_config.get("enabled", True) and HAS_ENCODER
-ENC_PUSH_MODE = enc_push_config.get("mode", "momentary")
-ENC_CHANNEL = enc_config.get("channel", 0)
-ENC_PUSH_CHANNEL = enc_push_config.get("channel", 0)
-ENC_PUSH_CC_ON = enc_push_config.get("cc_on", 127)
-ENC_PUSH_CC_OFF = enc_push_config.get("cc_off", 0)
-
-# Stepped mode: steps = number of discrete output values (slots)
-# e.g., steps=5 means output CC values 0,1,2,3,4
-# Internal encoder tracks 0-127, output only changes at slot boundaries
-ENC_STEPS = enc_config.get("steps", None)
-
-# Expression pedal config (per-page; from the active page or defaults)
-exp_config = active_page.get("expression", {})
-exp1_config = exp_config.get("exp1", {"enabled": True, "cc": 12, "label": "EXP1", "min": 0, "max": 127, "polarity": "normal", "threshold": 2})
-exp2_config = exp_config.get("exp2", {"enabled": True, "cc": 13, "label": "EXP2", "min": 0, "max": 127, "polarity": "normal", "threshold": 2})
-
-CC_EXP1 = exp1_config.get("cc", 12)
-CC_EXP2 = exp2_config.get("cc", 13)
-EXP1_CHANNEL = exp1_config.get("channel", 0)
-EXP2_CHANNEL = exp2_config.get("channel", 0)
+exp_config = {}
+exp1_config = {"enabled": True, "cc": 12, "label": "EXP1", "min": 0, "max": 127, "polarity": "normal", "threshold": 2}
+exp2_config = {"enabled": True, "cc": 13, "label": "EXP2", "min": 0, "max": 127, "polarity": "normal", "threshold": 2}
+CC_EXP1 = 12
+CC_EXP2 = 13
+EXP1_CHANNEL = 0
+EXP2_CHANNEL = 0
 
 # =============================================================================
 # State
 # =============================================================================
 
-# Initialize ButtonState objects for each button with keytimes support
+# button_states and keytimes_states are placeholders; switch_page() builds real lists at boot.
 button_states = []
-for i in range(BUTTON_COUNT):
-    btn_config = buttons[i] if i < len(buttons) else {}
-    cc = btn_config.get("cc", 0)  # 0 for non-CC types; ButtonState.cc unused by note/pc dispatch
-    mode = btn_config.get("mode", "toggle")
-    keytimes = btn_config.get("keytimes", 1)
-    button_states.append(ButtonState(cc=cc, mode=mode, keytimes=keytimes))
-
-# Per-button KeytimesButtonState for buttons in mode: "keytimes" (#48). None for other modes.
-# Each holds a PressTracker (timing classifier), two PressCycles (short/long), and inherited
-# color/dim/label state for LED rendering.
-keytimes_states = [None] * BUTTON_COUNT
-for i in range(BUTTON_COUNT):
-    _kt_cfg = buttons[i] if i < len(buttons) else {}
-    if _kt_cfg.get("mode") == "keytimes":
-        _kt_threshold = get_long_press_threshold_ms(config, _kt_cfg)
-        _kt_short_len = len(_kt_cfg.get("short", []))
-        _kt_long_len = len(_kt_cfg.get("long", []))
-        keytimes_states[i] = KeytimesButtonState(_kt_threshold, _kt_short_len, _kt_long_len)
-        print(f"Button {i+1}: mode=keytimes, threshold={_kt_threshold}ms, short_len={_kt_short_len}, long_len={_kt_long_len}")
+keytimes_states = []
 
 pc_values = [0] * 16                 # Current PC value per MIDI channel (0-15), shared across all pc_inc/pc_dec buttons
 pc_flash_timers = [0.0] * BUTTON_COUNT  # Expiry time (monotonic) for PC button flash; 0 = inactive
 hid_flash_timers = [0.0] * BUTTON_COUNT  # Same for HID buttons
 PC_FLASH_DURATION_MS = 200              # Default PC/HID button flash duration in ms
 
-encoder_value = ENC_INITIAL  # Internal value 0-127
-encoder_slot = -1  # Current slot (set on first change)
+encoder_value = ENC_INITIAL  # placeholder; switch_page() sets to per-page ENC_INITIAL
+encoder_slot = -1
 
 # =============================================================================
 # Display Setup
@@ -816,6 +790,91 @@ def update_select_group(active_btn_num, group):
             on = (i + 1) == active_btn_num
             button_states[i].state = on
             set_button_state(i + 1, on)
+
+
+def switch_page(n):
+    """Switch the active page in RAM and re-render everything page-dependent.
+
+    Device never writes config to disk; this only mutates RAM. Reset-on-entry:
+    button/keytimes/encoder state rebuild from config defaults (latches/cycles
+    are NOT preserved across switches). pc_values[] (patch memory) is NOT reset.
+    """
+    global active_page, buttons
+    global CC_ENCODER, CC_ENCODER_PUSH, ENC_MIN, ENC_MAX, ENC_INITIAL
+    global ENC_ENABLED, ENC_PUSH_ENABLED, ENC_PUSH_MODE, ENC_CHANNEL
+    global ENC_PUSH_CHANNEL, ENC_PUSH_CC_ON, ENC_PUSH_CC_OFF, ENC_STEPS
+    global enc_config, enc_push_config
+    global exp_config, exp1_config, exp2_config, CC_EXP1, CC_EXP2, EXP1_CHANNEL, EXP2_CHANNEL
+    global button_states, keytimes_states, encoder_value, encoder_slot
+
+    config["active_page"] = _clamp_page(n)
+    active_page = get_active_page(config)
+    buttons = active_page.get("buttons", [])
+
+    enc_config = active_page.get("encoder", {"enabled": True, "cc": 11, "label": "ENC", "min": 0, "max": 127, "initial": 64})
+    enc_push_config = enc_config.get("push", {"enabled": True, "cc": 14, "label": "PUSH", "mode": "momentary"})
+    CC_ENCODER = enc_config.get("cc", 11)
+    CC_ENCODER_PUSH = enc_push_config.get("cc", 14)
+    ENC_MIN = enc_config.get("min", 0)
+    ENC_MAX = enc_config.get("max", 127)
+    ENC_INITIAL = enc_config.get("initial", 64)
+    ENC_ENABLED = enc_config.get("enabled", True) and HAS_ENCODER
+    ENC_PUSH_ENABLED = enc_push_config.get("enabled", True) and HAS_ENCODER
+    ENC_PUSH_MODE = enc_push_config.get("mode", "momentary")
+    _page_channel = active_page.get("global_channel", config.get("global_channel", 0))
+    if not isinstance(_page_channel, int) or _page_channel < 0 or _page_channel > 15:
+        _page_channel = config.get("global_channel", 0)
+    ENC_CHANNEL = enc_config.get("channel", _page_channel)
+    ENC_PUSH_CHANNEL = enc_push_config.get("channel", _page_channel)
+    ENC_PUSH_CC_ON = enc_push_config.get("cc_on", 127)
+    ENC_PUSH_CC_OFF = enc_push_config.get("cc_off", 0)
+    ENC_STEPS = enc_config.get("steps", None)
+
+    exp_config = active_page.get("expression", {})
+    exp1_config = exp_config.get("exp1", {"enabled": True, "cc": 12, "label": "EXP1", "min": 0, "max": 127, "polarity": "normal", "threshold": 2})
+    exp2_config = exp_config.get("exp2", {"enabled": True, "cc": 13, "label": "EXP2", "min": 0, "max": 127, "polarity": "normal", "threshold": 2})
+    CC_EXP1 = exp1_config.get("cc", 12)
+    CC_EXP2 = exp2_config.get("cc", 13)
+    EXP1_CHANNEL = exp1_config.get("channel", _page_channel)
+    EXP2_CHANNEL = exp2_config.get("channel", _page_channel)
+
+    button_states = []
+    for i in range(BUTTON_COUNT):
+        _btn_cfg = buttons[i] if i < len(buttons) else {}
+        button_states.append(ButtonState(
+            cc=_btn_cfg.get("cc", 0),
+            mode=_btn_cfg.get("mode", "toggle"),
+            keytimes=_btn_cfg.get("keytimes", 1),
+        ))
+
+    keytimes_states = [None] * BUTTON_COUNT
+    for i in range(BUTTON_COUNT):
+        _kt_cfg = buttons[i] if i < len(buttons) else {}
+        if _kt_cfg.get("mode") == "keytimes":
+            _kt_threshold = get_long_press_threshold_ms(config, _kt_cfg)
+            keytimes_states[i] = KeytimesButtonState(
+                _kt_threshold, len(_kt_cfg.get("short", [])), len(_kt_cfg.get("long", [])))
+
+    for i in range(BUTTON_COUNT):
+        pc_flash_timers[i] = 0.0
+        hid_flash_timers[i] = 0.0
+    encoder_value = ENC_INITIAL
+    encoder_slot = -1
+
+    if HAS_TFT:
+        for i in range(BUTTON_COUNT):
+            _btn_cfg = buttons[i] if i < len(buttons) else {"label": str(i + 1), "color": "white"}
+            _color_rgb = get_color(_btn_cfg.get("color", "white"))
+            _off_color = get_off_color_for_display(_color_rgb, _btn_cfg.get("off_mode", "dim"))
+            button_labels[i].text = _btn_cfg.get("label", str(i + 1))[:6]
+            button_labels[i].color = rgb_to_hex(_off_color)
+            _, _box_palette = button_boxes[i]
+            _box_palette[1] = rgb_to_hex(_off_color)
+        if HAS_EXPRESSION and exp1_label is not None:
+            exp1_label.text = exp1_config.get("label", "EXP1") + ": ---"
+            exp2_label.text = exp2_config.get("label", "EXP2") + ": ---"
+
+    init_leds()
 
 
 def handle_pc_select_press(btn_num, btn_config, channel):
@@ -1423,8 +1482,17 @@ def handle_expression():
 # Startup
 # =============================================================================
 
+def _clamp_page(n):
+    pages = config.get("pages", [])
+    if not pages:
+        return 0
+    if not isinstance(n, int) or isinstance(n, bool):
+        return 0
+    return max(0, min(n, len(pages) - 1))
+
+
 print("Initializing...")
-init_leds()
+switch_page(_clamp_page(config.get("active_page", 0)))
 
 # Startup animation
 pixels.fill((0, 255, 0))

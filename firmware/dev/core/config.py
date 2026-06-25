@@ -193,6 +193,11 @@ def _validate_keytimes_button(btn, index, default_channel):
     if "long_press_threshold_ms" in btn:
         validated["long_press_threshold_ms"] = _clamp_threshold_ms(btn.get("long_press_threshold_ms"))
 
+    # #157: latch the long color over short (status-indicator behavior) instead of
+    # the default last-press-wins. Persist only when truthy to keep configs clean.
+    if btn.get("long_overlay"):
+        validated["long_overlay"] = True
+
     short = btn.get("short")
     if short is not None:
         validated["short"] = _validate_keytimes_cycle(short)

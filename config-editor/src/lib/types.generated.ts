@@ -196,6 +196,10 @@ export interface ButtonConfig {
    */
   long_press_threshold_ms?: number;
   /**
+   * Only meaningful when mode='keytimes'. When true, the long cycle's color latches over the short cycle as a persistent status indicator (e.g. a shimmer-on light riding over a reverb short cycle). Default false: last-press-wins, so the LED color follows whichever timing class fired most recently (matches the label rule, #157).
+   */
+  long_overlay?: boolean;
+  /**
    * 'send' = press+release, 'press' = hold key, 'release' = release key(s), 'delay' = pause execution.
    */
   hid_action?: "send" | "press" | "release" | "delay";

@@ -14,7 +14,7 @@ from pathlib import Path
 FIRMWARE_DIR = Path(__file__).parent.parent / "firmware" / "dev"
 sys.path.insert(0, str(FIRMWARE_DIR))
 
-from core.colors import compute_keytimes_led_color, get_color, dim_color, COLORS
+from core.colors import compute_keytimes_led_color, resolve_keytimes_render_color, get_color, dim_color, COLORS
 
 OFF = COLORS["off"]
 
@@ -199,3 +199,73 @@ class TestIssue143LabelColorRegression:
         assert led_rgb != label_rgb, "dim LED color must differ from full-brightness label color"
         assert led_rgb == dim_color(get_color("yellow"))
         assert label_rgb == get_color("yellow")
+
+
+class TestResolveKeytimesRenderColor:
+    """resolve_keytimes_render_color gates the render on last_fired (#157).
+
+    Regression for the "sticky long color" bug: once a long press set
+    state.long_color, compute_keytimes_led_color()'s long>short precedence kept the
+    LED on the long color across every subsequent short press. Gating on last_fired
+    suppresses the inactive layer so the active class's color wins — mirroring the
+    last_fired label rule from #143.
+    """
+
+    def test_short_after_long_flips_color_back(self):
+        # The user's PUP config: short color green, long color blue. State holds both
+        # colors at once (long never clears short and vice versa); last_fired decides.
+        # last_fired == "long" -> blue; last_fired == "short" -> green (not stuck blue).
+        assert resolve_keytimes_render_color("long", "green", False, "blue", False) == get_color("blue")
+        assert resolve_keytimes_render_color("short", "green", False, "blue", False) == get_color("green")
+
+    def test_long_suppresses_short(self):
+        assert resolve_keytimes_render_color("long", "white", False, "blue", False) == get_color("blue")
+
+    def test_short_suppresses_long(self):
+        # Without gating this would return blue (long precedence); gated -> white.
+        assert resolve_keytimes_render_color("short", "white", False, "blue", False) == get_color("white")
+
+    def test_short_kill_switch_survives_gating(self):
+        # short color "off" is a kill switch; with last_fired == "short" the long
+        # layer is suppressed and the LED goes off.
+        assert resolve_keytimes_render_color("short", "off", False, "blue", False) == COLORS["off"]
+
+    def test_long_off_is_transparent_when_long_fired(self):
+        # long color "off" suppresses short and falls through to button fallback.
+        assert resolve_keytimes_render_color("long", "green", False, "off", False, "red") == get_color("red")
+
+    def test_none_before_first_press_uses_button_fallback(self):
+        # last_fired == None passes both layers (both unset here) -> button color.
+        assert resolve_keytimes_render_color(None, None, False, None, False, "red") == get_color("red")
+
+    def test_suppressed_layer_dim_does_not_leak(self):
+        # last_fired == "short" with short color inherited (None) + long_dim True must
+        # not dim the button fallback — the suppressed long layer's dim is dropped.
+        assert resolve_keytimes_render_color("short", None, False, None, True, "red") == get_color("red")
+
+
+class TestResolveKeytimesRenderColorOverlay:
+    """long_overlay=True opts back into latching-modifier behavior (#157 option).
+
+    The long layer decorates short persistently, so a long color stays lit across
+    subsequent short presses — the shimmer-status-light use case. With overlay on,
+    last_fired no longer gates the render: it behaves like compute_keytimes_led_color
+    on both raw layers.
+    """
+
+    def test_long_color_latches_across_short_press(self):
+        # Shimmer scenario: short reverb (white), long shimmer (blue). After shimmer
+        # latches, a short reverb tap must NOT drop the blue — overlay keeps it lit.
+        assert resolve_keytimes_render_color("long", "white", False, "blue", False, long_overlay=True) == get_color("blue")
+        assert resolve_keytimes_render_color("short", "white", False, "blue", False, long_overlay=True) == get_color("blue")
+
+    def test_overlay_matches_raw_composition(self):
+        # Overlay is exactly compute_keytimes_led_color on both layers, regardless of
+        # last_fired — the pre-#157 behavior.
+        for lf in (None, "short", "long"):
+            assert (resolve_keytimes_render_color(lf, "white", False, "blue", True, "red", long_overlay=True)
+                    == compute_keytimes_led_color("white", False, "blue", True, "red"))
+
+    def test_overlay_short_kill_switch_still_applies(self):
+        # short "off" kill switch overrides long even in overlay mode.
+        assert resolve_keytimes_render_color("long", "off", False, "blue", False, long_overlay=True) == COLORS["off"]

@@ -45,6 +45,11 @@
     }
   }
 
+  function handleLongOverlayChange(e: Event) {
+    const target = e.target as HTMLInputElement;
+    updateField(`buttons[${index}].long_overlay`, target.checked ? true : undefined);
+  }
+
   let thresholdError = $derived($validationErrors.get(`buttons[${index}].long_press_threshold_ms`));
 </script>
 
@@ -62,6 +67,16 @@
     {#if thresholdError}
       <span class="kt-error">{thresholdError}</span>
     {/if}
+  </div>
+
+  <div class="kt-overlay-row">
+    <label class="inline"
+           title="When on, the long-press color stays lit over the short cycle as a status indicator (e.g. shimmer-on). Off (default): the LED color follows whichever press fired last, matching the label.">
+      <input type="checkbox"
+             checked={button.long_overlay ?? false}
+             onchange={handleLongOverlayChange} />
+      Latch long color over short (status indicator)
+    </label>
   </div>
 
   {#each ['short', 'long'] as cycle (cycle)}

@@ -41,7 +41,7 @@ from adafruit_midi.note_off import NoteOff
 from adafruit_midi.system_exclusive import SystemExclusive
 
 # Import core modules (testable logic)
-from core.colors import COLORS, get_color, dim_color, rgb_to_hex, get_off_color, get_off_color_for_display, compute_keytimes_led_color
+from core.colors import COLORS, get_color, dim_color, rgb_to_hex, get_off_color, get_off_color_for_display, compute_keytimes_led_color, resolve_keytimes_render_color
 from core.config import (
     load_config as _load_config_from_file,
     validate_config,
@@ -1045,26 +1045,28 @@ def _dispatch_keytimes_message(msg, default_channel, btn_num):
 def _render_keytimes_led(btn_num, state, btn_config):
     """Update LED + display for a mode: "keytimes" button based on its current state.
 
-    LED uses full two-layer composition: long decorates short (the long cycle is a
-    persistent modifier painted over the short cycle). Both layers are always passed
-    to compute_keytimes_led_color() — short="off" is still a kill-switch that overrides
-    long; long="off" is transparent (falls through to short).
+    LED, label TEXT, and label COLOR all key off last_fired: only the most recently
+    fired timing class owns the render. resolve_keytimes_render_color() suppresses the
+    inactive layer so the active class's color wins, then applies the kill-switch /
+    precedence / dim / button-fallback rules. This prevents both the stale-label bug
+    (#143) and the sticky-color bug (#157), where a long press left its label/color
+    stuck on every subsequent short press.
 
-    Label TEXT uses last_fired: only the most recently fired timing class supplies
-    the label string. This prevents the stale-label bug (#143) where the first long
-    press left its label stuck on every subsequent short press.
-
-    Label COLOR is the composed color recomputed at full brightness (dim stripped),
-    with a fallback to the button color so it is never black-on-black (#143).
+    Label COLOR is the same resolved color recomputed at full brightness (dim
+    stripped), with a fallback to the button color so it is never black-on-black (#143).
     """
     idx = btn_num - 1
     if idx < 0 or idx >= BUTTON_COUNT:
         return
 
-    # LED: full composition. long decorates short; last_fired doesn't gate this.
-    rgb = compute_keytimes_led_color(state.short_color, state.short_dim,
-                                     state.long_color, state.long_dim,
-                                     btn_config.get("color"))
+    # LED: last_fired gates which layer wins, so a stale long color can't stick (#157),
+    # unless long_overlay opts into the latching-modifier behavior (long decorates short).
+    long_overlay = btn_config.get("long_overlay", False)
+    rgb = resolve_keytimes_render_color(state.last_fired,
+                                        state.short_color, state.short_dim,
+                                        state.long_color, state.long_dim,
+                                        btn_config.get("color"),
+                                        long_overlay)
 
     led_idx = switch_to_led(btn_num)
     if led_idx is not None:
@@ -1085,11 +1087,13 @@ def _render_keytimes_led(btn_num, state, btn_config):
         else:
             effective_label = btn_config.get("label", "")[:6]
         button_labels[idx].text = effective_label
-        # Label color: composed color at full brightness so dim entries remain legible
+        # Label color: resolved color at full brightness so dim entries remain legible
         # (#143). black-on-black (kill-switch / no-color) falls back to button color.
-        label_rgb = compute_keytimes_led_color(state.short_color, False,
-                                               state.long_color, False,
-                                               btn_config.get("color"))
+        label_rgb = resolve_keytimes_render_color(state.last_fired,
+                                                  state.short_color, False,
+                                                  state.long_color, False,
+                                                  btn_config.get("color"),
+                                                  long_overlay)
         if not any(label_rgb):
             label_rgb = get_color(btn_config.get("color") or "white")
         button_labels[idx].color = rgb_to_hex(label_rgb)

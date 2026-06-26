@@ -10,6 +10,7 @@ import type {
 export type { MIDICaptainConfig as MidiCaptainConfig };
 export type { ButtonConfig, ButtonColor };
 export type {
+  Page,
   StateOverride,
   EncoderConfig,
   EncoderPush,

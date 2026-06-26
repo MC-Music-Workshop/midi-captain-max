@@ -1,6 +1,6 @@
 //! Tauri commands for config file operations
 
-use crate::config::MidiCaptainConfig;
+use crate::config::{migrate_to_pages, MidiCaptainConfig};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -259,18 +259,23 @@ pub(crate) fn write_sync(path: &Path, data: &[u8]) -> Result<(), std::io::Error>
 pub fn read_config(path: String) -> Result<MidiCaptainConfig, ConfigError> {
     validate_device_path(&path)?;
     let contents = fs::read_to_string(&path)?;
-    let config: MidiCaptainConfig = serde_json::from_str(&contents)?;
+    let value: serde_json::Value = serde_json::from_str(&contents)?;
+    let config: MidiCaptainConfig = serde_json::from_value(migrate_to_pages(value))?;
     Ok(config)
 }
 
-/// Read raw JSON from a file (for text editor)
+/// Read raw JSON from a file (for text editor).
+///
+/// This is the single legacy-aware chokepoint on the editor read path: the raw
+/// config Value is migrated to the canonical pages-only shape before it is handed
+/// to the frontend, so JS never sees a legacy (flat `buttons`) config.
 #[command]
 pub fn read_config_raw(path: String) -> Result<String, ConfigError> {
     validate_device_path(&path)?;
     let contents = fs::read_to_string(&path)?;
-    // Pretty-print the JSON
     let value: serde_json::Value = serde_json::from_str(&contents)?;
-    let pretty = serde_json::to_string_pretty(&value)?;
+    let migrated = migrate_to_pages(value);
+    let pretty = serde_json::to_string_pretty(&migrated)?;
     Ok(pretty)
 }
 

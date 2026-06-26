@@ -4,7 +4,7 @@
   "title": "MIDI Captain Config",
   "description": "Configuration for Paint Audio MIDI Captain MAX custom firmware. This schema is the single source of truth for the config format — TypeScript types are generated from it, Rust structs are validated against it, and Python firmware uses it as reference. Note: the title field drives the generated TypeScript interface name, so keep it short and stable.",
   "type": "object",
-  "required": ["buttons"],
+  "required": ["pages"],
   "properties": {
     "device": {
       "type": "string",
@@ -31,18 +31,16 @@
       "default": false,
       "description": "When true, USB drive mounts on every boot. When false (default), requires holding Switch 1 during boot."
     },
-    "buttons": {
+    "pages": {
       "type": "array",
-      "items": { "$ref": "#/definitions/ButtonConfig" },
-      "description": "Button configurations. Array length must match device type: std10=10, mini6=6, nano4=4, duo2=2, one1=1."
+      "items": { "$ref": "#/definitions/Page" },
+      "description": "Ordered list of pages (banks). Each page is a full control-surface snapshot (buttons + optional encoder/expression). The device renders one page at a time; switch the active page on-device or via the editor. Must contain 1-20 pages — the lower bound and the RAM-validated cap of 20 are enforced by the firmware/editor validators (not as schema minItems/maxItems, which would generate an unwieldy tuple type)."
     },
-    "encoder": {
-      "$ref": "#/definitions/EncoderConfig",
-      "description": "Rotary encoder configuration. Only supported on STD10."
-    },
-    "expression": {
-      "$ref": "#/definitions/ExpressionPedals",
-      "description": "Expression pedal configurations. Only supported on STD10."
+    "active_page": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Index of the page rendered at boot (0-based). Clamped to a valid index at load time; out-of-range values do not crash the device."
     },
     "display": {
       "$ref": "#/definitions/DisplayConfig",
@@ -78,6 +76,40 @@
   },
   "additionalProperties": false,
   "definitions": {
+    "Page": {
+      "type": "object",
+      "required": ["buttons"],
+      "additionalProperties": false,
+      "description": "One page (bank): a full control-surface snapshot. The device renders one page at a time.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 24,
+          "description": "Optional human-readable page label for the editor and config file. Not shown on the device LCD; not used by firmware routing."
+        },
+        "buttons": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ButtonConfig" },
+          "description": "Button configurations for this page. Array length must match device type: std10=10, mini6=6, nano4=4, duo2=2, one1=1."
+        },
+        "encoder": {
+          "$ref": "#/definitions/EncoderConfig",
+          "description": "Per-page rotary encoder configuration. Only supported on STD10."
+        },
+        "expression": {
+          "$ref": "#/definitions/ExpressionPedals",
+          "description": "Per-page expression pedal configurations. Only supported on STD10."
+        },
+        "global_channel": {
+          "$ref": "#/definitions/MidiChannel",
+          "description": "Optional per-page override of the device-wide default MIDI channel. Resolution (button > page > device) lands in a later phase; carried but inert for now."
+        },
+        "display": {
+          "$ref": "#/definitions/DisplayConfig",
+          "description": "Optional per-page override of the device-wide display settings. Resolution lands in a later phase; carried but inert for now."
+        }
+      }
+    },
     "ButtonColor": {
       "type": "string",
       "enum": ["red", "green", "blue", "yellow", "cyan", "magenta", "orange", "purple", "white"]

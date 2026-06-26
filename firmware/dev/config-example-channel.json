@@ -8,75 +8,112 @@
     "status_text_size": "medium",
     "expression_text_size": "medium"
   },
-  "buttons": [
+  "active_page": 0,
+  "pages": [
     {
-      "label": "TSC",
-      "cc": 20,
-      "color": "green",
-      "channel": 0,
-      "cc_on": 127,
-      "cc_off": 0
-    },
-    {
-      "label": "CHOR",
-      "cc": 21,
-      "color": "blue",
-      "channel": 1,
-      "cc_on": 100,
-      "cc_off": 10
-    },
-    {
-      "label": "DELAY",
-      "cc": 22,
-      "color": "yellow"
-    },
-    {"label": "SHIM", "cc": 23, "color": "magenta"},
-    {"label": "TREM", "cc": 24, "color": "white", "mode": "momentary"},
-    {"label": "WOW", "cc": 25, "color": "orange", "off_mode": "off"},
-    {"label": "OCT", "cc": 26, "color": "cyan"},
-    {"label": "FREQ", "cc": 27, "color": "red", "off_mode": "off"},
-    {"label": "PLATE", "cc": 28, "color": "purple"},
-    {"label": "ROOM", "cc": 29, "color": "white", "mode": "momentary"}
-  ],
-  "encoder": {
-    "enabled": true,
-    "cc": 11,
-    "label": "ENC",
-    "min": 0,
-    "max": 127,
-    "initial": 64,
-    "steps": null,
-    "channel": 0,
-    "push": {
-      "enabled": true,
-      "cc": 14,
-      "label": "PUSH",
-      "mode": "momentary",
-      "channel": 0,
-      "cc_on": 127,
-      "cc_off": 0
+      "buttons": [
+        {
+          "label": "TSC",
+          "cc": 20,
+          "color": "green",
+          "channel": 0,
+          "cc_on": 127,
+          "cc_off": 0
+        },
+        {
+          "label": "CHOR",
+          "cc": 21,
+          "color": "blue",
+          "channel": 1,
+          "cc_on": 100,
+          "cc_off": 10
+        },
+        {
+          "label": "DELAY",
+          "cc": 22,
+          "color": "yellow"
+        },
+        {
+          "label": "SHIM",
+          "cc": 23,
+          "color": "magenta"
+        },
+        {
+          "label": "TREM",
+          "cc": 24,
+          "color": "white",
+          "mode": "momentary"
+        },
+        {
+          "label": "WOW",
+          "cc": 25,
+          "color": "orange",
+          "off_mode": "off"
+        },
+        {
+          "label": "OCT",
+          "cc": 26,
+          "color": "cyan"
+        },
+        {
+          "label": "FREQ",
+          "cc": 27,
+          "color": "red",
+          "off_mode": "off"
+        },
+        {
+          "label": "PLATE",
+          "cc": 28,
+          "color": "purple"
+        },
+        {
+          "label": "ROOM",
+          "cc": 29,
+          "color": "white",
+          "mode": "momentary"
+        }
+      ],
+      "encoder": {
+        "enabled": true,
+        "cc": 11,
+        "label": "ENC",
+        "min": 0,
+        "max": 127,
+        "initial": 64,
+        "steps": null,
+        "channel": 0,
+        "push": {
+          "enabled": true,
+          "cc": 14,
+          "label": "PUSH",
+          "mode": "momentary",
+          "channel": 0,
+          "cc_on": 127,
+          "cc_off": 0
+        }
+      },
+      "expression": {
+        "exp1": {
+          "enabled": true,
+          "cc": 12,
+          "label": "EXP1",
+          "min": 0,
+          "max": 127,
+          "polarity": "normal",
+          "threshold": 2,
+          "channel": 0
+        },
+        "exp2": {
+          "enabled": true,
+          "cc": 13,
+          "label": "EXP2",
+          "min": 0,
+          "max": 127,
+          "polarity": "normal",
+          "threshold": 2,
+          "channel": 1
+        }
+      }
     }
-  },
-  "expression": {
-    "exp1": {
-      "enabled": true,
-      "cc": 12,
-      "label": "EXP1",
-      "min": 0,
-      "max": 127,
-      "polarity": "normal",
-      "threshold": 2,
-      "channel": 0
-    },
-    "exp2": {
-      "enabled": true,
-      "cc": 13,
-      "label": "EXP2",
-      "min": 0,
-      "max": 127,
-      "polarity": "normal",
-      "threshold": 2,
-      "channel": 1
-    }
-  }
+  ]
 }

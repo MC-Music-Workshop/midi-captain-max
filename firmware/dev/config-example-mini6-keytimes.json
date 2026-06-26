@@ -6,29 +6,96 @@
     "expression_text_size": "medium"
   },
   "long_press_threshold_ms": 500,
-  "buttons": [
+  "active_page": 0,
+  "pages": [
     {
-      "label": "DRIVE",
-      "color": "red",
-      "mode": "keytimes",
-      "short": [
-        {"down": [{"type": "cc", "cc": 20, "value": 64}],  "color": "orange"},
-        {"down": [{"type": "cc", "cc": 20, "value": 96}],  "color": "red"},
-        {"down": [{"type": "cc", "cc": 20, "value": 127}], "color": "magenta"}
+      "buttons": [
+        {
+          "label": "DRIVE",
+          "color": "red",
+          "mode": "keytimes",
+          "short": [
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 20,
+                  "value": 64
+                }
+              ],
+              "color": "orange"
+            },
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 20,
+                  "value": 96
+                }
+              ],
+              "color": "red"
+            },
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 20,
+                  "value": 127
+                }
+              ],
+              "color": "magenta"
+            }
+          ]
+        },
+        {
+          "label": "DELAY",
+          "color": "yellow",
+          "mode": "keytimes",
+          "short": [
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 21,
+                  "value": 80
+                }
+              ],
+              "color": "yellow"
+            },
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 21,
+                  "value": 127
+                }
+              ],
+              "color": "orange"
+            }
+          ]
+        },
+        {
+          "label": "VERB",
+          "cc": 22,
+          "color": "blue"
+        },
+        {
+          "label": "MOD",
+          "cc": 23,
+          "color": "cyan"
+        },
+        {
+          "label": "COMP",
+          "cc": 24,
+          "color": "green"
+        },
+        {
+          "label": "TUNER",
+          "cc": 25,
+          "color": "white",
+          "mode": "momentary"
+        }
       ]
-    },
-    {
-      "label": "DELAY",
-      "color": "yellow",
-      "mode": "keytimes",
-      "short": [
-        {"down": [{"type": "cc", "cc": 21, "value": 80}],  "color": "yellow"},
-        {"down": [{"type": "cc", "cc": 21, "value": 127}], "color": "orange"}
-      ]
-    },
-    {"label": "VERB", "cc": 22, "color": "blue"},
-    {"label": "MOD", "cc": 23, "color": "cyan"},
-    {"label": "COMP", "cc": 24, "color": "green"},
-    {"label": "TUNER", "cc": 25, "color": "white", "mode": "momentary"}
+    }
   ]
 }

@@ -25,35 +25,98 @@ _CYCLE_ENTRY_COLORS = ("red", "green", "blue", "yellow", "cyan", "magenta", "ora
 
 def load_config(config_path="/config.json", button_count=10):
     """Load button configuration from JSON file.
-    
+
+    The loaded config is normalized to the canonical pages-only shape via
+    to_pages() before returning, so the rest of the firmware always sees a
+    `pages` array. The on-disk file is never rewritten (CircuitPython cannot
+    safely write CIRCUITPY while the USB host has it mounted); the wrap happens
+    in RAM on every boot.
+
     Args:
         config_path: Path to config file (default: /config.json)
         button_count: Number of buttons for fallback defaults
-    
+
     Returns:
-        Configuration dict with 'buttons' array and optional other keys
+        Configuration dict with a 'pages' array and optional device-wide keys
     """
     if json is None:
-        return _default_config(button_count)
-    
+        return to_pages(_default_config(button_count))
+
     try:
         with open(config_path, "r") as f:
             cfg = json.load(f)
-            return cfg
+            return to_pages(cfg)
     except Exception:
         pass
-    
-    return _default_config(button_count)
+
+    return to_pages(_default_config(button_count))
 
 
 def _default_config(button_count):
-    """Generate default configuration."""
+    """Generate default configuration (legacy flat shape; wrapped by to_pages)."""
     return {
         "buttons": [
             {"label": str(i + 1), "cc": 20 + i, "color": "white"}
             for i in range(button_count)
         ]
     }
+
+
+def to_pages(cfg):
+    """Normalize a config dict to the canonical pages-only shape, in place.
+
+    Legacy flat configs (top-level buttons/encoder/expression) are wrapped into a
+    single page. Already-paged configs are returned unchanged, minus any stray
+    legacy top-level keys (closes the ambiguous "both shapes present" case).
+    Idempotent: to_pages(to_pages(x)) == to_pages(x).
+
+    This is the only legacy-aware code on the firmware load path; everything
+    downstream reads `pages`.
+    """
+    if not isinstance(cfg, dict):
+        return cfg
+    if "pages" in cfg:
+        for k in ("buttons", "encoder", "expression"):
+            if k in cfg:
+                del cfg[k]
+        if "active_page" not in cfg:
+            cfg["active_page"] = 0
+        return cfg
+    page = {"buttons": cfg.pop("buttons", [])}
+    for k in ("encoder", "expression"):
+        if k in cfg:
+            page[k] = cfg.pop(k)
+    cfg["pages"] = [page]
+    if "active_page" not in cfg:
+        cfg["active_page"] = 0
+    return cfg
+
+
+def get_active_page(cfg):
+    """Return the active page dict, clamping active_page to a valid index.
+
+    Never raises: a missing/empty pages list yields an empty page. Clamping is
+    silent except for a one-line warning, so an out-of-range index is visible in
+    the serial log without crashing a live device.
+    """
+    pages = cfg.get("pages")
+    if not isinstance(pages, list) or len(pages) == 0:
+        return {"buttons": []}
+    active = cfg.get("active_page", 0)
+    # bool is a subclass of int in Python — reject it explicitly so active_page:true
+    # doesn't silently select page 1.
+    is_int = isinstance(active, int) and not isinstance(active, bool)
+    if not is_int or active < 0 or active >= len(pages):
+        clamped = max(0, min(len(pages) - 1, active)) if is_int else 0
+        print("[CONFIG WARN] active_page " + str(active) + " out of range; using page " + str(clamped))
+        active = clamped
+    page = pages[active]
+    # A non-dict page element (corrupt/hand-edited config) must not crash boot —
+    # callers do page.get("buttons"/...). Fall back to an empty page.
+    if not isinstance(page, dict):
+        print("[CONFIG WARN] page " + str(active) + " is not an object; using empty page")
+        return {"buttons": []}
+    return page
 
 
 _MIDI_BYTE_FIELDS = ("cc", "cc_on", "cc_off", "note", "velocity_on", "velocity_off", "program")
@@ -352,31 +415,47 @@ def validate_button(btn, index=0, global_channel=None):
 
 def validate_config(cfg, button_count=10):
     """Validate entire config, filling in defaults.
-    
+
+    Validates every page's buttons array and returns the canonical pages-only
+    shape. global_channel and long_press_threshold_ms are device-wide (top-level).
+
     Args:
-        cfg: Raw config dict
-        button_count: Expected number of buttons
-        
+        cfg: Raw config dict (legacy or paged; normalized via to_pages)
+        button_count: Expected number of buttons per page
+
     Returns:
-        Validated config with all required fields
+        Validated config with a 'pages' array and device-wide defaults
     """
-    buttons = cfg.get("buttons", [])
-    
+    cfg = to_pages(cfg)
+
     # Get global channel (0-15 = MIDI Ch 1-16), default to 0
     global_channel = cfg.get("global_channel", 0)
     # Clamp to valid range
     if not isinstance(global_channel, int) or global_channel < 0 or global_channel > 15:
         global_channel = 0
-    
-    # Extend buttons array if needed
-    while len(buttons) < button_count:
-        buttons.append({})
-    
-    # Validate each button with global channel context
-    validated_buttons = [
-        validate_button(btn, i, global_channel) for i, btn in enumerate(buttons[:button_count])
-    ]
-    
+
+    # Validate each page's buttons.
+    validated_pages = []
+    for page in cfg.get("pages", []):
+        if not isinstance(page, dict):
+            page = {}
+        # Per-page global_channel override (button -> page -> device).
+        page_channel = page.get("global_channel", global_channel)
+        if not isinstance(page_channel, int) or page_channel < 0 or page_channel > 15:
+            page_channel = global_channel
+        buttons = list(page.get("buttons", []))
+        # Extend buttons array if needed
+        while len(buttons) < button_count:
+            buttons.append({})
+        validated_buttons = [
+            validate_button(btn, i, page_channel) for i, btn in enumerate(buttons[:button_count])
+        ]
+        new_page = {}
+        for k, v in page.items():
+            new_page[k] = v
+        new_page["buttons"] = validated_buttons
+        validated_pages.append(new_page)
+
     # Top-level long-press threshold (used by keytimes-mode buttons; per-button override allowed).
     raw_threshold = cfg.get("long_press_threshold_ms", LONG_PRESS_THRESHOLD_DEFAULT_MS)
     long_press_threshold_ms = _clamp_threshold_ms(raw_threshold)
@@ -384,7 +463,7 @@ def validate_config(cfg, button_count=10):
     result = {}
     for k, v in cfg.items():
         result[k] = v
-    result["buttons"] = validated_buttons
+    result["pages"] = validated_pages
     result["global_channel"] = global_channel
     result["long_press_threshold_ms"] = long_press_threshold_ms
     return result
@@ -440,7 +519,7 @@ def get_encoder_config(cfg):
     Returns:
         Encoder config dict
     """
-    enc = cfg.get("encoder", {})
+    enc = get_active_page(cfg).get("encoder", {})
     push = enc.get("push", {})
     global_channel = cfg.get("global_channel", 0)
     
@@ -474,7 +553,7 @@ def get_expression_config(cfg):
     Returns:
         Expression config dict with exp1 and exp2
     """
-    exp = cfg.get("expression", {})
+    exp = get_active_page(cfg).get("expression", {})
     exp1 = exp.get("exp1", {})
     exp2 = exp.get("exp2", {})
     global_channel = cfg.get("global_channel", 0)

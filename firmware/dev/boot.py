@@ -57,9 +57,15 @@ try:
     dev_mode = get_dev_mode(cfg)
     usb_drive_name = get_usb_drive_name(cfg)
 
-    # Enable USB HID only if at least one button uses type="hid".
+    # Enable USB HID only if at least one button on ANY page uses type="hid".
+    # USB descriptors are fixed at boot and can't be re-initialized when the
+    # active page changes, so scan every page, not just the active one.
     # This keeps the USB descriptor clean for MIDI-only setups.
-    hid_enabled = any(btn.get("type") == "hid" for btn in cfg.get("buttons", []))
+    hid_enabled = any(
+        btn.get("type") == "hid"
+        for page in cfg.get("pages", [])
+        for btn in page.get("buttons", [])
+    )
 except Exception:
     # If config fails to load, use safe defaults (performance mode, no HID)
     pass

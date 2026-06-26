@@ -1,10 +1,10 @@
 <script lang="ts">
   import Accordion from './Accordion.svelte';
-  import { config, updateField } from '$lib/formStore';
+  import { config, currentPage, updateField } from '$lib/formStore';
   import { validationErrors } from '$lib/formStore';
-  
+
   let deviceType = $derived($config.device);
-  let encoder = $derived($config.encoder);
+  let encoder = $derived($currentPage.encoder);
   let isDisabled = $derived(deviceType !== 'std10');
   let message = $derived(isDisabled ? `Not available on ${(deviceType ?? '').toUpperCase()}` : undefined);
   let globalChannel = $derived($config.global_channel ?? 0);

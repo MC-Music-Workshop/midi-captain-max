@@ -2,7 +2,16 @@
   "device": "one1",
   "usb_drive_name": "MIDICAPTAIN",
   "dev_mode": false,
-  "buttons": [
-    {"label": "BTN1", "cc": 20, "color": "green"}
+  "active_page": 0,
+  "pages": [
+    {
+      "buttons": [
+        {
+          "label": "BTN1",
+          "cc": 20,
+          "color": "green"
+        }
+      ]
+    }
   ]
 }

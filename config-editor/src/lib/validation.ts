@@ -99,50 +99,62 @@ export const validators = {
 
 export function validateConfig(config: MidiCaptainConfig): ValidationResult {
   const errors = new Map<string, string>();
-  
+
+  // The editor renders the active page; validate its control-surface data.
+  // Error-map keys stay unprefixed (buttons[i]…, encoder…, expression…) so they
+  // match the paths components use for both updateField and error lookups.
+  const pages = config.pages ?? [];
+  const apIdx = pages.length
+    ? Math.max(0, Math.min(pages.length - 1, config.active_page ?? 0))
+    : 0;
+  const page = pages[apIdx] ?? { buttons: [] };
+  const buttons = page.buttons ?? [];
+  const encoder = page.encoder;
+  const expression = page.expression;
+
   // Device-specific validation
   if (config.device === 'one1') {
-    if (config.buttons.length > 1) {
+    if (buttons.length > 1) {
       errors.set('device', 'ONE supports only 1 button');
     }
-    if (config.encoder?.enabled) {
+    if (encoder?.enabled) {
       errors.set('encoder.enabled', 'ONE does not support encoder');
     }
-    if (config.expression?.exp1?.enabled || config.expression?.exp2?.enabled) {
+    if (expression?.exp1?.enabled || expression?.exp2?.enabled) {
       errors.set('expression', 'ONE does not support expression pedals');
     }
   } else if (config.device === 'duo2') {
-    if (config.buttons.length > 2) {
+    if (buttons.length > 2) {
       errors.set('device', 'DUO2 supports only 2 buttons');
     }
-    if (config.encoder?.enabled) {
+    if (encoder?.enabled) {
       errors.set('encoder.enabled', 'DUO2 does not support encoder');
     }
-    if (config.expression?.exp1?.enabled || config.expression?.exp2?.enabled) {
+    if (expression?.exp1?.enabled || expression?.exp2?.enabled) {
       errors.set('expression', 'DUO2 does not support expression pedals');
     }
   } else if (config.device === 'nano4') {
-    if (config.buttons.length > 4) {
+    if (buttons.length > 4) {
       errors.set('device', 'NANO4 supports only 4 buttons');
     }
-    if (config.encoder?.enabled) {
+    if (encoder?.enabled) {
       errors.set('encoder.enabled', 'NANO4 does not support encoder');
     }
-    if (config.expression?.exp1?.enabled || config.expression?.exp2?.enabled) {
+    if (expression?.exp1?.enabled || expression?.exp2?.enabled) {
       errors.set('expression', 'NANO4 does not support expression pedals');
     }
   } else if (config.device === 'mini6') {
-    if (config.buttons.length > 6) {
+    if (buttons.length > 6) {
       errors.set('device', 'Mini6 supports only 6 buttons');
     }
-    if (config.encoder?.enabled) {
+    if (encoder?.enabled) {
       errors.set('encoder.enabled', 'Mini6 does not support encoder');
     }
-    if (config.expression?.exp1?.enabled || config.expression?.exp2?.enabled) {
+    if (expression?.exp1?.enabled || expression?.exp2?.enabled) {
       errors.set('expression', 'Mini6 does not support expression pedals');
     }
   } else if (config.device === 'std10') {
-    if (config.buttons.length > 10) {
+    if (buttons.length > 10) {
       errors.set('device', 'STD10 supports only 10 buttons');
     }
   }
@@ -154,7 +166,7 @@ export function validateConfig(config: MidiCaptainConfig): ValidationResult {
   }
 
   // Validate all buttons
-  config.buttons.forEach((btn, idx) => {
+  buttons.forEach((btn, idx) => {
     const labelError = validators.label(btn.label);
     if (labelError) errors.set(`buttons[${idx}].label`, labelError);
 
@@ -350,46 +362,46 @@ export function validateConfig(config: MidiCaptainConfig): ValidationResult {
   });
   
   // Validate encoder
-  if (config.encoder?.enabled) {
-    const ccError = validators.cc(config.encoder.cc);
+  if (encoder?.enabled) {
+    const ccError = validators.cc(encoder.cc);
     if (ccError) errors.set('encoder.cc', ccError);
 
-    if (config.encoder.channel !== undefined) {
-      const chError = validators.channel(config.encoder.channel);
+    if (encoder.channel !== undefined) {
+      const chError = validators.channel(encoder.channel);
       if (chError) errors.set('encoder.channel', chError);
     }
 
-    const min = config.encoder.min ?? 0;
-    const max = config.encoder.max ?? 127;
+    const min = encoder.min ?? 0;
+    const max = encoder.max ?? 127;
     const rangeError = validators.range(min, max);
     if (rangeError) errors.set('encoder.range', rangeError);
 
-    if (config.encoder.initial !== undefined) {
-      const initError = validators.withinRange(config.encoder.initial, min, max);
+    if (encoder.initial !== undefined) {
+      const initError = validators.withinRange(encoder.initial, min, max);
       if (initError) errors.set('encoder.initial', `Initial ${initError.toLowerCase()}`);
     }
 
-    if (config.encoder.push?.enabled) {
-      const pushCcError = validators.cc(config.encoder.push.cc);
+    if (encoder.push?.enabled) {
+      const pushCcError = validators.cc(encoder.push.cc);
       if (pushCcError) errors.set('encoder.push.cc', pushCcError);
 
-      if (config.encoder.push.channel !== undefined) {
-        const chError = validators.channel(config.encoder.push.channel);
+      if (encoder.push.channel !== undefined) {
+        const chError = validators.channel(encoder.push.channel);
         if (chError) errors.set('encoder.push.channel', chError);
       }
-      if (config.encoder.push.cc_on !== undefined) {
-        const e = validators.cc(config.encoder.push.cc_on);
+      if (encoder.push.cc_on !== undefined) {
+        const e = validators.cc(encoder.push.cc_on);
         if (e) errors.set('encoder.push.cc_on', e);
       }
-      if (config.encoder.push.cc_off !== undefined) {
-        const e = validators.cc(config.encoder.push.cc_off);
+      if (encoder.push.cc_off !== undefined) {
+        const e = validators.cc(encoder.push.cc_off);
         if (e) errors.set('encoder.push.cc_off', e);
       }
     }
   }
   
   // Validate expression pedals
-  for (const [key, exp] of [['exp1', config.expression?.exp1], ['exp2', config.expression?.exp2]] as const) {
+  for (const [key, exp] of [['exp1', expression?.exp1], ['exp2', expression?.exp2]] as const) {
     if (!exp?.enabled) continue;
     const p = `expression.${key}`;
 

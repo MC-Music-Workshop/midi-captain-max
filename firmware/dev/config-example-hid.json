@@ -1,79 +1,111 @@
 {
   "device": "std10",
   "global_channel": 0,
-  "buttons": [
+  "active_page": 0,
+  "pages": [
     {
-      "label": "Key A",
-      "color": "blue",
-      "type": "hid",
-      "hid_action": "send",
-      "hid_key": "A"
-    },
-    {
-      "label": "Ctrl-S",
-      "color": "green",
-      "type": "hid",
-      "hid_action": "send",
-      "hid_key": "S",
-      "hid_modifier": "ctrl"
-    },
-    {
-      "label": "Space",
-      "color": "white",
-      "type": "hid",
-      "hid_action": "send",
-      "hid_key": "Space"
-    },
-    {
-      "label": "Esc",
-      "color": "red",
-      "type": "hid",
-      "hid_action": "send",
-      "hid_key": "Esc"
-    },
-    {
-      "label": "MsL",
-      "color": "cyan",
-      "type": "hid",
-      "hid_action": "send",
-      "hid_key": "Mouse_L"
-    },
-    {
-      "label": "Hold",
-      "color": "orange",
-      "type": "hid",
-      "hid_action": "press",
-      "hid_key": "A"
-    },
-    {
-      "label": "RlsA",
-      "color": "orange",
-      "type": "hid",
-      "hid_action": "release",
-      "hid_key": "A"
-    },
-    {
-      "label": "RlsAll",
-      "color": "red",
-      "type": "hid",
-      "hid_action": "release",
-      "hid_key": "all"
-    },
-    {
-      "label": "Delay",
-      "color": "purple",
-      "type": "hid",
-      "hid_action": "delay",
-      "hid_delay_ms": 50
-    },
-    {
-      "label": "Cycle",
-      "color": "yellow",
-      "mode": "keytimes",
-      "short": [
-        {"down": [{"type": "hid", "action": "send", "key": "F1"}], "color": "yellow"},
-        {"down": [{"type": "hid", "action": "send", "key": "F2"}], "color": "cyan"},
-        {"down": [{"type": "hid", "action": "send", "key": "F3"}], "color": "green"}
+      "buttons": [
+        {
+          "label": "Key A",
+          "color": "blue",
+          "type": "hid",
+          "hid_action": "send",
+          "hid_key": "A"
+        },
+        {
+          "label": "Ctrl-S",
+          "color": "green",
+          "type": "hid",
+          "hid_action": "send",
+          "hid_key": "S",
+          "hid_modifier": "ctrl"
+        },
+        {
+          "label": "Space",
+          "color": "white",
+          "type": "hid",
+          "hid_action": "send",
+          "hid_key": "Space"
+        },
+        {
+          "label": "Esc",
+          "color": "red",
+          "type": "hid",
+          "hid_action": "send",
+          "hid_key": "Esc"
+        },
+        {
+          "label": "MsL",
+          "color": "cyan",
+          "type": "hid",
+          "hid_action": "send",
+          "hid_key": "Mouse_L"
+        },
+        {
+          "label": "Hold",
+          "color": "orange",
+          "type": "hid",
+          "hid_action": "press",
+          "hid_key": "A"
+        },
+        {
+          "label": "RlsA",
+          "color": "orange",
+          "type": "hid",
+          "hid_action": "release",
+          "hid_key": "A"
+        },
+        {
+          "label": "RlsAll",
+          "color": "red",
+          "type": "hid",
+          "hid_action": "release",
+          "hid_key": "all"
+        },
+        {
+          "label": "Delay",
+          "color": "purple",
+          "type": "hid",
+          "hid_action": "delay",
+          "hid_delay_ms": 50
+        },
+        {
+          "label": "Cycle",
+          "color": "yellow",
+          "mode": "keytimes",
+          "short": [
+            {
+              "down": [
+                {
+                  "type": "hid",
+                  "action": "send",
+                  "key": "F1"
+                }
+              ],
+              "color": "yellow"
+            },
+            {
+              "down": [
+                {
+                  "type": "hid",
+                  "action": "send",
+                  "key": "F2"
+                }
+              ],
+              "color": "cyan"
+            },
+            {
+              "down": [
+                {
+                  "type": "hid",
+                  "action": "send",
+                  "key": "F3"
+                }
+              ],
+              "color": "green"
+            }
+          ]
+        }
       ]
     }
   ]

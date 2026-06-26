@@ -71,11 +71,11 @@
 
   <div class="kt-overlay-row">
     <label class="inline"
-           title="When on, the long-press color stays lit over the short cycle as a status indicator (e.g. shimmer-on). Off (default): the LED color follows whichever press fired last, matching the label.">
+           title="When set, the long-press color is used instead of the short-press color. Short presses send their messages as expected.">
       <input type="checkbox"
              checked={button.long_overlay ?? false}
              onchange={handleLongOverlayChange} />
-      Latch long color over short (status indicator)
+      Long-press color overrides short-press color
     </label>
   </div>
 

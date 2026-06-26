@@ -153,10 +153,12 @@ def resolve_keytimes_render_color(last_fired, short_color, short_dim,
     long color across every subsequent short press — the label flips back but the
     color does not.
 
-    long_overlay=True opts back into the latching-modifier behavior: the long layer
-    decorates short persistently (full two-layer composition), so a long color stays
-    lit across subsequent short presses. Useful as a status indicator (e.g. a
-    shimmer-on light riding over a reverb short cycle).
+    long_overlay=True opts back into the full two-layer composition: the long-press
+    color is used in place of the short-press color (long>short precedence), so the
+    long color persists across subsequent short presses. The short cycle still
+    operates — a short "off" entry is a kill-switch that turns the LED off even with
+    overlay on. Useful when the long color marks a mode (e.g. a shimmer-on color
+    riding over a reverb short cycle).
 
     With overlay off, this suppresses the inactive layer (passing its color as None,
     dim as False) so the active class owns the render, then defers to

@@ -262,6 +262,10 @@ pub struct ButtonConfig {
     pub long: Option<Vec<KeytimesEntry>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub long_press_threshold_ms: Option<u16>,
+    // #157: latch the long color over short as a status indicator instead of the
+    // default last-press-wins. Only meaningful when mode == "keytimes".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub long_overlay: Option<bool>,
 }
 
 fn is_default_off_mode(mode: &OffMode) -> bool {
@@ -1031,6 +1035,7 @@ mod tests {
                 keytimes: None, states: None,
                 hid_action: None, hid_key: None, hid_modifier: None, hid_delay_ms: None,
                 short: None, long: None, long_press_threshold_ms: None,
+                long_overlay: None,
             });
         }
         MidiCaptainConfig {

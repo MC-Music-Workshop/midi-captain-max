@@ -139,3 +139,47 @@ def compute_keytimes_led_color(short_color, short_dim, long_color, long_dim, but
             rgb = dim_color(rgb)
         return rgb
     return COLORS["off"]
+
+
+def resolve_keytimes_render_color(last_fired, short_color, short_dim,
+                                  long_color, long_dim, button_color=None,
+                                  long_overlay=False):
+    """Resolve a keytimes button's render color gated by the last-fired timing class.
+
+    #157 ("sticky long color"): by default the LED reflects only the most recently
+    fired timing class, mirroring the last_fired label rule introduced in #143.
+    Without this gate, a long press leaves state.long_color set indefinitely and
+    compute_keytimes_led_color()'s long>short precedence keeps the LED stuck on the
+    long color across every subsequent short press — the label flips back but the
+    color does not.
+
+    long_overlay=True opts back into the full two-layer composition: the long-press
+    color is used in place of the short-press color (long>short precedence), so the
+    long color persists across subsequent short presses. The short cycle still
+    operates — a short "off" entry is a kill-switch that turns the LED off even with
+    overlay on. Useful when the long color marks a mode (e.g. a shimmer-on color
+    riding over a reverb short cycle).
+
+    With overlay off, this suppresses the inactive layer (passing its color as None,
+    dim as False) so the active class owns the render, then defers to
+    compute_keytimes_led_color() for the kill-switch / precedence / dim /
+    button-fallback rules. last_fired == None (before the first press) passes both
+    layers unsuppressed, falling through to the button-level color.
+
+    Args:
+        last_fired: "short", "long", or None — the timing class that owns the render
+        short_color, short_dim, long_color, long_dim, button_color: see
+            compute_keytimes_led_color()
+        long_overlay: True to keep long decorating short persistently (no last_fired
+            gating); default False gives last-press-wins.
+
+    Returns:
+        RGB tuple (r, g, b) with values 0-255
+    """
+    if not long_overlay:
+        if last_fired == "short":
+            long_color, long_dim = None, False
+        elif last_fired == "long":
+            short_color, short_dim = None, False
+    return compute_keytimes_led_color(short_color, short_dim,
+                                      long_color, long_dim, button_color)

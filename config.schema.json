@@ -376,6 +376,10 @@
           "maximum": 5000,
           "description": "Per-button long-press threshold override in milliseconds. Only meaningful when mode='keytimes'. Falls back to top-level long_press_threshold_ms (default 500)."
         },
+        "long_overlay": {
+          "type": "boolean",
+          "description": "Only meaningful when mode='keytimes'. When true, the long-press color is used instead of the short-press color; short presses still send their messages as expected (a short 'off' step still turns the LED off). Default false: last-press-wins, so the LED color follows whichever timing class fired most recently (matches the label rule, #157)."
+        },
         "hid_action": {
           "$ref": "#/definitions/HidAction",
           "description": "HID action to perform. Used when type='hid'. Default: 'send'."

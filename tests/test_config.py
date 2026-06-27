@@ -890,6 +890,25 @@ class TestKeytimesMode:
         assert len(btn["long"]) == 1
         assert btn["long"][0]["down"][0]["cc"] == 21
 
+    def test_long_overlay_true_persisted(self):
+        """#157: long_overlay=True (latching-modifier opt-in) is preserved."""
+        btn = validate_button({
+            "label": "REV", "color": "blue", "mode": "keytimes", "long_overlay": True,
+        }, index=0)
+        assert btn["long_overlay"] is True
+
+    def test_long_overlay_default_absent(self):
+        """Default (last-press-wins) stores no long_overlay key."""
+        btn = validate_button({"label": "X", "color": "red", "mode": "keytimes"}, index=0)
+        assert "long_overlay" not in btn
+
+    def test_long_overlay_false_dropped(self):
+        """Explicit False is the default; not persisted (mirrors dim=False)."""
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes", "long_overlay": False,
+        }, index=0)
+        assert "long_overlay" not in btn
+
     def test_short_and_long_independent_lengths(self):
         btn = validate_button({
             "label": "X", "color": "red", "mode": "keytimes",

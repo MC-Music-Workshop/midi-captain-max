@@ -1199,3 +1199,43 @@ class TestKeytimesThresholdResolution:
         cfg = {}
         btn = {}
         assert get_long_press_threshold_ms(cfg, btn) == 500
+
+
+class TestPerPageChannel:
+    def test_button_falls_back_to_page_global_channel(self):
+        # device default 0, page overrides to 5, button has no explicit channel
+        cfg = {
+            "global_channel": 0,
+            "pages": [
+                {"global_channel": 5, "buttons": [{"label": "A", "cc": 20}]},
+            ],
+        }
+        out = validate_config(cfg, button_count=1)
+        assert out["pages"][0]["buttons"][0]["channel"] == 5
+
+    def test_button_explicit_channel_wins_over_page(self):
+        cfg = {
+            "global_channel": 0,
+            "pages": [
+                {"global_channel": 5, "buttons": [{"label": "A", "cc": 20, "channel": 9}]},
+            ],
+        }
+        out = validate_config(cfg, button_count=1)
+        assert out["pages"][0]["buttons"][0]["channel"] == 9
+
+    def test_page_without_override_uses_device_channel(self):
+        cfg = {
+            "global_channel": 3,
+            "pages": [{"buttons": [{"label": "A", "cc": 20}]}],
+        }
+        out = validate_config(cfg, button_count=1)
+        assert out["pages"][0]["buttons"][0]["channel"] == 3
+
+    def test_invalid_page_channel_falls_back_to_device(self):
+        # out-of-range / non-int page channel ignored, device value used
+        cfg = {
+            "global_channel": 2,
+            "pages": [{"global_channel": 99, "buttons": [{"label": "A", "cc": 20}]}],
+        }
+        out = validate_config(cfg, button_count=1)
+        assert out["pages"][0]["buttons"][0]["channel"] == 2

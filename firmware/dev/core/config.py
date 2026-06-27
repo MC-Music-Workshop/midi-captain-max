@@ -444,12 +444,16 @@ def validate_config(cfg, button_count=10):
     for page in cfg.get("pages", []):
         if not isinstance(page, dict):
             page = {}
+        # Per-page global_channel override (button -> page -> device).
+        page_channel = page.get("global_channel", global_channel)
+        if not isinstance(page_channel, int) or page_channel < 0 or page_channel > 15:
+            page_channel = global_channel
         buttons = list(page.get("buttons", []))
         # Extend buttons array if needed
         while len(buttons) < button_count:
             buttons.append({})
         validated_buttons = [
-            validate_button(btn, i, global_channel) for i, btn in enumerate(buttons[:button_count])
+            validate_button(btn, i, page_channel) for i, btn in enumerate(buttons[:button_count])
         ]
         new_page = {}
         for k, v in page.items():

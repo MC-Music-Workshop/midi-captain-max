@@ -219,11 +219,13 @@ Per-loop flow for a keytimes-mode button:
 1. `state.tracker.update(sw.pressed, time.monotonic())` returns timing events (`short_down`/`short_up`/`long_down`/`long_up`)
 2. `dispatch_keytimes_events(events, state, btn_config, callback)` — pure function in `core/button.py`, calls callback for each Message to dispatch, updates state's inherited color/dim/label, advances cycles on press-end
 3. `_dispatch_keytimes_message(msg, default_channel, btn_num)` routes by `msg["type"]` to ControlChange/ProgramChange/NoteOn/NoteOff/dispatch_hid
-4. `_render_keytimes_led(btn_num, state, btn_config)` uses `compute_keytimes_led_color()` for the two-layer render rule (short.color == "off" kills; else long.color if set; else short.color; else off)
+4. `_render_keytimes_led(btn_num, state, btn_config)` resolves both the LED and the label color via `resolve_keytimes_render_color()` (in `core/colors.py`), which wraps `compute_keytimes_led_color()`'s two-layer rule (short.color == "off" kills; else long.color if set; else short.color; else off)
 
 Cycle state lives in RAM only — resets on power cycle / config reload. Per-page persistence (when #15 lands) keys the state table on `(page_id, button_idx)`.
 
 See [docs/plans/2026-05-13-issue-48-press-timings.md](../docs/plans/2026-05-13-issue-48-press-timings.md) for the full design and rationale.
+
+**Color vs. press length (#157):** by default the keytimes LED color is gated on `state.last_fired` — the most recently fired timing class (short/long) owns both the LED and the label color, so the two never disagree (the label already worked this way after #143). This deliberately flipped the original behavior, where long color composited *persistently* over short, leaving a long press's color stuck across every later short press (the #157 bug — color stuck while the label flipped back). The old persistent-composition behavior is preserved as an opt-in per-button `long_overlay: true`, for using the long color as a mode indicator (e.g. a shimmer-on color riding over a reverb short cycle). `long_overlay` only bypasses the `last_fired` gate — even with it on, a short `"off"` entry is still a kill-switch that turns the LED off, and short presses still send their messages.
 
 ### PC Button LED Modes
 

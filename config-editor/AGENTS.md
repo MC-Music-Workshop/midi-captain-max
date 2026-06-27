@@ -180,6 +180,8 @@ cargo test
 
 Requires GTK system libraries on Linux (`sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev`). No extra steps on macOS.
 
+**Fresh worktree gotcha:** `cargo test` (and any Tauri build) fails in the build script with `glob pattern resources/circuitpython/*.uf2 path not found` until firmware + the CP `.uf2` are staged into `src-tauri/resources/`. `npm run tauri dev` stages them via a predev hook, but a worktree where you've only ever run `cargo test` won't have them. Fix: run `tools/bundle-firmware-for-dev.sh` from the repo root once (stages firmware and fetches the pinned `.uf2` via `tools/fetch-cp-uf2.sh`; both idempotent).
+
 `test_roundtrip_all_shipped_configs` parses every `firmware/dev/config*.json` file and round-trips through the typed Rust struct — catches "struct missing a field" silent data loss without needing a per-feature test.
 
 Also run:

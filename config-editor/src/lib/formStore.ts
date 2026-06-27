@@ -105,22 +105,22 @@ function _nextUiId(): number {
 // Mutates in place; safe to call on a freshly structuredCloned config.
 function _attachUiIds(cfg: MidiCaptainConfig): void {
   for (const page of cfg.pages ?? []) {
-   for (const btn of page.buttons) {
-    for (const cycle of ['short', 'long'] as const) {
-      const entries = (btn as unknown as Record<string, unknown>)[cycle];
-      if (!Array.isArray(entries)) continue;
-      for (const entry of entries as Array<Record<string, unknown>>) {
-        if (typeof entry.__uiId !== 'number') entry.__uiId = _nextUiId();
-        for (const slot of ['down', 'up'] as const) {
-          const messages = entry[slot];
-          if (!Array.isArray(messages)) continue;
-          for (const msg of messages as Array<Record<string, unknown>>) {
-            if (typeof msg.__uiId !== 'number') msg.__uiId = _nextUiId();
+    for (const btn of page.buttons) {
+      for (const cycle of ['short', 'long'] as const) {
+        const entries = (btn as unknown as Record<string, unknown>)[cycle];
+        if (!Array.isArray(entries)) continue;
+        for (const entry of entries as Array<Record<string, unknown>>) {
+          if (typeof entry.__uiId !== 'number') entry.__uiId = _nextUiId();
+          for (const slot of ['down', 'up'] as const) {
+            const messages = entry[slot];
+            if (!Array.isArray(messages)) continue;
+            for (const msg of messages as Array<Record<string, unknown>>) {
+              if (typeof msg.__uiId !== 'number') msg.__uiId = _nextUiId();
+            }
           }
         }
       }
     }
-   }
   }
 }
 

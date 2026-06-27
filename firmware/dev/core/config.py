@@ -103,11 +103,20 @@ def get_active_page(cfg):
     if not isinstance(pages, list) or len(pages) == 0:
         return {"buttons": []}
     active = cfg.get("active_page", 0)
-    if not isinstance(active, int) or active < 0 or active >= len(pages):
-        clamped = max(0, min(len(pages) - 1, active)) if isinstance(active, int) else 0
+    # bool is a subclass of int in Python — reject it explicitly so active_page:true
+    # doesn't silently select page 1.
+    is_int = isinstance(active, int) and not isinstance(active, bool)
+    if not is_int or active < 0 or active >= len(pages):
+        clamped = max(0, min(len(pages) - 1, active)) if is_int else 0
         print("[CONFIG WARN] active_page " + str(active) + " out of range; using page " + str(clamped))
         active = clamped
-    return pages[active]
+    page = pages[active]
+    # A non-dict page element (corrupt/hand-edited config) must not crash boot —
+    # callers do page.get("buttons"/...). Fall back to an empty page.
+    if not isinstance(page, dict):
+        print("[CONFIG WARN] page " + str(active) + " is not an object; using empty page")
+        return {"buttons": []}
+    return page
 
 
 _MIDI_BYTE_FIELDS = ("cc", "cc_on", "cc_off", "note", "velocity_on", "velocity_off", "program")

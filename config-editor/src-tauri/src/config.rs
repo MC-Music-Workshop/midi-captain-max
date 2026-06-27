@@ -402,6 +402,25 @@ pub struct DisplayConfig {
     pub expression_text_size: Option<String>,
 }
 
+/// One page (bank): a full control-surface snapshot. The device renders one
+/// page at a time. Buttons are required; encoder/expression are per-page and
+/// STD10-only. `global_channel`/`display` are optional per-page overrides,
+/// carried but inert until a later phase wires their resolution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Page {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub buttons: Vec<ButtonConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encoder: Option<EncoderConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expression: Option<ExpressionPedals>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub global_channel: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display: Option<DisplayConfig>,
+}
+
 /// Complete MIDI Captain configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MidiCaptainConfig {
@@ -432,11 +451,14 @@ pub struct MidiCaptainConfig {
     /// MIDI echo enabled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub midi_thru_usb_to_usb: Option<bool>,
-    pub buttons: Vec<ButtonConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub encoder: Option<EncoderConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expression: Option<ExpressionPedals>,
+    /// Pages (banks). Each page is a full control-surface snapshot. Required;
+    /// the migration converter guarantees at least one page for legacy configs.
+    pub pages: Vec<Page>,
+    /// Index of the page rendered at boot (0-based). Clamped to a valid index;
+    /// out-of-range values never crash the device.
+    #[serde(default)]
+    pub active_page: u8,
+    /// Device-wide default display settings (per-page override lives on Page).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display: Option<DisplayConfig>,
     /// Global default long-press threshold in milliseconds for keytimes-mode buttons (#48).
@@ -464,7 +486,26 @@ impl MidiCaptainConfig {
             }
         }
 
-        // Check button count matches device
+        // Pages count: 1-20. The lower bound is guaranteed by the migration
+        // converter for legacy configs; the cap of 20 is a RAM-validated limit
+        // for the RP2040 (single-file config must fit alongside MIDI buffers).
+        if self.pages.is_empty() {
+            errors.push("Config must contain at least one page".to_string());
+        }
+        if self.pages.len() > 20 {
+            errors.push(format!("Too many pages: {} (max 20)", self.pages.len()));
+        }
+
+        // active_page must reference a real page.
+        if !self.pages.is_empty() && (self.active_page as usize) >= self.pages.len() {
+            errors.push(format!(
+                "active_page {} out of range (0-{})",
+                self.active_page,
+                self.pages.len() - 1
+            ));
+        }
+
+        // Expected button count per device — checked per page.
         let expected_buttons = match self.device {
             DeviceType::Std10 => 10,
             DeviceType::Mini6 => 6,
@@ -473,147 +514,146 @@ impl MidiCaptainConfig {
             DeviceType::One1 => 1,
         };
 
-        if self.buttons.len() != expected_buttons {
-            errors.push(format!(
-                "Expected {} buttons for {:?}, found {}",
-                expected_buttons,
-                self.device,
-                self.buttons.len()
-            ));
-        }
+        for (p, page) in self.pages.iter().enumerate() {
+            // Page-prefix for every message so errors point at the right bank.
+            let pfx = format!("Page {}, ", p + 1);
 
-        // Validate CC numbers (0-127) and button-specific fields
-        for (i, button) in self.buttons.iter().enumerate() {
-            if let Some(cc) = button.cc {
-                if cc > 127 {
-                    errors.push(format!("Button {} CC {} exceeds 127", i + 1, cc));
-                }
-            }
-            if button.label.len() > 6 {
+            if page.buttons.len() != expected_buttons {
                 errors.push(format!(
-                    "Button {} label '{}' exceeds 6 chars",
-                    i + 1,
-                    button.label
+                    "{}expected {} buttons for {:?}, found {}",
+                    pfx, expected_buttons, self.device, page.buttons.len()
                 ));
             }
-            if let Some(ch) = button.channel {
-                if ch > 15 {
-                    errors.push(format!("Button {} channel {} is invalid (must be 1-16)", i + 1, ch + 1));
-                }
-            }
-            if let Some(val) = button.cc_on {
-                if val > 127 {
-                    errors.push(format!("Button {} cc_on {} exceeds 127", i + 1, val));
-                }
-            }
-            if let Some(val) = button.cc_off {
-                if val > 127 {
-                    errors.push(format!("Button {} cc_off {} exceeds 127", i + 1, val));
-                }
-            }
-            if let Some(ms) = button.flash_ms {
-                if !(50..=5000).contains(&ms) {
-                    errors.push(format!("Button {} flash_ms {} out of range (50-5000)", i + 1, ms));
-                }
-            }
-            if let Some(ms) = button.long_press_threshold_ms {
-                if !(50..=5000).contains(&ms) {
-                    errors.push(format!("Button {} long_press_threshold_ms {} out of range (50-5000)", i + 1, ms));
-                }
-            }
-            // mode='keytimes' carries its cycle data in short[]/long[]; the legacy
-            // keytimes/states fields are meaningless there and forbidden by the editor.
-            // Other modes still accept them with a runtime deprecation warning from the firmware.
-            if button.mode == ButtonMode::Keytimes {
-                if button.keytimes.is_some() {
-                    errors.push(format!("Button {} 'keytimes' field is not allowed on mode='keytimes' (use short[]/long[])", i + 1));
-                }
-                if button.states.is_some() {
-                    errors.push(format!("Button {} 'states' field is not allowed on mode='keytimes' (use short[]/long[])", i + 1));
-                }
-            }
-        }
 
-        // Validate encoder if present
-        if let Some(ref enc) = self.encoder {
-            // Only STD10 supports encoder
-            if self.device != DeviceType::Std10 {
-                errors.push(format!("{:?} does not support encoder", self.device));
-            }
-            if enc.cc > 127 {
-                errors.push(format!("Encoder CC {} exceeds 127", enc.cc));
-            }
-            if enc.label.len() > 8 {
-                errors.push(format!("Encoder label '{}' exceeds 8 chars", enc.label));
-            }
-            if enc.max < enc.min {
-                errors.push(format!("Encoder max ({}) must be >= min ({})", enc.max, enc.min));
-            }
-            if enc.initial < enc.min || enc.initial > enc.max {
-                errors.push(format!("Encoder initial ({}) must be between min ({}) and max ({})", enc.initial, enc.min, enc.max));
-            }
-            if let Some(ch) = enc.channel {
-                if ch > 15 {
-                    errors.push(format!("Encoder channel {} is invalid (must be 1-16)", ch + 1));
+            // Validate CC numbers (0-127) and button-specific fields
+            for (i, button) in page.buttons.iter().enumerate() {
+                if let Some(cc) = button.cc {
+                    if cc > 127 {
+                        errors.push(format!("{}Button {} CC {} exceeds 127", pfx, i + 1, cc));
+                    }
                 }
-            }
-            if let Some(ref push) = enc.push {
-                if push.cc > 127 {
-                    errors.push(format!("Encoder push CC {} exceeds 127", push.cc));
+                if button.label.len() > 6 {
+                    errors.push(format!("{}Button {} label '{}' exceeds 6 chars", pfx, i + 1, button.label));
                 }
-                if push.label.len() > 8 {
-                    errors.push(format!("Encoder push label '{}' exceeds 8 chars", push.label));
-                }
-                if let Some(ch) = push.channel {
+                if let Some(ch) = button.channel {
                     if ch > 15 {
-                        errors.push(format!("Encoder push channel {} is invalid (must be 1-16)", ch + 1));
+                        errors.push(format!("{}Button {} channel {} is invalid (must be 1-16)", pfx, i + 1, ch + 1));
                     }
                 }
-                if let Some(val) = push.cc_on {
+                if let Some(val) = button.cc_on {
                     if val > 127 {
-                        errors.push(format!("Encoder push cc_on {} exceeds 127", val));
+                        errors.push(format!("{}Button {} cc_on {} exceeds 127", pfx, i + 1, val));
                     }
                 }
-                if let Some(val) = push.cc_off {
+                if let Some(val) = button.cc_off {
                     if val > 127 {
-                        errors.push(format!("Encoder push cc_off {} exceeds 127", val));
+                        errors.push(format!("{}Button {} cc_off {} exceeds 127", pfx, i + 1, val));
+                    }
+                }
+                if let Some(ms) = button.flash_ms {
+                    if !(50..=5000).contains(&ms) {
+                        errors.push(format!("{}Button {} flash_ms {} out of range (50-5000)", pfx, i + 1, ms));
+                    }
+                }
+                if let Some(ms) = button.long_press_threshold_ms {
+                    if !(50..=5000).contains(&ms) {
+                        errors.push(format!("{}Button {} long_press_threshold_ms {} out of range (50-5000)", pfx, i + 1, ms));
+                    }
+                }
+                // mode='keytimes' carries its cycle data in short[]/long[]; the legacy
+                // keytimes/states fields are meaningless there and forbidden by the editor.
+                // Other modes still accept them with a runtime deprecation warning from the firmware.
+                if button.mode == ButtonMode::Keytimes {
+                    if button.keytimes.is_some() {
+                        errors.push(format!("{}Button {} 'keytimes' field is not allowed on mode='keytimes' (use short[]/long[])", pfx, i + 1));
+                    }
+                    if button.states.is_some() {
+                        errors.push(format!("{}Button {} 'states' field is not allowed on mode='keytimes' (use short[]/long[])", pfx, i + 1));
                     }
                 }
             }
-        }
 
-        // Validate expression pedals if present
-        if let Some(ref exp) = self.expression {
-            // Only STD10 supports expression pedals
-            if self.device != DeviceType::Std10 {
-                errors.push(format!("{:?} does not support expression pedals", self.device));
-            }
-            if exp.exp1.cc > 127 {
-                errors.push(format!("EXP1 CC {} exceeds 127", exp.exp1.cc));
-            }
-            if exp.exp1.label.len() > 8 {
-                errors.push(format!("EXP1 label '{}' exceeds 8 chars", exp.exp1.label));
-            }
-            if exp.exp1.max < exp.exp1.min {
-                errors.push(format!("EXP1 max ({}) must be >= min ({})", exp.exp1.max, exp.exp1.min));
-            }
-            if let Some(ch) = exp.exp1.channel {
-                if ch > 15 {
-                    errors.push(format!("EXP1 channel {} is invalid (must be 1-16)", ch + 1));
+            // Validate per-page encoder if present
+            if let Some(ref enc) = page.encoder {
+                // Only STD10 supports encoder
+                if self.device != DeviceType::Std10 {
+                    errors.push(format!("{}{:?} does not support encoder", pfx, self.device));
+                }
+                if enc.cc > 127 {
+                    errors.push(format!("{}Encoder CC {} exceeds 127", pfx, enc.cc));
+                }
+                if enc.label.len() > 8 {
+                    errors.push(format!("{}Encoder label '{}' exceeds 8 chars", pfx, enc.label));
+                }
+                if enc.max < enc.min {
+                    errors.push(format!("{}Encoder max ({}) must be >= min ({})", pfx, enc.max, enc.min));
+                }
+                if enc.initial < enc.min || enc.initial > enc.max {
+                    errors.push(format!("{}Encoder initial ({}) must be between min ({}) and max ({})", pfx, enc.initial, enc.min, enc.max));
+                }
+                if let Some(ch) = enc.channel {
+                    if ch > 15 {
+                        errors.push(format!("{}Encoder channel {} is invalid (must be 1-16)", pfx, ch + 1));
+                    }
+                }
+                if let Some(ref push) = enc.push {
+                    if push.cc > 127 {
+                        errors.push(format!("{}Encoder push CC {} exceeds 127", pfx, push.cc));
+                    }
+                    if push.label.len() > 8 {
+                        errors.push(format!("{}Encoder push label '{}' exceeds 8 chars", pfx, push.label));
+                    }
+                    if let Some(ch) = push.channel {
+                        if ch > 15 {
+                            errors.push(format!("{}Encoder push channel {} is invalid (must be 1-16)", pfx, ch + 1));
+                        }
+                    }
+                    if let Some(val) = push.cc_on {
+                        if val > 127 {
+                            errors.push(format!("{}Encoder push cc_on {} exceeds 127", pfx, val));
+                        }
+                    }
+                    if let Some(val) = push.cc_off {
+                        if val > 127 {
+                            errors.push(format!("{}Encoder push cc_off {} exceeds 127", pfx, val));
+                        }
+                    }
                 }
             }
-            if exp.exp2.cc > 127 {
-                errors.push(format!("EXP2 CC {} exceeds 127", exp.exp2.cc));
-            }
-            if exp.exp2.label.len() > 8 {
-                errors.push(format!("EXP2 label '{}' exceeds 8 chars", exp.exp2.label));
-            }
-            if exp.exp2.max < exp.exp2.min {
-                errors.push(format!("EXP2 max ({}) must be >= min ({})", exp.exp2.max, exp.exp2.min));
-            }
-            if let Some(ch) = exp.exp2.channel {
-                if ch > 15 {
-                    errors.push(format!("EXP2 channel {} is invalid (must be 1-16)", ch + 1));
+
+            // Validate per-page expression pedals if present
+            if let Some(ref exp) = page.expression {
+                // Only STD10 supports expression pedals
+                if self.device != DeviceType::Std10 {
+                    errors.push(format!("{}{:?} does not support expression pedals", pfx, self.device));
+                }
+                if exp.exp1.cc > 127 {
+                    errors.push(format!("{}EXP1 CC {} exceeds 127", pfx, exp.exp1.cc));
+                }
+                if exp.exp1.label.len() > 8 {
+                    errors.push(format!("{}EXP1 label '{}' exceeds 8 chars", pfx, exp.exp1.label));
+                }
+                if exp.exp1.max < exp.exp1.min {
+                    errors.push(format!("{}EXP1 max ({}) must be >= min ({})", pfx, exp.exp1.max, exp.exp1.min));
+                }
+                if let Some(ch) = exp.exp1.channel {
+                    if ch > 15 {
+                        errors.push(format!("{}EXP1 channel {} is invalid (must be 1-16)", pfx, ch + 1));
+                    }
+                }
+                if exp.exp2.cc > 127 {
+                    errors.push(format!("{}EXP2 CC {} exceeds 127", pfx, exp.exp2.cc));
+                }
+                if exp.exp2.label.len() > 8 {
+                    errors.push(format!("{}EXP2 label '{}' exceeds 8 chars", pfx, exp.exp2.label));
+                }
+                if exp.exp2.max < exp.exp2.min {
+                    errors.push(format!("{}EXP2 max ({}) must be >= min ({})", pfx, exp.exp2.max, exp.exp2.min));
+                }
+                if let Some(ch) = exp.exp2.channel {
+                    if ch > 15 {
+                        errors.push(format!("{}EXP2 channel {} is invalid (must be 1-16)", pfx, ch + 1));
+                    }
                 }
             }
         }
@@ -626,9 +666,71 @@ impl MidiCaptainConfig {
     }
 }
 
+/// Migrate a raw config `Value` to the canonical pages-only shape, in place.
+///
+/// This is the single legacy-aware chokepoint on the editor read path. It runs on
+/// a `serde_json::Value` (not the typed struct) because legacy JSON has no `pages`
+/// key — which is required — and so would fail to deserialize into `MidiCaptainConfig`.
+///
+/// Idempotent: an already-paged config is returned unchanged, minus any stray
+/// legacy top-level `buttons`/`encoder`/`expression` (closes the ambiguous
+/// "both shapes present" case). Clamps `active_page` into range either way.
+pub fn migrate_to_pages(mut value: serde_json::Value) -> serde_json::Value {
+    let obj = match value.as_object_mut() {
+        Some(obj) => obj,
+        // Non-object: leave it; downstream typed deserialization reports the error.
+        None => return value,
+    };
+
+    if obj.contains_key("pages") {
+        // Already canonical — drop any stray legacy top-level keys.
+        obj.remove("buttons");
+        obj.remove("encoder");
+        obj.remove("expression");
+    } else {
+        // Legacy flat config — wrap buttons/encoder/expression into one page.
+        let mut page = serde_json::Map::new();
+        page.insert(
+            "buttons".to_string(),
+            obj.remove("buttons").unwrap_or_else(|| serde_json::Value::Array(Vec::new())),
+        );
+        if let Some(encoder) = obj.remove("encoder") {
+            page.insert("encoder".to_string(), encoder);
+        }
+        if let Some(expression) = obj.remove("expression") {
+            page.insert("expression".to_string(), expression);
+        }
+        obj.insert(
+            "pages".to_string(),
+            serde_json::Value::Array(vec![serde_json::Value::Object(page)]),
+        );
+    }
+
+    // Clamp active_page into range (default 0 when absent).
+    let pages_len = obj
+        .get("pages")
+        .and_then(|v| v.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
+    let max_idx = pages_len.saturating_sub(1) as u64;
+    let active = obj.get("active_page").and_then(|v| v.as_u64()).unwrap_or(0);
+    obj.insert("active_page".to_string(), serde_json::Value::from(active.min(max_idx)));
+
+    value
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Parse a (possibly legacy-shaped) config JSON the way the editor read path
+    /// does: migrate to the pages-only shape at the `Value` level, then deserialize.
+    /// Lets the legacy `{"buttons":[...]}` test literals keep working AND exercises
+    /// `migrate_to_pages` on every roundtrip test.
+    fn parse_migrated(json: &str) -> MidiCaptainConfig {
+        let value: serde_json::Value = serde_json::from_str(json).unwrap();
+        serde_json::from_value(migrate_to_pages(value)).unwrap()
+    }
 
     #[test]
     fn test_deserialize_std10_config() {
@@ -653,9 +755,9 @@ mod tests {
             }
         }"#;
 
-        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.buttons.len(), 1);
-        assert!(config.encoder.is_some());
+        let config = parse_migrated(json);
+        assert_eq!(config.pages[0].buttons.len(), 1);
+        assert!(config.pages[0].encoder.is_some());
     }
 
     #[test]
@@ -667,9 +769,9 @@ mod tests {
             ]
         }"#;
 
-        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
+        let config = parse_migrated(json);
         assert_eq!(config.device, DeviceType::Mini6);
-        assert!(config.encoder.is_none());
+        assert!(config.pages[0].encoder.is_none());
     }
 
     #[test]
@@ -682,9 +784,9 @@ mod tests {
             ]
         }"#;
 
-        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
+        let config = parse_migrated(json);
         assert_eq!(config.device, DeviceType::Duo2);
-        assert_eq!(config.buttons.len(), 2);
+        assert_eq!(config.pages[0].buttons.len(), 2);
         assert!(config.validate().is_ok());
     }
 
@@ -697,9 +799,9 @@ mod tests {
             ]
         }"#;
 
-        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
+        let config = parse_migrated(json);
         assert_eq!(config.device, DeviceType::One1);
-        assert_eq!(config.buttons.len(), 1);
+        assert_eq!(config.pages[0].buttons.len(), 1);
         assert!(config.validate().is_ok());
     }
 
@@ -714,17 +816,17 @@ mod tests {
             ]
         }"#;
 
-        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
-        let btn = &config.buttons[0];
+        let config = parse_migrated(json);
+        let btn = &config.pages[0].buttons[0];
         assert_eq!(btn.message_type, MessageType::Note);
         assert_eq!(btn.note, Some(60));
         assert_eq!(btn.velocity_on, Some(100));
         assert_eq!(btn.velocity_off, Some(0));
 
-        // Re-serialize and re-parse to confirm round-trip
+        // Re-serialize and re-parse to confirm round-trip (already paged — no migration)
         let reserialized = serde_json::to_string(&config).unwrap();
         let config2: MidiCaptainConfig = serde_json::from_str(&reserialized).unwrap();
-        let btn2 = &config2.buttons[0];
+        let btn2 = &config2.pages[0].buttons[0];
         assert_eq!(btn2.message_type, MessageType::Note);
         assert_eq!(btn2.note, Some(60));
         assert_eq!(btn2.velocity_on, Some(100));
@@ -738,14 +840,14 @@ mod tests {
             ]
         }"#;
 
-        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
-        let btn = &config.buttons[0];
+        let config = parse_migrated(json);
+        let btn = &config.pages[0].buttons[0];
         assert_eq!(btn.message_type, MessageType::Pc);
         assert_eq!(btn.program, Some(42));
 
         let reserialized = serde_json::to_string(&config).unwrap();
         let config2: MidiCaptainConfig = serde_json::from_str(&reserialized).unwrap();
-        assert_eq!(config2.buttons[0].program, Some(42));
+        assert_eq!(config2.pages[0].buttons[0].program, Some(42));
     }
 
     #[test]
@@ -757,16 +859,16 @@ mod tests {
             ]
         }"#;
 
-        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.buttons[0].message_type, MessageType::PcInc);
-        assert_eq!(config.buttons[0].pc_step, Some(5));
-        assert_eq!(config.buttons[1].message_type, MessageType::PcDec);
-        assert_eq!(config.buttons[1].pc_step, Some(2));
+        let config = parse_migrated(json);
+        assert_eq!(config.pages[0].buttons[0].message_type, MessageType::PcInc);
+        assert_eq!(config.pages[0].buttons[0].pc_step, Some(5));
+        assert_eq!(config.pages[0].buttons[1].message_type, MessageType::PcDec);
+        assert_eq!(config.pages[0].buttons[1].pc_step, Some(2));
 
         let reserialized = serde_json::to_string(&config).unwrap();
         let config2: MidiCaptainConfig = serde_json::from_str(&reserialized).unwrap();
-        assert_eq!(config2.buttons[0].pc_step, Some(5));
-        assert_eq!(config2.buttons[1].pc_step, Some(2));
+        assert_eq!(config2.pages[0].buttons[0].pc_step, Some(5));
+        assert_eq!(config2.pages[0].buttons[1].pc_step, Some(2));
     }
 
     #[test]
@@ -788,8 +890,8 @@ mod tests {
             ]
         }"#;
 
-        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
-        let btn = &config.buttons[0];
+        let config = parse_migrated(json);
+        let btn = &config.pages[0].buttons[0];
         assert_eq!(btn.keytimes, Some(3));
         let states = btn.states.as_ref().unwrap();
         assert_eq!(states.len(), 3);
@@ -800,7 +902,7 @@ mod tests {
 
         let reserialized = serde_json::to_string(&config).unwrap();
         let config2: MidiCaptainConfig = serde_json::from_str(&reserialized).unwrap();
-        let states2 = config2.buttons[0].states.as_ref().unwrap();
+        let states2 = config2.pages[0].buttons[0].states.as_ref().unwrap();
         assert_eq!(states2[0].cc, Some(1));
         assert_eq!(states2[1].color, Some(ButtonColor::Red));
     }
@@ -815,7 +917,7 @@ mod tests {
             }
         }"#;
 
-        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
+        let config = parse_migrated(json);
         let display = config.display.as_ref().unwrap();
         assert_eq!(display.button_text_size.as_deref(), Some("large"));
 
@@ -834,7 +936,7 @@ mod tests {
             "usb_drive_name": "MYCAPTAIN"
         }"#;
 
-        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
+        let config = parse_migrated(json);
         assert_eq!(config.usb_drive_name.as_deref(), Some("MYCAPTAIN"));
 
         let reserialized = serde_json::to_string(&config).unwrap();
@@ -849,7 +951,7 @@ mod tests {
             "dev_mode": true
         }"#;
 
-        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
+        let config = parse_migrated(json);
         assert_eq!(config.dev_mode, Some(true));
 
         let reserialized = serde_json::to_string(&config).unwrap();
@@ -860,7 +962,7 @@ mod tests {
     #[test]
     fn test_roundtrip_midi_thru_usb_to_din() {
         let json = r#"{ "buttons": [], "midi_thru_usb_to_din": false }"#;
-        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
+        let config = parse_migrated(json);
         assert_eq!(config.midi_thru_usb_to_din, Some(false));
 
         let reserialized = serde_json::to_string(&config).unwrap();
@@ -871,7 +973,7 @@ mod tests {
     #[test]
     fn test_roundtrip_midi_thru_din_to_usb() {
         let json = r#"{ "buttons": [], "midi_thru_din_to_usb": false }"#;
-        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
+        let config = parse_migrated(json);
         assert_eq!(config.midi_thru_din_to_usb, Some(false));
 
         let reserialized = serde_json::to_string(&config).unwrap();
@@ -882,7 +984,7 @@ mod tests {
     #[test]
     fn test_roundtrip_midi_thru_din_to_din() {
         let json = r#"{ "buttons": [], "midi_thru_din_to_din": false }"#;
-        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
+        let config = parse_migrated(json);
         assert_eq!(config.midi_thru_din_to_din, Some(false));
 
         let reserialized = serde_json::to_string(&config).unwrap();
@@ -893,12 +995,78 @@ mod tests {
     #[test]
     fn test_roundtrip_midi_thru_usb_to_usb() {
         let json = r#"{ "buttons": [], "midi_thru_usb_to_usb": true }"#;
-        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
+        let config = parse_migrated(json);
         assert_eq!(config.midi_thru_usb_to_usb, Some(true));
 
         let reserialized = serde_json::to_string(&config).unwrap();
         let config2: MidiCaptainConfig = serde_json::from_str(&reserialized).unwrap();
         assert_eq!(config2.midi_thru_usb_to_usb, Some(true));
+    }
+
+    // --- Pages migration / shape tests (#15) ---
+
+    #[test]
+    fn test_migrate_legacy_wraps_into_one_page() {
+        let json = r#"{
+            "device": "std10",
+            "buttons": [{"label": "B1", "cc": 20, "color": "red"}],
+            "encoder": {"enabled": true, "cc": 11, "label": "ENC"},
+            "usb_drive_name": "MYDRIVE"
+        }"#;
+        let config = parse_migrated(json);
+        assert_eq!(config.pages.len(), 1);
+        assert_eq!(config.active_page, 0);
+        assert_eq!(config.pages[0].buttons.len(), 1);
+        assert!(config.pages[0].encoder.is_some());
+        // Device-wide key stays at top level.
+        assert_eq!(config.usb_drive_name.as_deref(), Some("MYDRIVE"));
+    }
+
+    #[test]
+    fn test_migrate_is_idempotent() {
+        let json = r#"{
+            "device": "std10",
+            "buttons": [{"label": "B1", "cc": 20, "color": "red"}],
+            "encoder": {"enabled": true, "cc": 11, "label": "ENC"}
+        }"#;
+        let once = migrate_to_pages(serde_json::from_str(json).unwrap());
+        let twice = migrate_to_pages(once.clone());
+        assert_eq!(once, twice, "migrate_to_pages must be idempotent");
+    }
+
+    #[test]
+    fn test_migrate_strips_stray_legacy_keys_when_paged() {
+        // Hand-edited config with BOTH pages and a stray top-level buttons array.
+        let json = r#"{
+            "device": "std10",
+            "buttons": [{"label": "STALE", "cc": 99, "color": "red"}],
+            "pages": [{"buttons": [{"label": "REAL", "cc": 20, "color": "green"}]}],
+            "active_page": 0
+        }"#;
+        let value = migrate_to_pages(serde_json::from_str(json).unwrap());
+        let obj = value.as_object().unwrap();
+        assert!(!obj.contains_key("buttons"), "stray top-level buttons must be dropped");
+        let config: MidiCaptainConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(config.pages[0].buttons[0].label, "REAL");
+    }
+
+    #[test]
+    fn test_migrate_clamps_out_of_range_active_page() {
+        let json = r#"{
+            "device": "std10",
+            "pages": [{"buttons": []}],
+            "active_page": 7
+        }"#;
+        let config = parse_migrated(json);
+        assert_eq!(config.active_page, 0, "active_page clamped to last valid index");
+    }
+
+    #[test]
+    fn test_validate_rejects_out_of_range_active_page() {
+        let mut cfg = _std10_minimal();
+        cfg.active_page = 3;
+        let err = cfg.validate().unwrap_err();
+        assert!(err.iter().any(|e| e.contains("active_page 3 out of range")));
     }
 
     /// Round-trip every shipped firmware config file: parse → serialize → parse,
@@ -1019,9 +1187,9 @@ mod tests {
 
     // --- Validation tests for keytimes-mode and long_press_threshold_ms (#48 review fixes) ---
 
-    fn _std10_minimal() -> MidiCaptainConfig {
+    fn _mk_buttons(n: usize) -> Vec<ButtonConfig> {
         let mut buttons = Vec::new();
-        for i in 0..10 {
+        for i in 0..n {
             buttons.push(ButtonConfig {
                 label: format!("B{}", i + 1),
                 color: ButtonColor::Red,
@@ -1038,11 +1206,24 @@ mod tests {
                 long_overlay: None,
             });
         }
+        buttons
+    }
+
+    fn _std10_minimal() -> MidiCaptainConfig {
         MidiCaptainConfig {
             device: DeviceType::Std10, global_channel: None, usb_drive_name: None,
             dev_mode: None, midi_thru_usb_to_din: None, midi_thru_din_to_usb: None,
             midi_thru_din_to_din: None, midi_thru_usb_to_usb: None,
-            buttons, encoder: None, expression: None, display: None,
+            pages: vec![Page {
+                name: None,
+                buttons: _mk_buttons(10),
+                encoder: None,
+                expression: None,
+                global_channel: None,
+                display: None,
+            }],
+            active_page: 0,
+            display: None,
             long_press_threshold_ms: None,
         }
     }
@@ -1073,42 +1254,42 @@ mod tests {
     #[test]
     fn test_validate_per_button_long_press_threshold_ms_out_of_range() {
         let mut cfg = _std10_minimal();
-        cfg.buttons[0].long_press_threshold_ms = Some(10);
+        cfg.pages[0].buttons[0].long_press_threshold_ms = Some(10);
         let err = cfg.validate().unwrap_err();
-        assert!(err.iter().any(|e| e.contains("Button 1 long_press_threshold_ms 10")));
+        assert!(err.iter().any(|e| e.contains("Page 1, Button 1 long_press_threshold_ms 10")));
     }
 
     #[test]
     fn test_validate_per_button_long_press_threshold_ms_in_range() {
         let mut cfg = _std10_minimal();
-        cfg.buttons[0].long_press_threshold_ms = Some(750);
+        cfg.pages[0].buttons[0].long_press_threshold_ms = Some(750);
         assert!(cfg.validate().is_ok());
     }
 
     #[test]
     fn test_validate_keytimes_field_rejected_on_keytimes_mode() {
         let mut cfg = _std10_minimal();
-        cfg.buttons[0].mode = ButtonMode::Keytimes;
-        cfg.buttons[0].keytimes = Some(3);
+        cfg.pages[0].buttons[0].mode = ButtonMode::Keytimes;
+        cfg.pages[0].buttons[0].keytimes = Some(3);
         let err = cfg.validate().unwrap_err();
-        assert!(err.iter().any(|e| e.contains("Button 1 'keytimes' field is not allowed on mode='keytimes'")));
+        assert!(err.iter().any(|e| e.contains("Page 1, Button 1 'keytimes' field is not allowed on mode='keytimes'")));
     }
 
     #[test]
     fn test_validate_states_field_rejected_on_keytimes_mode() {
         let mut cfg = _std10_minimal();
-        cfg.buttons[0].mode = ButtonMode::Keytimes;
-        cfg.buttons[0].states = Some(Vec::new());
+        cfg.pages[0].buttons[0].mode = ButtonMode::Keytimes;
+        cfg.pages[0].buttons[0].states = Some(Vec::new());
         let err = cfg.validate().unwrap_err();
-        assert!(err.iter().any(|e| e.contains("Button 1 'states' field is not allowed on mode='keytimes'")));
+        assert!(err.iter().any(|e| e.contains("Page 1, Button 1 'states' field is not allowed on mode='keytimes'")));
     }
 
     #[test]
     fn test_validate_keytimes_field_allowed_on_toggle_mode() {
         // Legacy field still accepted on non-keytimes modes (firmware emits deprecation warning).
         let mut cfg = _std10_minimal();
-        cfg.buttons[0].mode = ButtonMode::Toggle;
-        cfg.buttons[0].keytimes = Some(3);
+        cfg.pages[0].buttons[0].mode = ButtonMode::Toggle;
+        cfg.pages[0].buttons[0].keytimes = Some(3);
         assert!(cfg.validate().is_ok());
     }
 
@@ -1118,8 +1299,7 @@ mod tests {
         // (skip_serializing_if = "Option::is_none" only omits None, so explicit false
         // WILL be serialised; this test documents that behaviour so we notice if it
         // changes unintentionally).
-        let json = r#"{ "buttons": [] }"#;
-        let config: MidiCaptainConfig = serde_json::from_str(json).unwrap();
+        let config = parse_migrated(r#"{ "buttons": [] }"#);
         assert_eq!(config.dev_mode, None);
 
         let reserialized = serde_json::to_string(&config).unwrap();

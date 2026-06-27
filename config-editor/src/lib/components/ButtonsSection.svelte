@@ -1,7 +1,7 @@
 <script lang="ts">
   import Accordion from './Accordion.svelte';
   import ButtonRow from './ButtonRow.svelte';
-  import { config, updateField } from '$lib/formStore';
+  import { config, currentPage, updateField } from '$lib/formStore';
   import type { DeviceType } from '$lib/types';
 
   // Device-specific button names (default: "Button 1", "Button 2", etc.)
@@ -11,7 +11,7 @@
   };
 
   let deviceType = $derived($config.device);
-  let buttons = $derived($config.buttons);
+  let buttons = $derived($currentPage.buttons);
   let globalChannel = $derived($config.global_channel ?? 0);
   let visibleCount = $derived(buttons.length);
   let buttonNames = $derived(DEVICE_BUTTON_NAMES[deviceType ?? 'std10']);

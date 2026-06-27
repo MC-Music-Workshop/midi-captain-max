@@ -2,8 +2,21 @@
   "device": "duo2",
   "usb_drive_name": "MIDICAPTAIN",
   "dev_mode": false,
-  "buttons": [
-    {"label": "BTN1", "cc": 20, "color": "green"},
-    {"label": "BTN2", "cc": 21, "color": "blue"}
+  "active_page": 0,
+  "pages": [
+    {
+      "buttons": [
+        {
+          "label": "BTN1",
+          "cc": 20,
+          "color": "green"
+        },
+        {
+          "label": "BTN2",
+          "cc": 21,
+          "color": "blue"
+        }
+      ]
+    }
   ]
 }

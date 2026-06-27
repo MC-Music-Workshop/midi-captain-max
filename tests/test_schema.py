@@ -34,13 +34,29 @@ def config_files():
   return sorted(CONFIG_DIR.glob("config*.json"))
 
 
+def wrap(config):
+  """Wrap a legacy-shaped test config (top-level buttons/encoder/expression) into
+  the canonical pages shape so it validates against the pages-only schema. Lets
+  the concise legacy literals below stay readable. Idempotent: an already-paged
+  config (e.g. a loaded shipped file) is returned unchanged."""
+  if "pages" in config:
+    return config
+  cfg = dict(config)
+  page = {}
+  for k in ("buttons", "encoder", "expression"):
+    if k in cfg:
+      page[k] = cfg.pop(k)
+  cfg["pages"] = [page]
+  return cfg
+
+
 # --- Positive tests: all shipped configs must pass ---
 
 @pytest.mark.parametrize("config_path", config_files(), ids=lambda p: p.name)
 def test_config_file_valid(validator, config_path):
   with open(config_path) as f:
     config = json.load(f)
-  errors = list(validator.iter_errors(config))
+  errors = list(validator.iter_errors(wrap(config)))
   assert errors == [], f"{config_path.name}: {errors[0].message}"
 
 
@@ -63,7 +79,7 @@ class TestKeytimesMode:
         ]
       }]
     }
-    errors = list(validator.iter_errors(config))
+    errors = list(validator.iter_errors(wrap(config)))
     assert errors == [], f"keytimes button rejected: {[e.message for e in errors]}"
 
   def test_keytimes_mode_full_example(self, validator):
@@ -84,76 +100,76 @@ class TestKeytimesMode:
         ]
       }]
     }
-    errors = list(validator.iter_errors(config))
+    errors = list(validator.iter_errors(wrap(config)))
     assert errors == [], f"full keytimes example rejected: {[e.message for e in errors]}"
 
   def test_message_type_cc(self, validator):
     config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
                            "short": [{"down": [{"type": "cc", "cc": 20, "value": 127}]}]}]}
-    assert list(validator.iter_errors(config)) == []
+    assert list(validator.iter_errors(wrap(config))) == []
 
   def test_message_type_note(self, validator):
     config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
                            "short": [{"down": [{"type": "note", "note": 60, "velocity": 127}]}]}]}
-    assert list(validator.iter_errors(config)) == []
+    assert list(validator.iter_errors(wrap(config))) == []
 
   def test_message_type_pc(self, validator):
     config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
                            "short": [{"down": [{"type": "pc", "program": 5}]}]}]}
-    assert list(validator.iter_errors(config)) == []
+    assert list(validator.iter_errors(wrap(config))) == []
 
   def test_message_type_pc_inc(self, validator):
     config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
                            "short": [{"down": [{"type": "pc_inc", "step": 1}]}]}]}
-    assert list(validator.iter_errors(config)) == []
+    assert list(validator.iter_errors(wrap(config))) == []
 
   def test_message_type_hid(self, validator):
     config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
                            "short": [{"down": [{"type": "hid", "action": "send", "key": "A"}]}]}]}
-    assert list(validator.iter_errors(config)) == []
+    assert list(validator.iter_errors(wrap(config))) == []
 
   def test_cc_message_missing_value_rejected(self, validator):
     config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
                            "short": [{"down": [{"type": "cc", "cc": 20}]}]}]}
-    errors = list(validator.iter_errors(config))
+    errors = list(validator.iter_errors(wrap(config)))
     assert len(errors) > 0
 
   def test_color_off_accepted_in_entry(self, validator):
     config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
                            "short": [{"color": "off"}]}]}
-    assert list(validator.iter_errors(config)) == []
+    assert list(validator.iter_errors(wrap(config))) == []
 
   def test_invalid_color_in_entry_rejected(self, validator):
     config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
                            "short": [{"color": "fuchsia"}]}]}
-    errors = list(validator.iter_errors(config))
+    errors = list(validator.iter_errors(wrap(config)))
     assert len(errors) > 0
 
   def test_top_level_threshold(self, validator):
     config = {"long_press_threshold_ms": 300, "buttons": [{"label": "X", "color": "red"}]}
-    assert list(validator.iter_errors(config)) == []
+    assert list(validator.iter_errors(wrap(config))) == []
 
   def test_threshold_too_low_rejected(self, validator):
     config = {"long_press_threshold_ms": 10, "buttons": [{"label": "X", "color": "red"}]}
-    errors = list(validator.iter_errors(config))
+    errors = list(validator.iter_errors(wrap(config)))
     assert len(errors) > 0
 
   def test_per_button_threshold(self, validator):
     config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
                            "long_press_threshold_ms": 700}]}
-    assert list(validator.iter_errors(config)) == []
+    assert list(validator.iter_errors(wrap(config))) == []
 
   def test_dim_boolean_accepted(self, validator):
     config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
                            "short": [{"color": "blue", "dim": True}]}]}
-    assert list(validator.iter_errors(config)) == []
+    assert list(validator.iter_errors(wrap(config))) == []
 
   def test_long_cycle_independent_length(self, validator):
     """short.length and long.length can differ — independent cycles."""
     config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
                            "short": [{"color": "blue"}, {"color": "cyan"}, {"color": "white"}],
                            "long":  [{"color": "red"},  {"color": "orange"}]}]}
-    assert list(validator.iter_errors(config)) == []
+    assert list(validator.iter_errors(wrap(config))) == []
 
 
 # --- Negative tests: schema must reject bad input ---
@@ -161,89 +177,89 @@ class TestKeytimesMode:
 class TestRejectsInvalidLabel:
   def test_label_too_long(self, validator):
     config = {"buttons": [{"label": "TOOLONG!", "color": "red"}]}
-    errors = [e for e in validator.iter_errors(config) if e.validator == "maxLength"]
+    errors = [e for e in validator.iter_errors(wrap(config)) if e.validator == "maxLength"]
     assert len(errors) > 0
 
   def test_label_invalid_chars(self, validator):
     config = {"buttons": [{"label": "A/B", "color": "red"}]}
-    errors = [e for e in validator.iter_errors(config) if e.validator == "pattern"]
+    errors = [e for e in validator.iter_errors(wrap(config)) if e.validator == "pattern"]
     assert len(errors) > 0
 
 
 class TestRejectsInvalidEnums:
   def test_invalid_color(self, validator):
     config = {"buttons": [{"label": "OK", "color": "nope"}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_invalid_message_type(self, validator):
     config = {"buttons": [{"label": "OK", "color": "red", "type": "sysex"}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_invalid_mode(self, validator):
     config = {"buttons": [{"label": "OK", "color": "red", "mode": "latch"}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_invalid_off_mode(self, validator):
     config = {"buttons": [{"label": "OK", "color": "red", "off_mode": "blink"}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
 
 class TestRejectsOutOfRange:
   def test_cc_over_127(self, validator):
     config = {"buttons": [{"label": "OK", "color": "red", "cc": 200}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_channel_over_15(self, validator):
     config = {"buttons": [{"label": "OK", "color": "red", "channel": 16}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_keytimes_over_99(self, validator):
     config = {"buttons": [{"label": "OK", "color": "red", "keytimes": 100}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_keytimes_zero(self, validator):
     config = {"buttons": [{"label": "OK", "color": "red", "keytimes": 0}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_flash_ms_too_low(self, validator):
     config = {"buttons": [{"label": "OK", "color": "red", "flash_ms": 10}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_flash_ms_too_high(self, validator):
     config = {"buttons": [{"label": "OK", "color": "red", "flash_ms": 9999}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_pc_step_zero(self, validator):
     config = {"buttons": [{"label": "OK", "color": "red", "pc_step": 0}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_negative_cc(self, validator):
     config = {"buttons": [{"label": "OK", "color": "red", "cc": -1}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
 
 class TestRejectsAdditionalProperties:
   def test_extra_top_level_field(self, validator):
     config = {"buttons": [{"label": "OK", "color": "red"}], "bogus": True}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_extra_button_field(self, validator):
     config = {"buttons": [{"label": "OK", "color": "red", "unknown": 42}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
 
 class TestRejectsMissingRequired:
   def test_missing_buttons(self, validator):
     config = {"device": "std10"}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_missing_button_label(self, validator):
     config = {"buttons": [{"color": "red"}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_missing_button_color(self, validator):
     config = {"buttons": [{"label": "OK"}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
 
 class TestEncoderValidation:
@@ -252,14 +268,14 @@ class TestEncoderValidation:
       "buttons": [{"label": "OK", "color": "red"}],
       "encoder": {"enabled": True, "cc": 11, "label": "ENC"},
     }
-    assert validator.is_valid(config)
+    assert validator.is_valid(wrap(config))
 
   def test_encoder_label_too_long(self, validator):
     config = {
       "buttons": [{"label": "OK", "color": "red"}],
       "encoder": {"enabled": True, "cc": 11, "label": "WAYTOOLONG"},
     }
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_encoder_push_extra_field(self, validator):
     config = {
@@ -269,7 +285,7 @@ class TestEncoderValidation:
         "push": {"enabled": True, "cc": 14, "label": "P", "bogus": 1},
       },
     }
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
 
 class TestExpressionValidation:
@@ -281,7 +297,7 @@ class TestExpressionValidation:
         "exp2": {"enabled": True, "cc": 13, "label": "EXP2"},
       },
     }
-    assert validator.is_valid(config)
+    assert validator.is_valid(wrap(config))
 
   def test_invalid_polarity(self, validator):
     config = {
@@ -291,7 +307,7 @@ class TestExpressionValidation:
         "exp2": {"enabled": True, "cc": 13, "label": "EXP2"},
       },
     }
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
 
 class TestHidButtonValidation:
@@ -300,67 +316,67 @@ class TestHidButtonValidation:
   def test_valid_hid_send_button(self, validator):
     config = {"buttons": [{"label": "KEY-A", "color": "blue",
                            "type": "hid", "hid_action": "send", "hid_key": "A"}]}
-    assert validator.is_valid(config)
+    assert validator.is_valid(wrap(config))
 
   def test_valid_hid_send_with_modifier(self, validator):
     config = {"buttons": [{"label": "CTRL-S", "color": "blue",
                            "type": "hid", "hid_action": "send",
                            "hid_key": "S", "hid_modifier": "ctrl"}]}
-    assert validator.is_valid(config)
+    assert validator.is_valid(wrap(config))
 
   def test_valid_hid_press_button(self, validator):
     config = {"buttons": [{"label": "HOLD", "color": "red",
                            "type": "hid", "hid_action": "press", "hid_key": "A"}]}
-    assert validator.is_valid(config)
+    assert validator.is_valid(wrap(config))
 
   def test_valid_hid_release_all(self, validator):
     config = {"buttons": [{"label": "RLSALL", "color": "red",
                            "type": "hid", "hid_action": "release", "hid_key": "all"}]}
-    assert validator.is_valid(config)
+    assert validator.is_valid(wrap(config))
 
   def test_valid_hid_delay(self, validator):
     config = {"buttons": [{"label": "DELAY", "color": "green",
                            "type": "hid", "hid_action": "delay", "hid_delay_ms": 100}]}
-    assert validator.is_valid(config)
+    assert validator.is_valid(wrap(config))
 
   def test_valid_hid_mouse_button(self, validator):
     config = {"buttons": [{"label": "CLICK", "color": "cyan",
                            "type": "hid", "hid_key": "Mouse_L"}]}
-    assert validator.is_valid(config)
+    assert validator.is_valid(wrap(config))
 
   def test_invalid_hid_action(self, validator):
     config = {"buttons": [{"label": "K", "color": "red",
                            "type": "hid", "hid_action": "invalid_act"}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_invalid_hid_modifier(self, validator):
     config = {"buttons": [{"label": "K", "color": "red",
                            "type": "hid", "hid_key": "A", "hid_modifier": "super"}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_hid_delay_ms_too_low(self, validator):
     config = {"buttons": [{"label": "K", "color": "red",
                            "type": "hid", "hid_action": "delay", "hid_delay_ms": 0}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_hid_delay_ms_too_high(self, validator):
     config = {"buttons": [{"label": "K", "color": "red",
                            "type": "hid", "hid_action": "delay", "hid_delay_ms": 9999}]}
-    assert not validator.is_valid(config)
+    assert not validator.is_valid(wrap(config))
 
   def test_invalid_hid_as_message_type_enum(self, validator):
     """'hid' IS a valid type — this should pass, not fail."""
     config = {"buttons": [{"label": "K", "color": "red", "type": "hid"}]}
-    assert validator.is_valid(config)
+    assert validator.is_valid(wrap(config))
 
   def test_hid_all_modifiers_valid(self, validator):
     for mod in ["ctrl", "shift", "alt", "option", "windows"]:
       config = {"buttons": [{"label": "K", "color": "red",
                              "type": "hid", "hid_key": "A", "hid_modifier": mod}]}
-      assert validator.is_valid(config), f"modifier {mod!r} should be valid"
+      assert validator.is_valid(wrap(config)), f"modifier {mod!r} should be valid"
 
   def test_hid_all_actions_valid(self, validator):
     for action in ["send", "press", "release", "delay"]:
       config = {"buttons": [{"label": "K", "color": "red",
                              "type": "hid", "hid_action": action}]}
-      assert validator.is_valid(config), f"action {action!r} should be valid"
+      assert validator.is_valid(wrap(config)), f"action {action!r} should be valid"

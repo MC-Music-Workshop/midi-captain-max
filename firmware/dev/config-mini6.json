@@ -2,12 +2,41 @@
   "device": "mini6",
   "usb_drive_name": "MIDICAPTAIN",
   "dev_mode": false,
-  "buttons": [
-    {"label": "BOOM", "cc": 20, "color": "green"},
-    {"label": "MUTE", "cc": 21, "color": "blue"},
-    {"label": "ONCE", "cc": 22, "color": "yellow"},
-    {"label": "REC", "cc": 23, "color": "red"},
-    {"label": "PLAY", "cc": 24, "color": "cyan"},
-    {"label": "DIR", "cc": 25, "color": "white"}
+  "active_page": 0,
+  "pages": [
+    {
+      "buttons": [
+        {
+          "label": "BOOM",
+          "cc": 20,
+          "color": "green"
+        },
+        {
+          "label": "MUTE",
+          "cc": 21,
+          "color": "blue"
+        },
+        {
+          "label": "ONCE",
+          "cc": 22,
+          "color": "yellow"
+        },
+        {
+          "label": "REC",
+          "cc": 23,
+          "color": "red"
+        },
+        {
+          "label": "PLAY",
+          "cc": 24,
+          "color": "cyan"
+        },
+        {
+          "label": "DIR",
+          "cc": 25,
+          "color": "white"
+        }
+      ]
+    }
   ]
 }

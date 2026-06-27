@@ -45,6 +45,7 @@ from core.colors import COLORS, get_color, dim_color, rgb_to_hex, get_off_color,
 from core.config import (
     load_config as _load_config_from_file,
     validate_config,
+    get_active_page,
     get_display_config,
     get_button_state_config,
     get_long_press_threshold_ms,
@@ -252,16 +253,17 @@ def load_config():
       2. /config-{device}.json (device-specific defaults)
       3. Built-in fallback defaults
     """
-    # Try user config
+    # Try user config. _load_config_from_file normalizes to the pages shape, so
+    # "did we load a real config" is "does the active page have buttons".
     cfg = _load_config_from_file("/config.json", button_count=BUTTON_COUNT)
-    if "buttons" in cfg and len(cfg["buttons"]) > 0:
+    if len(get_active_page(cfg).get("buttons", [])) > 0:
         print("Loaded config.json")
         return validate_config(cfg, button_count=BUTTON_COUNT)
 
     # Try device-specific default
     device_config = f"/config-{DETECTED_DEVICE}.json"
     cfg = _load_config_from_file(device_config, button_count=BUTTON_COUNT)
-    if "buttons" in cfg and len(cfg["buttons"]) > 0:
+    if len(get_active_page(cfg).get("buttons", [])) > 0:
         print(f"Loaded {device_config}")
         return validate_config(cfg, button_count=BUTTON_COUNT)
 
@@ -276,7 +278,7 @@ def load_config():
 
 
 config = load_config()
-buttons = config.get("buttons", [])
+buttons = get_active_page(config).get("buttons", [])
 print(f"Loaded {len(buttons)} button configs")
 
 # MIDI Thru routing matrix (read once at boot).
@@ -458,8 +460,8 @@ try:
 except Exception:
     pass  # usb_hid not available — no HID buttons in config
 
-# Encoder config (from config.json or defaults)
-enc_config = config.get("encoder", {"enabled": True, "cc": 11, "label": "ENC", "min": 0, "max": 127, "initial": 64})
+# Encoder config (per-page; from the active page or defaults)
+enc_config = get_active_page(config).get("encoder", {"enabled": True, "cc": 11, "label": "ENC", "min": 0, "max": 127, "initial": 64})
 enc_push_config = enc_config.get("push", {"enabled": True, "cc": 14, "label": "PUSH", "mode": "momentary"})
 
 CC_ENCODER = enc_config.get("cc", 11)
@@ -480,8 +482,8 @@ ENC_PUSH_CC_OFF = enc_push_config.get("cc_off", 0)
 # Internal encoder tracks 0-127, output only changes at slot boundaries
 ENC_STEPS = enc_config.get("steps", None)
 
-# Expression pedal config (from config.json or defaults)
-exp_config = config.get("expression", {})
+# Expression pedal config (per-page; from the active page or defaults)
+exp_config = get_active_page(config).get("expression", {})
 exp1_config = exp_config.get("exp1", {"enabled": True, "cc": 12, "label": "EXP1", "min": 0, "max": 127, "polarity": "normal", "threshold": 2})
 exp2_config = exp_config.get("exp2", {"enabled": True, "cc": 13, "label": "EXP2", "min": 0, "max": 127, "polarity": "normal", "threshold": 2})
 

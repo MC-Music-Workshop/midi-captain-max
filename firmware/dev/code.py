@@ -52,6 +52,7 @@ from core.config import (
     get_midi_thru_din_to_usb,
     get_midi_thru_din_to_din,
     get_midi_thru_usb_to_usb,
+    get_dev_mode,
 )
 from core.button import Switch, ButtonState, KeytimesButtonState, dispatch_keytimes_events
 from core.hid import dispatch_hid
@@ -1456,6 +1457,23 @@ print("\nRunning...")
 import microcontroller
 microcontroller.nvm[0] = 0
 
+# RAM watch (dev_mode only): report free heap after full init, then track the
+# reclaimable low-water mark over the session. Useful as the Pages feature (#15)
+# grows per-config memory -- compare against pages_ram_probe.py `retained` to see
+# how much page headroom remains on real hardware. Performance mode skips it
+# entirely (single bool test per loop), so there's no live-playing cost.
+import gc
+
+DEV_MODE = get_dev_mode(config)
+_ram_low = None
+_ram_next_check = 0.0
+RAM_CHECK_INTERVAL_S = 2.0
+
+if DEV_MODE:
+    gc.collect()
+    _ram_low = gc.mem_free()
+    print("free after boot:", _ram_low, "bytes")
+
 # =============================================================================
 # Main Loop
 # =============================================================================
@@ -1469,3 +1487,15 @@ while True:
         handle_encoder()
     if HAS_EXPRESSION:
         handle_expression()
+    if DEV_MODE:
+        # Throttled reclaimable-RAM sample. gc.collect() first so the reading
+        # reflects true free heap (not transient uncollected garbage); only
+        # every RAM_CHECK_INTERVAL_S to keep the collect off the hot path.
+        _now = time.monotonic()
+        if _now >= _ram_next_check:
+            _ram_next_check = _now + RAM_CHECK_INTERVAL_S
+            gc.collect()
+            _free = gc.mem_free()
+            if _free < _ram_low:
+                _ram_low = _free
+                print("ram low-water:", _free, "bytes")

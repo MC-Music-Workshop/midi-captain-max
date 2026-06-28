@@ -25,7 +25,11 @@ class Switch:
         self.io = digitalio_module.DigitalInOut(pin)
         self.io.direction = digitalio_module.Direction.INPUT
         self.io.pull = digitalio_module.Pull.UP
-        self.last_state = True  # Pull-up: True = not pressed
+        # Initialize to the not-pressed state. `pressed` is `not io.value`, so an
+        # unpressed switch (pull-up high, io.value=True) reads pressed=False at boot.
+        # Matching last_state to that avoids a phantom "release" edge on the first
+        # changed() poll (which fired startup CC=0 on momentary/encoder buttons, #112).
+        self.last_state = False
 
     @property
     def pressed(self):

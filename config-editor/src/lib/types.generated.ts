@@ -44,6 +44,20 @@ export type KeytimesMessage =
       channel?: MidiChannel;
     }
   | {
+      type: "page_inc" | "page_dec";
+      /**
+       * Number of pages to advance (page_inc) or retreat (page_dec). Wraps at the ends.
+       */
+      page_step?: number;
+    }
+  | {
+      type: "page_jump";
+      /**
+       * Absolute target page index (0-based). Clamped to a valid page.
+       */
+      page?: number;
+    }
+  | {
       type: "hid";
       action?: HidAction;
       /**
@@ -140,7 +154,7 @@ export interface ButtonConfig {
   /**
    * MIDI message type. Determines which fields apply. Default: 'cc'.
    */
-  type?: "cc" | "note" | "pc" | "pc_inc" | "pc_dec" | "hid";
+  type?: "cc" | "note" | "pc" | "pc_inc" | "pc_dec" | "hid" | "page_inc" | "page_dec" | "page_jump";
   /**
    * Button behavior. 'toggle' = latching LED on/off, 'momentary' = LED on while held, 'flash' = brief LED flash on press (PC types only, default for PC types), 'select' = radio-group exclusivity (PC and CC only, requires select_group). Default for CC/Note/HID: 'toggle'.
    */
@@ -193,6 +207,14 @@ export interface ButtonConfig {
    * Step size for program change increment/decrement. Used when type='pc_inc' or 'pc_dec'.
    */
   pc_step?: number;
+  /**
+   * Number of pages to advance/retreat. Used when type='page_inc' or 'page_dec'. Wraps at the ends.
+   */
+  page_step?: number;
+  /**
+   * Absolute target page index (0-based). Used when type='page_jump'. Clamped to a valid page.
+   */
+  page?: number;
   /**
    * LED flash duration in milliseconds. Used when type is PC and mode is 'flash'.
    */

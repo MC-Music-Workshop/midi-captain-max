@@ -133,8 +133,9 @@
     },
     "MessageType": {
       "type": "string",
-      "enum": ["cc", "note", "pc", "pc_inc", "pc_dec", "hid"],
-      "default": "cc"
+      "enum": ["cc", "note", "pc", "pc_inc", "pc_dec", "hid", "page_inc", "page_dec", "page_jump"],
+      "default": "cc",
+      "description": "MIDI/HID message type, plus page-switch triggers: 'page_inc'/'page_dec' wrap-advance/retreat the active page by page_step; 'page_jump' clamps to absolute page index."
     },
     "HidAction": {
       "type": "string",
@@ -214,6 +215,22 @@
             "type": { "enum": ["pc_inc", "pc_dec"] },
             "step": { "type": "integer", "minimum": 1, "maximum": 127, "default": 1 },
             "channel": { "$ref": "#/definitions/MidiChannel" }
+          },
+          "required": ["type"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "enum": ["page_inc", "page_dec"] },
+            "page_step": { "type": "integer", "minimum": 1, "default": 1, "description": "Number of pages to advance (page_inc) or retreat (page_dec). Wraps at the ends." }
+          },
+          "required": ["type"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "const": "page_jump" },
+            "page": { "type": "integer", "minimum": 0, "default": 0, "description": "Absolute target page index (0-based). Clamped to a valid page." }
           },
           "required": ["type"],
           "additionalProperties": false
@@ -372,6 +389,18 @@
           "maximum": 127,
           "default": 1,
           "description": "Step size for program change increment/decrement. Used when type='pc_inc' or 'pc_dec'."
+        },
+        "page_step": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Number of pages to advance/retreat. Used when type='page_inc' or 'page_dec'. Wraps at the ends."
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Absolute target page index (0-based). Used when type='page_jump'. Clamped to a valid page."
         },
         "flash_ms": {
           "type": "integer",

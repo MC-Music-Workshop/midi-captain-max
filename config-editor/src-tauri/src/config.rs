@@ -80,6 +80,9 @@ pub enum MessageType {
     PcInc,
     PcDec,
     Hid,
+    PageInc,
+    PageDec,
+    PageJump,
 }
 
 /// HID action for a button
@@ -137,6 +140,18 @@ pub enum KeytimesMessage {
         step: Option<u8>,
         #[serde(skip_serializing_if = "Option::is_none")]
         channel: Option<u8>,
+    },
+    PageInc {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        page_step: Option<u8>,
+    },
+    PageDec {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        page_step: Option<u8>,
+    },
+    PageJump {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        page: Option<u8>,
     },
     Hid {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -233,6 +248,11 @@ pub struct ButtonConfig {
     // PC inc/dec fields
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pc_step: Option<u8>,
+    // Page-switch trigger fields (type="page_inc"/"page_dec"/"page_jump")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_step: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page: Option<u8>,
     // PC flash feedback (all PC types)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flash_ms: Option<u16>,
@@ -1198,7 +1218,7 @@ mod tests {
                 off_mode: OffMode::Dim,
                 channel: None, cc: Some(20 + i as u8), cc_on: None, cc_off: None,
                 note: None, velocity_on: None, velocity_off: None,
-                program: None, pc_step: None, flash_ms: None,
+                program: None, pc_step: None, page_step: None, page: None, flash_ms: None,
                 select_group: None, select_repress: None,
                 keytimes: None, states: None,
                 hid_action: None, hid_key: None, hid_modifier: None, hid_delay_ms: None,
@@ -1304,5 +1324,48 @@ mod tests {
 
         let reserialized = serde_json::to_string(&config).unwrap();
         assert!(!reserialized.contains("dev_mode"));
+    }
+
+    // --- Page-switch trigger types (#15 P3) ---
+
+    #[test]
+    fn test_deserialize_page_switch_button_types() {
+        let json = r#"{
+            "buttons": [
+                {"label": "NEXT", "color": "blue", "type": "page_inc", "page_step": 1},
+                {"label": "PREV", "color": "blue", "type": "page_dec"},
+                {"label": "HOME", "color": "green", "type": "page_jump", "page": 0}
+            ]
+        }"#;
+        let config = parse_migrated(json);
+        let btns = &config.pages[0].buttons;
+        assert_eq!(btns[0].message_type, MessageType::PageInc);
+        assert_eq!(btns[0].page_step, Some(1));
+        assert_eq!(btns[1].message_type, MessageType::PageDec);
+        assert_eq!(btns[2].message_type, MessageType::PageJump);
+        assert_eq!(btns[2].page, Some(0));
+    }
+
+    #[test]
+    fn test_deserialize_page_switch_in_keytimes_long() {
+        // OEM gesture: page_inc in a keytimes button's long[] cycle entry. Must deserialize.
+        let json = r#"{
+            "buttons": [
+                {"label": "NAV", "color": "blue", "mode": "keytimes",
+                 "long": [{"down": [{"type": "page_inc", "page_step": 1}]}]}
+            ]
+        }"#;
+        let config = parse_migrated(json);
+        let long = config.pages[0].buttons[0].long.as_ref().unwrap();
+        let msg = &long[0].down.as_ref().unwrap()[0];
+        assert!(matches!(msg, KeytimesMessage::PageInc { page_step: Some(1) }));
+    }
+
+    #[test]
+    fn test_page_switch_button_validates_ok() {
+        let mut cfg = _std10_minimal();
+        cfg.pages[0].buttons[0].message_type = MessageType::PageInc;
+        cfg.pages[0].buttons[0].page_step = Some(1);
+        assert!(cfg.validate().is_ok());
     }
 }

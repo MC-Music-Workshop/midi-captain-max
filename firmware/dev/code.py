@@ -46,6 +46,7 @@ from core.config import (
     load_config as _load_config_from_file,
     validate_config,
     get_active_page,
+    resolve_page_target,
     get_display_config,
     get_button_state_config,
     get_long_press_threshold_ms,
@@ -281,6 +282,13 @@ config = load_config()
 # Per-page state is initialized by switch_page() at boot; placeholders until then.
 active_page = {}
 buttons = []
+
+# Page-switch trigger target, set by page_inc/page_dec/page_jump message dispatch and
+# drained once after handle_switches()'s scan loop — NEVER switch pages mid-iteration,
+# since switch_page() swaps buttons[]/button_states[]/keytimes_states[] out from under
+# the loop. None = no switch pending. NOTE: this is the page INDEX (int), distinct from
+# the `active_page` global above, which holds the active page DICT.
+pending_page_target = None
 
 # MIDI Thru routing matrix (read once at boot).
 # Cross routes default True; USB->USB defaults False (host loopback risk).
@@ -1064,6 +1072,7 @@ def _dispatch_keytimes_message(msg, default_channel, btn_num):
     message itself doesn't specify a channel. Used by handle_switches() via the
     callback passed to dispatch_keytimes_events().
     """
+    global pending_page_target
     channel = msg.get("channel", default_channel)
     mtype = msg.get("type", "cc")
     if mtype == "cc":
@@ -1095,6 +1104,19 @@ def _dispatch_keytimes_message(msg, default_channel, btn_num):
         midi_send(ProgramChange(pc_values[channel]), channel=channel)
         print(f"[MIDI TX] Ch{channel+1} PC{pc_values[channel]} (switch {btn_num}, keytimes {mtype})")
         update_status(f"TX PC{pc_values[channel]}")
+    elif mtype in ("page_inc", "page_dec", "page_jump"):
+        # Defer the actual switch — set the target; handle_switches() drains it after
+        # its scan loop so buttons[]/state arrays aren't swapped mid-iteration.
+        if mtype == "page_inc":
+            action, amount = "inc", msg.get("page_step", 1)
+        elif mtype == "page_dec":
+            action, amount = "dec", msg.get("page_step", 1)
+        else:
+            action, amount = "jump", msg.get("page", 0)
+        pending_page_target = resolve_page_target(
+            config.get("active_page", 0), len(config.get("pages", [])), action, amount)
+        print(f"[PAGE] {mtype} -> page {pending_page_target} (switch {btn_num}, keytimes)")
+        update_status(f"PAGE {pending_page_target + 1}")
     elif mtype == "hid":
         action = msg.get("action", "send")
         key = msg.get("key")
@@ -1168,6 +1190,7 @@ def _render_keytimes_led(btn_num, state, btn_config):
 
 def handle_switches():
     """Handle footswitch presses with keytimes support."""
+    global pending_page_target
     # STD10: index 0 is encoder push, 1-10 are footswitches
     # Mini6: indices 0-5 are footswitches (no encoder)
     start_idx = 1 if HAS_ENCODER else 0
@@ -1335,6 +1358,20 @@ def handle_switches():
                     btn_state.state = False
                     set_button_state(btn_num, False)
 
+            elif message_type in ("page_inc", "page_dec", "page_jump"):
+                if pressed:
+                    # Defer the switch; drained after the scan loop (see pending_page_target).
+                    if message_type == "page_inc":
+                        action, amount = "inc", btn_config.get("page_step", 1)
+                    elif message_type == "page_dec":
+                        action, amount = "dec", btn_config.get("page_step", 1)
+                    else:
+                        action, amount = "jump", btn_config.get("page", 0)
+                    pending_page_target = resolve_page_target(
+                        config.get("active_page", 0), len(config.get("pages", [])), action, amount)
+                    print(f"[PAGE] {message_type} -> page {pending_page_target} (switch {btn_num})")
+                    update_status(f"PAGE {pending_page_target + 1}")
+
             elif message_type == "hid" and pressed:
                 btn_state.advance_keytime()
                 state_cfg = get_button_state_config(btn_config, btn_state.get_keytime())
@@ -1357,6 +1394,13 @@ def handle_switches():
                     # Flash LED briefly for press/send/release — delay doesn't need feedback
                     set_button_state(btn_num, True)
                     hid_flash_timers[btn_num - 1] = time.monotonic() + PC_FLASH_DURATION_MS / 1000.0
+
+    # Drain a pending page switch once, after the scan loop has finished iterating —
+    # switch_page() rebuilds buttons[]/button_states[]/keytimes_states[], so doing it
+    # inline above would corrupt the loop. Set by page_inc/page_dec/page_jump triggers.
+    if pending_page_target is not None:
+        switch_page(pending_page_target)
+        pending_page_target = None
 
 
 def handle_encoder_button():

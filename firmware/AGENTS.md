@@ -205,6 +205,7 @@ All outgoing MIDI goes through `midi_send(msg)` which writes to both USB and 5-p
 - `"pc"` + pressed only → sends ProgramChange, calls `flash_pc_button`
 - `"pc"` + select → calls `handle_pc_select_press`: sends PC, calls `update_select_group`
 - `"pc_inc"` / `"pc_dec"` + pressed only → increments/decrements `pc_values[channel]`, sends PC, flashes
+- `"page_inc"` / `"page_dec"` / `"page_jump"` + pressed only → sets `pending_page_target` (see Page Switching below)
 - `"hid"` + pressed only → calls `dispatch_hid(...)`, flashes LED
 
 `pc_values` is a 16-element array (one per MIDI channel), shared across all pc_inc/dec buttons.
@@ -226,6 +227,21 @@ Cycle state lives in RAM only — resets on power cycle / config reload. Per-pag
 See [docs/plans/2026-05-13-issue-48-press-timings.md](../docs/plans/2026-05-13-issue-48-press-timings.md) for the full design and rationale.
 
 **Color vs. press length (#157):** by default the keytimes LED color is gated on `state.last_fired` — the most recently fired timing class (short/long) owns both the LED and the label color, so the two never disagree (the label already worked this way after #143). This deliberately flipped the original behavior, where long color composited *persistently* over short, leaving a long press's color stuck across every later short press (the #157 bug — color stuck while the label flipped back). The old persistent-composition behavior is preserved as an opt-in per-button `long_overlay: true`, for using the long color as a mode indicator (e.g. a shimmer-on color riding over a reverb short cycle). `long_overlay` only bypasses the `last_fired` gate — even with it on, a short `"off"` entry is still a kill-switch that turns the LED off, and short presses still send their messages.
+### Page Switching Triggers (#15 P3)
+
+Three message types change the active page, usable as a whole-button `type` **and** inside a keytimes `short[]`/`long[]` entry (OEM gesture: `page_inc` in the rightmost button's `long[]`):
+
+- `page_inc` — `{type:"page_inc", page_step?:1}` → wrap-advance by `page_step` (past last → 0).
+- `page_dec` — `{type:"page_dec", page_step?:1}` → wrap-retreat by `page_step` (past first → last).
+- `page_jump` — `{type:"page_jump", page:N}` → clamp to absolute page index `N`.
+
+Pure index math lives in `core/config.py::resolve_page_target(current, num_pages, action, amount)` (`"inc"`/`"dec"` wrap via Python modulo; `"jump"` clamps). Unit-tested; the dispatch wiring is the only on-device part.
+
+**Deferred-switch invariant:** triggers never call `switch_page()` inline — they set the `pending_page_target` global (a page **index** int, distinct from the `active_page` global which is the page **dict**). `handle_switches()` drains it **once after** its scan loop, because `switch_page()` rebuilds `buttons[]`/`button_states[]`/`keytimes_states[]` and swapping them mid-iteration would corrupt the loop. Both dispatch sites (`_dispatch_keytimes_message` and the legacy branch in `handle_switches`) declare `global pending_page_target` and read the current index via `config.get("active_page", 0)`.
+
+Modes (`toggle`/`momentary`/`flash`) are accepted on page buttons but cosmetically irrelevant — `switch_page()` repaints every button immediately, so the trigger button shows whatever the *new* page defines for its position (build matching nav buttons on every page for a stable UI). `select` mode stays restricted to `pc`/`cc`, so page types are naturally excluded.
+
+MIDI-IN CC page control is deferred to **P3b** (device-level `page_control` block, reuses `resolve_page_target` + `pending_page_target`).
 
 ### PC Button LED Modes
 

@@ -288,6 +288,9 @@ function _defaultMessage(type: MessageType): KeytimesMessage {
     case 'pc_inc': return { type: 'pc_inc', step: 1 };
     case 'pc_dec': return { type: 'pc_dec', step: 1 };
     case 'hid':    return { type: 'hid', action: 'send' };
+    case 'page_inc': return { type: 'page_inc', page_step: 1 };
+    case 'page_dec': return { type: 'page_dec', page_step: 1 };
+    case 'page_jump': return { type: 'page_jump', page: 0 };
   }
 }
 

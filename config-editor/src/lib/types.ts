@@ -46,6 +46,9 @@ export const MESSAGE_TYPE_LABELS = {
   pc_inc: 'PC+',
   pc_dec: 'PC-',
   hid:    'HID',
+  page_inc:  'Page+',
+  page_dec:  'Page-',
+  page_jump: 'Page Jump',
 } as const satisfies Record<MessageType, string>;
 
 // Same pattern for button modes — fails to compile if a new mode is added to the schema

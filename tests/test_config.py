@@ -22,6 +22,7 @@ from core.config import (
     get_button_state_config,
     to_pages,
     get_active_page,
+    resolve_page_target,
 )
 
 
@@ -79,6 +80,49 @@ class TestToPages:
         # bool is a subclass of int — active_page:true must NOT silently pick pages[1].
         cfg = {"pages": [{"buttons": [{"label": "A"}]}, {"buttons": [{"label": "B"}]}], "active_page": True}
         assert get_active_page(cfg)["buttons"][0]["label"] == "A"
+
+
+class TestResolvePageTarget:
+    """Pure page-index math for page-switch triggers (#15 P3)."""
+
+    def test_inc_wraps_past_last(self):
+        # 3 pages, on last (2), inc by 1 -> wrap to 0.
+        assert resolve_page_target(2, 3, "inc", 1) == 0
+
+    def test_inc_normal(self):
+        assert resolve_page_target(0, 3, "inc", 1) == 1
+
+    def test_dec_wraps_past_first(self):
+        # On first (0), dec by 1 -> wrap to last (2).
+        assert resolve_page_target(0, 3, "dec", 1) == 2
+
+    def test_dec_normal(self):
+        assert resolve_page_target(2, 3, "dec", 1) == 1
+
+    def test_inc_multi_step_wraps(self):
+        # 3 pages, on 2, +2 -> (2+2)%3 == 1.
+        assert resolve_page_target(2, 3, "inc", 2) == 1
+
+    def test_dec_multi_step_wraps(self):
+        # 3 pages, on 1, -2 -> (1-2)%3 == 2.
+        assert resolve_page_target(1, 3, "dec", 2) == 2
+
+    def test_jump_clamps_high(self):
+        assert resolve_page_target(0, 3, "jump", 99) == 2
+
+    def test_jump_clamps_low(self):
+        assert resolve_page_target(0, 3, "jump", -5) == 0
+
+    def test_jump_in_range(self):
+        assert resolve_page_target(0, 5, "jump", 3) == 3
+
+    def test_single_page_always_zero(self):
+        assert resolve_page_target(0, 1, "inc", 1) == 0
+        assert resolve_page_target(0, 1, "dec", 1) == 0
+        assert resolve_page_target(0, 1, "jump", 0) == 0
+
+    def test_zero_pages_safe(self):
+        assert resolve_page_target(0, 0, "inc", 1) == 0
 
 
 class TestConfigValidation:
@@ -383,6 +427,37 @@ class TestButtonMessageTypes:
         btn_dec = validate_button({"type": "pc_dec"}, index=0)
         assert btn_inc["pc_step"] == 1
         assert btn_dec["pc_step"] == 1
+
+    def test_page_inc_type(self):
+        btn = validate_button({"type": "page_inc", "page_step": 2}, index=0)
+        assert btn["type"] == "page_inc"
+        assert btn["page_step"] == 2
+
+    def test_page_dec_type_default_step(self):
+        btn = validate_button({"type": "page_dec"}, index=0)
+        assert btn["type"] == "page_dec"
+        assert btn["page_step"] == 1
+
+    def test_page_inc_step_clamps_below_one(self):
+        btn = validate_button({"type": "page_inc", "page_step": 0}, index=0)
+        assert btn["page_step"] == 1
+
+    def test_page_inc_step_non_int_defaults(self):
+        btn = validate_button({"type": "page_inc", "page_step": "x"}, index=0)
+        assert btn["page_step"] == 1
+
+    def test_page_jump_type(self):
+        btn = validate_button({"type": "page_jump", "page": 3}, index=0)
+        assert btn["type"] == "page_jump"
+        assert btn["page"] == 3
+
+    def test_page_jump_default_page_is_zero(self):
+        btn = validate_button({"type": "page_jump"}, index=0)
+        assert btn["page"] == 0
+
+    def test_page_jump_negative_clamps_to_zero(self):
+        btn = validate_button({"type": "page_jump", "page": -2}, index=0)
+        assert btn["page"] == 0
 
     def test_pc_type_default_mode_is_flash(self):
         """PC button type defaults to flash mode, not toggle."""
@@ -1067,6 +1142,34 @@ class TestKeytimesMessageValidation:
         }, index=0)
         msg = btn["short"][0]["down"][0]
         assert msg["step"] == 5
+
+    def test_page_inc_message_defaults_page_step(self):
+        # OEM gesture: page_inc in a keytimes long[] entry.
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "long": [{"down": [{"type": "page_inc"}]}],
+        }, index=0)
+        msg = btn["long"][0]["down"][0]
+        assert msg["type"] == "page_inc"
+        assert msg["page_step"] == 1
+
+    def test_page_dec_message_with_page_step(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [{"type": "page_dec", "page_step": 2}]}],
+        }, index=0)
+        msg = btn["short"][0]["down"][0]
+        assert msg["type"] == "page_dec"
+        assert msg["page_step"] == 2
+
+    def test_page_jump_message(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [{"type": "page_jump", "page": 4}]}],
+        }, index=0)
+        msg = btn["short"][0]["down"][0]
+        assert msg["type"] == "page_jump"
+        assert msg["page"] == 4
 
     def test_hid_message(self):
         btn = validate_button({

@@ -10,7 +10,7 @@ except ImportError:
     # CircuitPython has json built-in, but just in case
     json = None
 
-VALID_TYPES = ("cc", "note", "pc", "pc_inc", "pc_dec", "hid")
+VALID_TYPES = ("cc", "note", "pc", "pc_inc", "pc_dec", "hid", "page_inc", "page_dec", "page_jump")
 VALID_MODES = ("toggle", "momentary", "flash", "select", "keytimes")
 STATE_OVERRIDE_FIELDS = ("cc", "cc_on", "cc_off", "note", "velocity_on", "velocity_off", "program", "pc_step", "color", "label", "hid_action", "hid_key", "hid_modifier", "hid_delay_ms")
 
@@ -119,6 +119,28 @@ def get_active_page(cfg):
     return page
 
 
+def resolve_page_target(current, num_pages, action, amount=1):
+    """Target page index for a page-switch trigger.
+
+    action: "inc"|"dec"|"jump". inc/dec move by `amount` and WRAP (inc past the
+    last page lands on 0; dec past the first lands on the last). jump treats
+    `amount` as an absolute index and CLAMPS to range. Always returns a valid
+    index, 0 if num_pages <= 1.
+
+    Wrap uses Python modulo, which always returns a non-negative result for a
+    positive divisor, so "dec" via `(current - amount) % num_pages` is correct
+    even when current - amount is negative.
+    """
+    if num_pages <= 1:
+        return 0
+    if action == "inc":
+        return (current + amount) % num_pages
+    if action == "dec":
+        return (current - amount) % num_pages
+    # "jump": absolute target, clamp into range.
+    return max(0, min(num_pages - 1, amount))
+
+
 _MIDI_BYTE_FIELDS = ("cc", "cc_on", "cc_off", "note", "velocity_on", "velocity_off", "program")
 
 def _clamp_state_field(field, value):
@@ -178,6 +200,16 @@ def _validate_keytimes_message(msg):
         if not isinstance(step, int):
             step = 1
         out["step"] = max(1, min(127, step))
+    elif mtype in ("page_inc", "page_dec"):
+        page_step = msg.get("page_step", 1)
+        if not isinstance(page_step, int) or isinstance(page_step, bool):
+            page_step = 1
+        out["page_step"] = max(1, page_step)
+    elif mtype == "page_jump":
+        page = msg.get("page", 0)
+        if not isinstance(page, int) or isinstance(page, bool):
+            page = 0
+        out["page"] = max(0, page)
     elif mtype == "hid":
         action = msg.get("action", "send")
         if action not in ("send", "press", "release", "delay"):
@@ -364,6 +396,16 @@ def validate_button(btn, index=0, global_channel=None):
         validated["program"] = btn.get("program", 0)
     elif msg_type in ("pc_inc", "pc_dec"):
         validated["pc_step"] = btn.get("pc_step", 1)
+    elif msg_type in ("page_inc", "page_dec"):
+        page_step = btn.get("page_step", 1)
+        if not isinstance(page_step, int) or isinstance(page_step, bool):
+            page_step = 1
+        validated["page_step"] = max(1, page_step)
+    elif msg_type == "page_jump":
+        page = btn.get("page", 0)
+        if not isinstance(page, int) or isinstance(page, bool):
+            page = 0
+        validated["page"] = max(0, page)
 
     # flash_ms stored for all PC types (used by firmware only when mode is flash); clamp to schema range 50-5000
     if msg_type in ("pc", "pc_inc", "pc_dec"):

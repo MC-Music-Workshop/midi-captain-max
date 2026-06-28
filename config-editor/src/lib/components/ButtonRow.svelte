@@ -28,6 +28,10 @@
   let isPCIncDec = $derived(msgType === 'pc_inc' || msgType === 'pc_dec');
   let isHID = $derived(msgType === 'hid');
   let isPCType = $derived(isPC || isPCIncDec);
+  // Page-switch triggers fire once on press; toggle/momentary/flash are no-ops for
+  // them (switch_page repaints the button immediately), so the only meaningful mode
+  // choice is single-press vs the keytimes long/short gesture path.
+  let isPageType = $derived(msgType === 'page_inc' || msgType === 'page_dec' || msgType === 'page_jump');
   let showMode = $derived(isCC || isNote || isPCType || isHID);
   // Select mode (radio group) is valid only on plain PC and CC types.
   let canSelectMode = $derived(isPC || isCC);
@@ -84,7 +88,14 @@
 
   function handleTypeChange(e: Event) {
     const target = e.target as HTMLSelectElement;
-    onUpdate('type', target.value as MessageType);
+    const newType = target.value as MessageType;
+    onUpdate('type', newType);
+    // Page triggers expose only single-press (toggle) and keytimes. Drop a carried-over
+    // momentary/flash/select mode so the page-type dropdown isn't left on a blank value.
+    const isPage = newType === 'page_inc' || newType === 'page_dec' || newType === 'page_jump';
+    if (isPage && button.mode && button.mode !== 'toggle' && button.mode !== 'keytimes') {
+      onUpdate('mode', 'toggle');
+    }
   }
 
   function handleNoteChange(e: Event) {
@@ -442,15 +453,21 @@
   <div class="field">
     <label class="field-label" for={fieldId('mode')}>Mode:</label>
     <select id={fieldId('mode')} class="select" value={button.mode || (isPCType ? 'flash' : 'toggle')} onchange={handleModeChange} disabled={disabled}>
-      {#if isPCType}
-        <option value="flash">{BUTTON_MODE_LABELS.flash}</option>
+      {#if isPageType}
+        <!-- Page triggers ignore toggle/momentary/flash; offer only single-press vs gesture. -->
+        <option value="toggle">Single press</option>
+        <option value="keytimes">{BUTTON_MODE_LABELS.keytimes}</option>
+      {:else}
+        {#if isPCType}
+          <option value="flash">{BUTTON_MODE_LABELS.flash}</option>
+        {/if}
+        <option value="toggle">{BUTTON_MODE_LABELS.toggle}</option>
+        <option value="momentary">{BUTTON_MODE_LABELS.momentary}</option>
+        {#if canSelectMode}
+          <option value="select">{BUTTON_MODE_LABELS.select}</option>
+        {/if}
+        <option value="keytimes">{BUTTON_MODE_LABELS.keytimes}</option>
       {/if}
-      <option value="toggle">{BUTTON_MODE_LABELS.toggle}</option>
-      <option value="momentary">{BUTTON_MODE_LABELS.momentary}</option>
-      {#if canSelectMode}
-        <option value="select">{BUTTON_MODE_LABELS.select}</option>
-      {/if}
-      <option value="keytimes">{BUTTON_MODE_LABELS.keytimes}</option>
     </select>
   </div>
 

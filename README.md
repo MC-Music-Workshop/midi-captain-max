@@ -23,7 +23,13 @@ See the [open issues](https://github.com/MC-Music-Workshop/midi-captain-max/issu
 - **Signed installation packages**: install without security warnings or manual overrides (macOS and Linux)
 - **Stage-ready**: no unexpected resets, no crashes, no surprises
 
-<img width="1312" height="912" alt="MIDI Captain MAX Config Editor" src="https://github.com/user-attachments/assets/5e4c0b73-074b-4895-8861-d95aea7f1426" />
+## Use Cases
+
+- **Gig Performer / MainStage**: sync button states with plugin bypass
+- **Ableton Live**: control track mutes/solos with visual feedback
+- **Guitar Rig / Helix Native**: effect on/off with LED confirmation
+- **Any MIDI-capable host**: generic CC control with bidirectional sync
+- **Any application**: generic HID (keyboard and mouse) control
 
 ## Supported Devices
 
@@ -118,7 +124,11 @@ The Config Editor is the easiest way to configure your device:
 
 Connect your device, edit buttons, and save — the editor writes `config.json` to the device for you.
 
+<img width="75%" height="75%" alt="MIDI Captain MAX Config Editor" src="https://github.com/user-attachments/assets/5e4c0b73-074b-4895-8861-d95aea7f1426" />
+
 ### Editing config.json Directly
+
+**Don't do this unless you know what you're doing.** The Config Editor is safer and easier. There is nothing you can do in the JSON that the editor can't do for you, and the editor will catch errors before they break your device.
 
 All settings live in `config.json` at the root of the device drive. The full schema is [`config.schema.json`](config.schema.json), and [`firmware/dev/`](firmware/dev/) contains commented example configs (`config-example-*.json`) covering every message type, HID, MIDI channels, and keytimes.
 
@@ -126,22 +136,19 @@ After editing, safely eject and power-cycle the device to load the new config.
 
 ### Custom USB Drive Name
 
-If you own multiple MIDI Captains, give each one a unique drive name via the `usb_drive_name` field:
+If you own multiple MIDI Captains, it gets confusing which one is which when they're all named MIDICAPTAIN. Give each one a unique drive name in two steps — both are needed:
 
-```json
-{
-  "device": "std10",
-  "usb_drive_name": "MYCAPTAIN"
-}
-```
+1. **Rename the drive** in Finder (macOS) or File Explorer (Windows), just like renaming a USB stick. FAT volume labels allow up to 11 characters (letters, numbers, and underscores; stored as uppercase), and the name persists across power cycles.
+2. **Set `usb_drive_name` in `config.json` to the same name** (the Config Editor has a field for it):
 
-Requirements:
+   ```json
+   {
+     "device": "std10",
+     "usb_drive_name": "MYCAPTAIN"
+   }
+   ```
 
-- Maximum 11 characters
-- Letters, numbers, and underscores only
-- Automatically converted to uppercase
-
-The name persists across power cycles. Change it anytime by editing `config.json` and restarting the device.
+The field tells the tooling what the drive is called: the deploy script uses it to find a custom-named drive, and the Config Editor requires it to match the actual volume name when it's set. It can't rename the drive itself yet.
 
 ### Keytimes (Multi-State Cycling + Short/Long Press)
 
@@ -170,14 +177,6 @@ Example — a reverb button that cycles 50% → 75% → 100% wet on each tap:
 Each state can specify `down` and/or `up` message lists (any message type: `cc`, `pc`, `note`, HID, etc.) and a `color`. Add a `long` array to give long holds their own separate cycle; the tap/hold boundary is set by the top-level `long_press_threshold_ms` (default 500).
 
 See [`firmware/dev/config-example-keytimes.json`](firmware/dev/config-example-keytimes.json) and [`config-example-keytimes-mode.json`](firmware/dev/config-example-keytimes-mode.json) for full working examples, and the [design doc](docs/plans/2026-05-13-issue-48-press-timings.md) for details.
-
-## Use Cases
-
-- **Gig Performer / MainStage**: sync button states with plugin bypass
-- **Ableton Live**: control track mutes/solos with visual feedback
-- **Guitar Rig / Helix Native**: effect on/off with LED confirmation
-- **Any MIDI-capable host**: generic CC control with bidirectional sync
-- **Any application**: generic HID (keyboard and mouse) control
 
 ## License
 

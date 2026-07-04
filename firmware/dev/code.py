@@ -47,6 +47,7 @@ from core.config import (
     validate_config,
     get_active_page,
     resolve_page_target,
+    resolve_page_control,
     get_display_config,
     get_button_state_config,
     get_long_press_threshold_ms,
@@ -964,6 +965,7 @@ def update_pc_flash_timers():
 
 def _process_midi_msg(msg, source="USB"):
     """Process a received MIDI message — update LED/button state."""
+    global pending_page_target
     if not msg:
         return
 
@@ -973,6 +975,22 @@ def _process_midi_msg(msg, source="USB"):
         cc = msg.control
         val = msg.value
         print(f"[MIDI RX {source}] Ch{msg_channel+1} CC{cc}={val}")
+
+        # MIDI-IN CC page control (#15 P3b): a matching page_control CC short-circuits
+        # button-CC processing entirely (MIDI THRU still forwards it downstream).
+        tgt = resolve_page_control(
+            config.get("page_control"), cc, val, msg_channel,
+            config.get("active_page", 0), len(config.get("pages", [])))
+        if tgt is not None:
+            # Same-page guard: switch_page() has no no-op path — it rebuilds buttons[]
+            # and resets latch/keytimes state. Skip the switch when already there, but
+            # still return: a matched page CC is a dedicated input either way.
+            if tgt != config.get("active_page", 0):
+                pending_page_target = tgt
+                print(f"[PAGE] CC{cc}={val} -> page {tgt}")
+                update_status(f"PAGE {tgt + 1}")
+            return
+
         for i, btn_config in enumerate(buttons):
             if btn_config.get("type", "cc") == "cc" and btn_config.get("cc") == cc and btn_config.get("channel", 0) == msg_channel:
                 # Select-mode: activate this button and deactivate group siblings

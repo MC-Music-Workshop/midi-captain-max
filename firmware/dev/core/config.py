@@ -141,6 +141,90 @@ def resolve_page_target(current, num_pages, action, amount=1):
     return max(0, min(num_pages - 1, amount))
 
 
+def resolve_page_control(pc, cc, value, channel, current, num_pages):
+    """Target page index for an inbound CC under page_control, or None.
+
+    None when page_control is absent/disabled, the channel is filtered out, or no
+    slot matches (caller leaves the page unchanged). jump uses `value` as the
+    absolute target; inc/dec fire only when value == the slot's gate `value`.
+    Checked jump -> inc -> dec; first match wins.
+    """
+    if not pc or not pc.get("enabled", True):
+        return None
+    ch = pc.get("channel", None)
+    if ch is not None and ch != channel:
+        return None
+    jump = pc.get("jump")
+    if jump and jump.get("cc") == cc:
+        return resolve_page_target(current, num_pages, "jump", value)
+    inc = pc.get("inc")
+    if inc and inc.get("cc") == cc and value == inc.get("value", 127):
+        return resolve_page_target(current, num_pages, "inc", inc.get("page_step", 1))
+    dec = pc.get("dec")
+    if dec and dec.get("cc") == cc and value == dec.get("value", 127):
+        return resolve_page_target(current, num_pages, "dec", dec.get("page_step", 1))
+    return None
+
+
+def _sanitize_page_control_slot(slot, is_jump):
+    """Sanitize a page_control jump/inc/dec slot.
+
+    Returns a sanitized dict, or None if the slot is missing/not a dict or its `cc`
+    is malformed. `cc` is DROPPED (never clamped) on malformed input — a wrong CC
+    number is wrong behavior, not degraded behavior. `value`/`page_step` (inc/dec
+    only) ARE clamped: same intent, degraded range.
+    """
+    if not isinstance(slot, dict):
+        return None
+    cc = slot.get("cc")
+    if not isinstance(cc, int) or isinstance(cc, bool) or cc < 0 or cc > 127:
+        print("[CONFIG WARN] page_control slot has invalid cc " + str(cc) + "; dropping slot")
+        return None
+    out = {"cc": cc}
+    if is_jump:
+        return out
+    value = slot.get("value", 127)
+    if not isinstance(value, int) or isinstance(value, bool):
+        value = 127
+    out["value"] = max(0, min(127, value))
+    page_step = slot.get("page_step", 1)
+    if not isinstance(page_step, int) or isinstance(page_step, bool):
+        page_step = 1
+    out["page_step"] = max(1, page_step)
+    return out
+
+
+def _sanitize_page_control(pc):
+    """Sanitize the device-level page_control block.
+
+    Returns a sanitized dict, or None if absent/not a dict, or `channel` is
+    malformed — a malformed channel DISABLES THE WHOLE BLOCK (fail closed):
+    coercing a bad channel to None would widen matching from one channel to
+    every channel, turning a scoping typo into every CC on every channel
+    jumping pages.
+    """
+    if not isinstance(pc, dict):
+        return None
+    channel = pc.get("channel", None)
+    if channel is not None and (not isinstance(channel, int) or isinstance(channel, bool) or channel < 0 or channel > 15):
+        print("[CONFIG WARN] page_control channel " + str(channel) + " invalid; disabling page_control block")
+        return None
+    enabled = pc.get("enabled", True)
+    if not isinstance(enabled, bool):
+        enabled = True
+    out = {"enabled": enabled, "channel": channel}
+    jump = _sanitize_page_control_slot(pc.get("jump"), True)
+    if jump is not None:
+        out["jump"] = jump
+    inc = _sanitize_page_control_slot(pc.get("inc"), False)
+    if inc is not None:
+        out["inc"] = inc
+    dec = _sanitize_page_control_slot(pc.get("dec"), False)
+    if dec is not None:
+        out["dec"] = dec
+    return out
+
+
 _MIDI_BYTE_FIELDS = ("cc", "cc_on", "cc_off", "note", "velocity_on", "velocity_off", "program")
 
 def _clamp_state_field(field, value):
@@ -513,6 +597,14 @@ def validate_config(cfg, button_count=10):
     result["pages"] = validated_pages
     result["global_channel"] = global_channel
     result["long_press_threshold_ms"] = long_press_threshold_ms
+
+    if "page_control" in result:
+        sanitized_pc = _sanitize_page_control(result.get("page_control"))
+        if sanitized_pc is None:
+            del result["page_control"]
+        else:
+            result["page_control"] = sanitized_pc
+
     return result
 
 

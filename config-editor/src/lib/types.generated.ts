@@ -121,6 +121,7 @@ export interface MIDICaptainConfig {
    * MIDI Thru: echo messages received on USB MIDI back to the USB output (host loopback). Default false; enabling can cause duplicate notes or feedback when the DAW has MIDI echo enabled.
    */
   midi_thru_usb_to_usb?: boolean;
+  page_control?: PageControl;
 }
 /**
  * One page (bank): a full control-surface snapshot. The device renders one page at a time.
@@ -452,4 +453,63 @@ export interface DisplayConfig1 {
    * Expression pedal text size.
    */
   expression_text_size?: "small" | "medium" | "large";
+}
+/**
+ * Device-level: let an inbound MIDI Control Change switch the active page (jump/inc/dec). Absent or enabled=false means no inbound CC affects pages.
+ */
+export interface PageControl {
+  /**
+   * Enable/disable the whole block.
+   */
+  enabled?: boolean;
+  /**
+   * MIDI channel filter shared by all 3 slots. null = any channel; int = that channel only.
+   */
+  channel?: number | null;
+  jump?: PageControlJump;
+  inc?: PageControlStep;
+  dec?: PageControlStep1;
+}
+/**
+ * Absolute page jump slot. Omitted = disabled.
+ */
+export interface PageControlJump {
+  /**
+   * Standard MIDI byte value (0-127).
+   */
+  cc: number;
+}
+/**
+ * Page advance (wrap) slot. Omitted = disabled.
+ */
+export interface PageControlStep {
+  /**
+   * Standard MIDI byte value (0-127).
+   */
+  cc: number;
+  /**
+   * Standard MIDI byte value (0-127).
+   */
+  value?: number;
+  /**
+   * Number of pages to advance/retreat. Wraps at the ends.
+   */
+  page_step?: number;
+}
+/**
+ * Page retreat (wrap) slot. Omitted = disabled.
+ */
+export interface PageControlStep1 {
+  /**
+   * Standard MIDI byte value (0-127).
+   */
+  cc: number;
+  /**
+   * Standard MIDI byte value (0-127).
+   */
+  value?: number;
+  /**
+   * Number of pages to advance/retreat. Wraps at the ends.
+   */
+  page_step?: number;
 }

@@ -1462,6 +1462,22 @@ class TestPageControlSanitize:
         out = validate_config(cfg, button_count=1)
         assert out["page_control"]["enabled"] is True
 
+    def test_enabled_false_survives(self):
+        cfg = {
+            "pages": [{"buttons": [{"label": "A", "cc": 20}]}],
+            "page_control": {"enabled": False, "jump": {"cc": 20}},
+        }
+        out = validate_config(cfg, button_count=1)
+        assert out["page_control"]["enabled"] is False
+
+    def test_malformed_enabled_defaults_true(self):
+        cfg = {
+            "pages": [{"buttons": [{"label": "A", "cc": 20}]}],
+            "page_control": {"enabled": "yes", "jump": {"cc": 20}},
+        }
+        out = validate_config(cfg, button_count=1)
+        assert out["page_control"]["enabled"] is True
+
     def test_slot_with_out_of_range_cc_dropped_not_clamped(self):
         cfg = {
             "pages": [{"buttons": [{"label": "A", "cc": 20}]}],

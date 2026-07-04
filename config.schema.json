@@ -72,6 +72,10 @@
       "type": "boolean",
       "default": false,
       "description": "MIDI Thru: echo messages received on USB MIDI back to the USB output (host loopback). Default false; enabling can cause duplicate notes or feedback when the DAW has MIDI echo enabled."
+    },
+    "page_control": {
+      "$ref": "#/definitions/PageControl",
+      "description": "Device-level: let an inbound MIDI Control Change switch the active page (jump/inc/dec). Absent or enabled=false means no inbound CC affects pages."
     }
   },
   "additionalProperties": false,
@@ -624,6 +628,72 @@
         "expression_text_size": {
           "$ref": "#/definitions/TextSize",
           "description": "Expression pedal text size."
+        }
+      },
+      "additionalProperties": false
+    },
+    "PageControlJump": {
+      "type": "object",
+      "required": ["cc"],
+      "description": "Jump slot: incoming CC value is the absolute target page index (0-based), clamped to range.",
+      "properties": {
+        "cc": {
+          "$ref": "#/definitions/MidiByte",
+          "description": "CC number that triggers a jump. Incoming value is the 0-based target page index."
+        }
+      },
+      "additionalProperties": false
+    },
+    "PageControlStep": {
+      "type": "object",
+      "required": ["cc"],
+      "description": "Inc/dec slot: fires only when the incoming value equals 'value' (a trigger gate, not a page number); moves the active page by page_step and wraps.",
+      "properties": {
+        "cc": {
+          "$ref": "#/definitions/MidiByte",
+          "description": "CC number that triggers this step."
+        },
+        "value": {
+          "$ref": "#/definitions/MidiByte",
+          "default": 127,
+          "description": "Trigger gate: fires only when the incoming CC value equals this. Default 127."
+        },
+        "page_step": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Number of pages to advance/retreat. Wraps at the ends."
+        }
+      },
+      "additionalProperties": false
+    },
+    "PageControl": {
+      "type": "object",
+      "description": "MIDI-IN CC page control (device-level). Checked jump -> inc -> dec, first match wins. A matching CC short-circuits button-CC processing (MIDI THRU still forwards it). channel=null (default) means any channel.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable the whole block."
+        },
+        "channel": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 15,
+          "default": null,
+          "description": "MIDI channel filter shared by all 3 slots. null = any channel; int = that channel only."
+        },
+        "jump": {
+          "$ref": "#/definitions/PageControlJump",
+          "description": "Absolute page jump slot. Omitted = disabled."
+        },
+        "inc": {
+          "$ref": "#/definitions/PageControlStep",
+          "description": "Page advance (wrap) slot. Omitted = disabled."
+        },
+        "dec": {
+          "$ref": "#/definitions/PageControlStep",
+          "description": "Page retreat (wrap) slot. Omitted = disabled."
         }
       },
       "additionalProperties": false

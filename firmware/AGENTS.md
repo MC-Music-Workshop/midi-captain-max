@@ -241,7 +241,32 @@ Pure index math lives in `core/config.py::resolve_page_target(current, num_pages
 
 Modes (`toggle`/`momentary`/`flash`) are accepted on page buttons but cosmetically irrelevant — `switch_page()` repaints every button immediately, so the trigger button shows whatever the *new* page defines for its position (build matching nav buttons on every page for a stable UI). `select` mode stays restricted to `pc`/`cc`, so page types are naturally excluded.
 
-MIDI-IN CC page control is deferred to **P3b** (device-level `page_control` block, reuses `resolve_page_target` + `pending_page_target`).
+### MIDI-IN CC Page Control (#15 P3b)
+
+Device-level `page_control` block lets an inbound MIDI Control Change switch the active page — the last page-switch trigger the issue names, alongside on-device buttons above. Structured `jump`/`inc`/`dec` slots (fixed 3-slot shape):
+
+```json
+"page_control": {
+  "enabled": true,
+  "channel": null,
+  "jump": { "cc": 20 },
+  "inc":  { "cc": 21, "value": 127, "page_step": 1 },
+  "dec":  { "cc": 22, "value": 127, "page_step": 1 }
+}
+```
+
+- `jump` — incoming CC **value** is the absolute target page index (0-based), clamped to range.
+- `inc`/`dec` — value is a **trigger gate** (default 127), not a page number; fires only when the incoming value equals it. Moves by `page_step`, wraps. A shared `cc` with distinct gates (`inc{cc:21,value:127}` + `dec{cc:21,value:0}`) drives both directions off one CC (encoder-style).
+- `channel: null` (or omitted) = any channel; int = that channel only.
+- Precedence: checked `jump` → `inc` → `dec`, first match wins.
+
+`core/config.py::resolve_page_control(pc, cc, value, channel, current, num_pages)` is the pure helper (unit-tested); it delegates the actual index math to `resolve_page_target`. Wiring lives at the top of `_process_midi_msg`'s `ControlChange` branch in `code.py`, **before** the button-match loop: a matching page_control CC sets `pending_page_target` (same deferred-switch invariant as button triggers) and **returns** — it short-circuits button-CC processing entirely, never falling through to also match a button. MIDI THRU is unaffected: `handle_midi()` forwards the raw CC downstream regardless of what `_process_midi_msg` did with it.
+
+Same-page guard: jumping/stepping to the *current* page skips setting `pending_page_target` (avoids wiping latch/keytimes state via a no-op `switch_page()`), but still `return`s — a matched page CC is a dedicated input either way, never also processed as a button CC.
+
+Loader sanitize (`core/config.py::validate_config`): malformed `channel` **disables the whole block** (fail-closed — coercing to None would widen matching to every channel); a slot's malformed `cc` **drops that slot** (never clamped — a wrong CC number is wrong behavior, not degraded behavior); `value`/`page_step` clamp to range like other MIDI byte fields.
+
+Editor form widget is deferred to P4 (schema + generated types + firmware + validation ship in P3b).
 
 ### PC Button LED Modes
 

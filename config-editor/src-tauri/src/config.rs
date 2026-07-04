@@ -422,6 +422,41 @@ pub struct DisplayConfig {
     pub expression_text_size: Option<String>,
 }
 
+/// Jump slot: incoming CC value is the absolute target page index (0-based), clamped
+/// to range.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PageControlJump {
+    pub cc: u8,
+}
+
+/// Inc/dec slot: fires only when the incoming value equals `value` (a trigger gate,
+/// not a page number); moves the active page by page_step and wraps.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PageControlStep {
+    pub cc: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_step: Option<u8>,
+}
+
+/// MIDI-IN CC page control (device-level, #15 P3b): let an inbound Control Change
+/// switch the active page. Checked jump -> inc -> dec, first match wins.
+/// `channel: None` means any channel.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PageControl {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jump: Option<PageControlJump>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inc: Option<PageControlStep>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dec: Option<PageControlStep>,
+}
+
 /// One page (bank): a full control-surface snapshot. The device renders one
 /// page at a time. Buttons are required; encoder/expression are per-page and
 /// STD10-only. `global_channel`/`display` are optional per-page overrides,
@@ -485,6 +520,10 @@ pub struct MidiCaptainConfig {
     /// Per-button overrides allowed via ButtonConfig.long_press_threshold_ms.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub long_press_threshold_ms: Option<u16>,
+    /// MIDI-IN CC page control (#15 P3b): let an inbound Control Change switch the
+    /// active page. Absent or enabled=false means no inbound CC affects pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_control: Option<PageControl>,
 }
 
 impl MidiCaptainConfig {
@@ -673,6 +712,50 @@ impl MidiCaptainConfig {
                 if let Some(ch) = exp.exp2.channel {
                     if ch > 15 {
                         errors.push(format!("{}EXP2 channel {} is invalid (must be 1-16)", pfx, ch + 1));
+                    }
+                }
+            }
+        }
+
+        // MIDI-IN CC page control (#15 P3b).
+        if let Some(ref pc) = self.page_control {
+            if let Some(ch) = pc.channel {
+                if ch > 15 {
+                    errors.push(format!("page_control channel {} is invalid (must be 1-16)", ch + 1));
+                }
+            }
+            if let Some(ref jump) = pc.jump {
+                if jump.cc > 127 {
+                    errors.push(format!("page_control.jump CC {} exceeds 127", jump.cc));
+                }
+            }
+            if let Some(ref inc) = pc.inc {
+                if inc.cc > 127 {
+                    errors.push(format!("page_control.inc CC {} exceeds 127", inc.cc));
+                }
+                if let Some(val) = inc.value {
+                    if val > 127 {
+                        errors.push(format!("page_control.inc value {} exceeds 127", val));
+                    }
+                }
+                if let Some(step) = inc.page_step {
+                    if step < 1 {
+                        errors.push(format!("page_control.inc page_step {} must be >= 1", step));
+                    }
+                }
+            }
+            if let Some(ref dec) = pc.dec {
+                if dec.cc > 127 {
+                    errors.push(format!("page_control.dec CC {} exceeds 127", dec.cc));
+                }
+                if let Some(val) = dec.value {
+                    if val > 127 {
+                        errors.push(format!("page_control.dec value {} exceeds 127", val));
+                    }
+                }
+                if let Some(step) = dec.page_step {
+                    if step < 1 {
+                        errors.push(format!("page_control.dec page_step {} must be >= 1", step));
                     }
                 }
             }
@@ -1245,6 +1328,7 @@ mod tests {
             active_page: 0,
             display: None,
             long_press_threshold_ms: None,
+            page_control: None,
         }
     }
 
@@ -1367,5 +1451,99 @@ mod tests {
         cfg.pages[0].buttons[0].message_type = MessageType::PageInc;
         cfg.pages[0].buttons[0].page_step = Some(1);
         assert!(cfg.validate().is_ok());
+    }
+
+    // --- page_control (MIDI-IN CC page control, #15 P3b) ---
+
+    #[test]
+    fn test_page_control_roundtrips() {
+        let json = r#"{
+            "buttons": [],
+            "page_control": {
+                "enabled": true,
+                "channel": 2,
+                "jump": {"cc": 20},
+                "inc": {"cc": 21, "value": 127, "page_step": 1},
+                "dec": {"cc": 22, "value": 0, "page_step": 2}
+            }
+        }"#;
+        let config = parse_migrated(json);
+        let pc = config.page_control.as_ref().unwrap();
+        assert_eq!(pc.enabled, Some(true));
+        assert_eq!(pc.channel, Some(2));
+        assert_eq!(pc.jump.as_ref().unwrap().cc, 20);
+        assert_eq!(pc.inc.as_ref().unwrap().cc, 21);
+        assert_eq!(pc.inc.as_ref().unwrap().value, Some(127));
+        assert_eq!(pc.dec.as_ref().unwrap().page_step, Some(2));
+
+        let reserialized = serde_json::to_string(&config).unwrap();
+        let config2: MidiCaptainConfig = serde_json::from_str(&reserialized).unwrap();
+        assert_eq!(config2.page_control.as_ref().unwrap().jump.as_ref().unwrap().cc, 20);
+    }
+
+    #[test]
+    fn test_page_control_valid_block_validates_ok() {
+        let mut cfg = _std10_minimal();
+        cfg.page_control = Some(PageControl {
+            enabled: Some(true),
+            channel: Some(2),
+            jump: Some(PageControlJump { cc: 20 }),
+            inc: Some(PageControlStep { cc: 21, value: Some(127), page_step: Some(1) }),
+            dec: Some(PageControlStep { cc: 22, value: Some(0), page_step: Some(1) }),
+        });
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn test_page_control_absent_validates_ok() {
+        let cfg = _std10_minimal();
+        assert!(cfg.page_control.is_none());
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn test_page_control_rejects_out_of_range_channel() {
+        let mut cfg = _std10_minimal();
+        cfg.page_control = Some(PageControl {
+            enabled: None, channel: Some(16), jump: None, inc: None, dec: None,
+        });
+        let err = cfg.validate().unwrap_err();
+        assert!(err.iter().any(|e| e.contains("page_control channel 17")));
+    }
+
+    #[test]
+    fn test_page_control_rejects_out_of_range_jump_cc() {
+        let mut cfg = _std10_minimal();
+        cfg.page_control = Some(PageControl {
+            enabled: None, channel: None,
+            jump: Some(PageControlJump { cc: 200 }),
+            inc: None, dec: None,
+        });
+        let err = cfg.validate().unwrap_err();
+        assert!(err.iter().any(|e| e.contains("page_control.jump CC 200")));
+    }
+
+    #[test]
+    fn test_page_control_rejects_out_of_range_inc_value_and_page_step() {
+        let mut cfg = _std10_minimal();
+        cfg.page_control = Some(PageControl {
+            enabled: None, channel: None, jump: None,
+            inc: Some(PageControlStep { cc: 21, value: Some(200), page_step: Some(0) }),
+            dec: None,
+        });
+        let err = cfg.validate().unwrap_err();
+        assert!(err.iter().any(|e| e.contains("page_control.inc value 200")));
+        assert!(err.iter().any(|e| e.contains("page_control.inc page_step 0")));
+    }
+
+    #[test]
+    fn test_page_control_rejects_out_of_range_dec_cc() {
+        let mut cfg = _std10_minimal();
+        cfg.page_control = Some(PageControl {
+            enabled: None, channel: None, jump: None, inc: None,
+            dec: Some(PageControlStep { cc: 128, value: None, page_step: None }),
+        });
+        let err = cfg.validate().unwrap_err();
+        assert!(err.iter().any(|e| e.contains("page_control.dec CC 128")));
     }
 }

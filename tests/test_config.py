@@ -23,6 +23,7 @@ from core.config import (
     to_pages,
     get_active_page,
     resolve_page_target,
+    resolve_page_control,
 )
 
 
@@ -1342,3 +1343,186 @@ class TestPerPageChannel:
         }
         out = validate_config(cfg, button_count=1)
         assert out["pages"][0]["buttons"][0]["channel"] == 2
+
+
+class TestResolvePageControl:
+    """MIDI-IN CC page control (#15 P3b): resolve_page_control pure helper."""
+
+    def test_jump_absolute(self):
+        pc = {"jump": {"cc": 20}}
+        assert resolve_page_control(pc, 20, 1, 0, 0, 3) == 1
+
+    def test_jump_clamps_high(self):
+        pc = {"jump": {"cc": 20}}
+        assert resolve_page_control(pc, 20, 99, 0, 0, 3) == 2
+
+    def test_inc_wraps(self):
+        pc = {"inc": {"cc": 21, "value": 127, "page_step": 1}}
+        assert resolve_page_control(pc, 21, 127, 0, 2, 3) == 0
+
+    def test_dec_wraps(self):
+        pc = {"dec": {"cc": 22, "value": 127, "page_step": 1}}
+        assert resolve_page_control(pc, 22, 127, 0, 0, 3) == 2
+
+    def test_inc_value_gate_reject(self):
+        pc = {"inc": {"cc": 21, "value": 127, "page_step": 1}}
+        assert resolve_page_control(pc, 21, 0, 0, 0, 3) is None
+
+    def test_inc_default_gate_is_127(self):
+        pc = {"inc": {"cc": 21}}
+        assert resolve_page_control(pc, 21, 127, 0, 0, 3) == 1
+        assert resolve_page_control(pc, 21, 126, 0, 0, 3) is None
+
+    def test_no_matching_cc_returns_none(self):
+        pc = {"jump": {"cc": 20}, "inc": {"cc": 21}, "dec": {"cc": 22}}
+        assert resolve_page_control(pc, 99, 1, 0, 0, 3) is None
+
+    def test_channel_filter_match(self):
+        pc = {"channel": 2, "jump": {"cc": 20}}
+        assert resolve_page_control(pc, 20, 1, 2, 0, 3) == 1
+
+    def test_channel_filter_mismatch(self):
+        pc = {"channel": 2, "jump": {"cc": 20}}
+        assert resolve_page_control(pc, 20, 1, 3, 0, 3) is None
+
+    def test_channel_null_matches_any(self):
+        pc = {"channel": None, "jump": {"cc": 20}}
+        assert resolve_page_control(pc, 20, 1, 7, 0, 3) == 1
+
+    def test_channel_omitted_matches_any(self):
+        pc = {"jump": {"cc": 20}}
+        assert resolve_page_control(pc, 20, 1, 7, 0, 3) == 1
+
+    def test_disabled_returns_none(self):
+        pc = {"enabled": False, "jump": {"cc": 20}}
+        assert resolve_page_control(pc, 20, 1, 0, 0, 3) is None
+
+    def test_enabled_absent_defaults_true(self):
+        pc = {"jump": {"cc": 20}}
+        assert resolve_page_control(pc, 20, 1, 0, 0, 3) == 1
+
+    def test_absent_block_returns_none(self):
+        assert resolve_page_control(None, 20, 1, 0, 0, 3) is None
+        assert resolve_page_control({}, 20, 1, 0, 0, 3) is None
+
+    def test_single_page_delegates_to_resolve_page_target(self):
+        pc = {"jump": {"cc": 20}}
+        assert resolve_page_control(pc, 20, 5, 0, 0, 1) == 0
+
+    def test_precedence_jump_wins_over_inc_on_shared_cc(self):
+        # jump and inc share cc=20; jump is checked first, so inc is unreachable.
+        pc = {"jump": {"cc": 20}, "inc": {"cc": 20, "value": 5}}
+        # value 5 would be inc's gate, but jump matches cc=20 first and treats
+        # value as the absolute target index.
+        assert resolve_page_control(pc, 20, 5, 0, 0, 10) == 5
+
+    def test_shared_cc_different_gates_encoder_style(self):
+        # One CC drives both directions via distinct value gates.
+        pc = {
+            "inc": {"cc": 21, "value": 127, "page_step": 1},
+            "dec": {"cc": 21, "value": 0, "page_step": 1},
+        }
+        assert resolve_page_control(pc, 21, 127, 0, 1, 3) == 2  # inc gate matches
+        assert resolve_page_control(pc, 21, 0, 0, 1, 3) == 0    # dec gate matches
+
+    def test_same_page_jump_still_resolves(self):
+        # Wiring applies the same-page no-op guard; the pure helper itself just
+        # returns the (possibly unchanged) target.
+        pc = {"jump": {"cc": 20}}
+        assert resolve_page_control(pc, 20, 1, 0, 1, 3) == 1
+
+
+class TestPageControlSanitize:
+    """validate_config sanitization of the device-level page_control block."""
+
+    def test_valid_block_survives(self):
+        cfg = {
+            "pages": [{"buttons": [{"label": "A", "cc": 20}]}],
+            "page_control": {
+                "enabled": True,
+                "channel": 2,
+                "jump": {"cc": 20},
+                "inc": {"cc": 21, "value": 127, "page_step": 1},
+                "dec": {"cc": 22, "value": 127, "page_step": 1},
+            },
+        }
+        out = validate_config(cfg, button_count=1)
+        pc = out["page_control"]
+        assert pc["enabled"] is True
+        assert pc["channel"] == 2
+        assert pc["jump"] == {"cc": 20}
+        assert pc["inc"] == {"cc": 21, "value": 127, "page_step": 1}
+        assert pc["dec"] == {"cc": 22, "value": 127, "page_step": 1}
+
+    def test_enabled_absent_defaults_true(self):
+        cfg = {
+            "pages": [{"buttons": [{"label": "A", "cc": 20}]}],
+            "page_control": {"jump": {"cc": 20}},
+        }
+        out = validate_config(cfg, button_count=1)
+        assert out["page_control"]["enabled"] is True
+
+    def test_enabled_false_survives(self):
+        cfg = {
+            "pages": [{"buttons": [{"label": "A", "cc": 20}]}],
+            "page_control": {"enabled": False, "jump": {"cc": 20}},
+        }
+        out = validate_config(cfg, button_count=1)
+        assert out["page_control"]["enabled"] is False
+
+    def test_malformed_enabled_defaults_true(self):
+        cfg = {
+            "pages": [{"buttons": [{"label": "A", "cc": 20}]}],
+            "page_control": {"enabled": "yes", "jump": {"cc": 20}},
+        }
+        out = validate_config(cfg, button_count=1)
+        assert out["page_control"]["enabled"] is True
+
+    def test_slot_with_out_of_range_cc_dropped_not_clamped(self):
+        cfg = {
+            "pages": [{"buttons": [{"label": "A", "cc": 20}]}],
+            "page_control": {"jump": {"cc": 300}, "inc": {"cc": 21}},
+        }
+        out = validate_config(cfg, button_count=1)
+        pc = out["page_control"]
+        assert "jump" not in pc
+        assert pc["inc"]["cc"] == 21
+
+    def test_slot_with_non_int_cc_dropped(self):
+        cfg = {
+            "pages": [{"buttons": [{"label": "A", "cc": 20}]}],
+            "page_control": {"dec": {"cc": "twenty"}},
+        }
+        out = validate_config(cfg, button_count=1)
+        assert "dec" not in out["page_control"]
+
+    def test_malformed_channel_disables_whole_block(self):
+        cfg = {
+            "pages": [{"buttons": [{"label": "A", "cc": 20}]}],
+            "page_control": {"channel": 99, "jump": {"cc": 20}},
+        }
+        out = validate_config(cfg, button_count=1)
+        assert "page_control" not in out
+
+    def test_null_channel_is_valid_any_channel(self):
+        cfg = {
+            "pages": [{"buttons": [{"label": "A", "cc": 20}]}],
+            "page_control": {"channel": None, "jump": {"cc": 20}},
+        }
+        out = validate_config(cfg, button_count=1)
+        assert out["page_control"]["channel"] is None
+
+    def test_value_and_page_step_clamped_not_dropped(self):
+        cfg = {
+            "pages": [{"buttons": [{"label": "A", "cc": 20}]}],
+            "page_control": {"inc": {"cc": 21, "value": 999, "page_step": 0}},
+        }
+        out = validate_config(cfg, button_count=1)
+        inc = out["page_control"]["inc"]
+        assert inc["value"] == 127
+        assert inc["page_step"] == 1
+
+    def test_absent_block_stays_absent(self):
+        cfg = {"pages": [{"buttons": [{"label": "A", "cc": 20}]}]}
+        out = validate_config(cfg, button_count=1)
+        assert "page_control" not in out

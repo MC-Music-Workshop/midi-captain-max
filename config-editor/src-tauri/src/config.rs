@@ -627,6 +627,26 @@ impl MidiCaptainConfig {
                         errors.push(format!("{}Button {} long_press_threshold_ms {} out of range (50-5000)", pfx, i + 1, ms));
                     }
                 }
+                // Page-switch trigger fields (#15 P4b). Type-gated: a stale page/page_step
+                // left behind by an editor type switch must not block save. The firmware
+                // clamps a bad jump target; the editor fails loud (P1 asymmetry rule).
+                if matches!(button.message_type, MessageType::PageInc | MessageType::PageDec) {
+                    if let Some(step) = button.page_step {
+                        if step < 1 {
+                            errors.push(format!("{}Button {} page_step must be >= 1", pfx, i + 1));
+                        }
+                    }
+                }
+                if matches!(button.message_type, MessageType::PageJump) {
+                    if let Some(pg) = button.page {
+                        if (pg as usize) >= self.pages.len() {
+                            errors.push(format!(
+                                "{}Button {} page {} out of range (0-{})",
+                                pfx, i + 1, pg, self.pages.len().saturating_sub(1)
+                            ));
+                        }
+                    }
+                }
                 // mode='keytimes' carries its cycle data in short[]/long[]; the legacy
                 // keytimes/states fields are meaningless there and forbidden by the editor.
                 // Other modes still accept them with a runtime deprecation warning from the firmware.
@@ -1573,5 +1593,57 @@ mod tests {
             errors.iter().any(|e| e.contains("Page 1") && e.contains("exceeds 24 chars")),
             "expected page-name error, got: {errors:?}"
         );
+    }
+
+    #[test]
+    fn test_validate_rejects_zero_page_step() {
+        let json = r#"{
+            "device": "one1",
+            "pages": [{
+                "buttons": [{"label": "PG", "color": "green", "type": "page_inc", "page_step": 0}]
+            }],
+            "active_page": 0
+        }"#;
+
+        let config = parse_migrated(json);
+        let errors = config.validate().unwrap_err();
+        assert!(
+            errors.iter().any(|e| e.contains("Page 1") && e.contains("page_step")),
+            "expected page_step error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_rejects_page_jump_target_out_of_range() {
+        // One page, so target index 1 does not exist.
+        let json = r#"{
+            "device": "one1",
+            "pages": [{
+                "buttons": [{"label": "PG", "color": "green", "type": "page_jump", "page": 1}]
+            }],
+            "active_page": 0
+        }"#;
+
+        let config = parse_migrated(json);
+        let errors = config.validate().unwrap_err();
+        assert!(
+            errors.iter().any(|e| e.contains("Page 1") && e.contains("out of range (0-0)")),
+            "expected page-target error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_ignores_stale_page_fields_on_other_types() {
+        // Type-gated: a stale `page` left behind by an editor type switch must not
+        // block save (no input is rendered for it on a cc button).
+        let json = r#"{
+            "device": "one1",
+            "pages": [{
+                "buttons": [{"label": "OK", "cc": 20, "color": "green", "page": 99, "page_step": 0}]
+            }],
+            "active_page": 0
+        }"#;
+
+        assert!(parse_migrated(json).validate().is_ok());
     }
 }

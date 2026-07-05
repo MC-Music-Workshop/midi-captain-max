@@ -597,6 +597,16 @@ export function duplicatePage(index: number) {
   });
 }
 
+export function deletePage(index: number) {
+  _commitConfigMutation(cfg => {
+    if (cfg.pages.length <= 1) return false; // D3: never produce an unsaveable config
+    if (!cfg.pages[index]) return false;
+    cfg.pages.splice(index, 1);
+    const ap = cfg.active_page ?? 0;
+    cfg.active_page = Math.min(ap > index ? ap - 1 : ap, cfg.pages.length - 1);
+  });
+}
+
 // Strip type-specific fields that don't belong to the button's current type.
 // Prevents stale cc/note/program/etc. from accumulating in the saved JSON when
 // the user switches a button's type.

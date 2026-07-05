@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { get } from 'svelte/store';
-import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage } from './formStore';
+import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage, deletePage } from './formStore';
 import type { MidiCaptainConfig, DeviceType, Page } from './types';
 
 // Minimal valid config: one1 = 1 button per page, so validation stays green.
@@ -113,5 +113,31 @@ describe('duplicatePage', () => {
     duplicatePage(0);
     expect(get(formState).config.pages).toHaveLength(20);
     expect(get(isDirty)).toBe(false);
+  });
+});
+
+describe('deletePage', () => {
+  it('refuses to delete the last page (D3)', () => {
+    loadConfig(makeConfig(1));
+    deletePage(0);
+    expect(get(formState).config.pages).toHaveLength(1);
+    expect(get(isDirty)).toBe(false);
+  });
+
+  it('re-clamps active_page when deleting the active last page', () => {
+    loadConfig(makeConfig(3));
+    setActivePage(2);
+    deletePage(2);
+    const cfg = get(formState).config;
+    expect(cfg.pages).toHaveLength(2);
+    expect(cfg.active_page).toBe(1);
+  });
+
+  it('keeps the active page stable when deleting an earlier page', () => {
+    loadConfig(makeConfig(3));
+    setActivePage(2);
+    deletePage(0);
+    expect(get(formState).config.active_page).toBe(1);
+    expect(get(currentPage).name).toBe('P2');
   });
 });

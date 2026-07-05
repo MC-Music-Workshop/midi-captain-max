@@ -40,3 +40,35 @@ describe('multi-page validation (D5)', () => {
     expect(result.errors.get('name')).toContain('24');
   });
 });
+
+describe('page trigger button fields (P4b)', () => {
+  // Two valid pages; page indices 0 and 1 exist, 2 does not.
+  function pageTriggerConfig(btn: Record<string, unknown>): MidiCaptainConfig {
+    return {
+      device: 'one1',
+      active_page: 0,
+      pages: [
+        { name: 'Home', buttons: [{ label: 'GO', color: 'green', ...btn } as never] },
+        { name: 'Solo', buttons: [{ label: 'OK', cc: 20, color: 'green' }] },
+      ],
+    };
+  }
+
+  it('rejects page_step < 1 on page_inc', () => {
+    const result = validateConfig(pageTriggerConfig({ type: 'page_inc', page_step: 0 }));
+    expect(result.errors.get('buttons[0].page_step')).toContain('at least 1');
+  });
+
+  it('rejects a page_jump target outside the page list', () => {
+    const result = validateConfig(pageTriggerConfig({ type: 'page_jump', page: 2 }));
+    expect(result.errors.get('buttons[0].page')).toContain('between 0 and 1');
+  });
+
+  it('accepts a valid page_jump target', () => {
+    expect(validateConfig(pageTriggerConfig({ type: 'page_jump', page: 1 })).isValid).toBe(true);
+  });
+
+  it('ignores stale page fields on a non-page-type button (type-gated)', () => {
+    expect(validateConfig(pageTriggerConfig({ type: 'cc', cc: 20, page: 99 })).isValid).toBe(true);
+  });
+});

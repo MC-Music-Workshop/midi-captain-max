@@ -71,6 +71,13 @@ export const validators = {
     return null;
   },
 
+  // No upper bound: the schema has none — the firmware wraps at the ends.
+  pageStep: (value: number): string | null => {
+    if (!Number.isInteger(value)) return 'Step must be an integer';
+    if (value < 1) return 'Step must be at least 1';
+    return null;
+  },
+
   keytimes: (value: number): string | null => {
     if (!Number.isInteger(value)) return 'Keytimes must be an integer';
     if (value < 1 || value > 99) return 'Keytimes must be between 1 and 99';
@@ -100,7 +107,7 @@ export const validators = {
 // Validate one page's control-surface data against the device. Keys are
 // UNPREFIXED (buttons[i]…, encoder…, expression…) — for the active page they
 // feed the inline error Map that components look up by path (locked convention).
-export function validatePage(page: Page, device: MidiCaptainConfig['device']): Map<string, string> {
+export function validatePage(page: Page, device: MidiCaptainConfig['device'], pageCount: number): Map<string, string> {
   const errors = new Map<string, string>();
   const buttons = page.buttons ?? [];
   const encoder = page.encoder;
@@ -192,6 +199,19 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device']): M
       if (btn.pc_step !== undefined) {
         const stepError = validators.pcStep(btn.pc_step);
         if (stepError) errors.set(`buttons[${idx}].pc_step`, stepError);
+      }
+    } else if (msgType === 'page_inc' || msgType === 'page_dec') {
+      if (btn.page_step !== undefined) {
+        const stepError = validators.pageStep(btn.page_step);
+        if (stepError) errors.set(`buttons[${idx}].page_step`, stepError);
+      }
+    } else if (msgType === 'page_jump') {
+      // Cross-field: the firmware clamps a bad target, the editor fails loud
+      // (P1 asymmetry rule). 0-based, so max is pageCount - 1.
+      if (btn.page !== undefined) {
+        if (!Number.isInteger(btn.page) || btn.page < 0 || btn.page >= pageCount) {
+          errors.set(`buttons[${idx}].page`, `Target page must be between 0 and ${pageCount - 1} (0-based)`);
+        }
       }
     } else if (msgType === 'hid') {
       const validActions = ['send', 'press', 'release', 'delay'];
@@ -427,11 +447,12 @@ export function validateConfig(config: MidiCaptainConfig): ValidationResult {
   // The editor renders the active page; its errors stay unprefixed so they
   // match the paths components use for both updateField and error lookups.
   const pages = config.pages ?? [];
+  const pageCount = pages.length || 1;
   const apIdx = pages.length
     ? Math.max(0, Math.min(pages.length - 1, config.active_page ?? 0))
     : 0;
   const page = pages[apIdx] ?? { buttons: [] };
-  for (const [key, msg] of validatePage(page, config.device)) {
+  for (const [key, msg] of validatePage(page, config.device, pageCount)) {
     errors.set(key, msg);
   }
 
@@ -447,12 +468,13 @@ export function validateConfig(config: MidiCaptainConfig): ValidationResult {
 export function validateAllPages(config: MidiCaptainConfig): string[] {
   const lines: string[] = [];
   const pages = config.pages ?? [];
+  const pageCount = pages.length || 1;
   const apIdx = pages.length
     ? Math.max(0, Math.min(pages.length - 1, config.active_page ?? 0))
     : 0;
   pages.forEach((page, i) => {
     if (i === apIdx) return;
-    for (const [key, msg] of validatePage(page, config.device)) {
+    for (const [key, msg] of validatePage(page, config.device, pageCount)) {
       const label = page.name ? `Page ${i + 1} (${page.name})` : `Page ${i + 1}`;
       lines.push(`${label}: ${key}: ${msg}`);
     }

@@ -449,7 +449,7 @@
     <aside class="kt-side">
       <h3>Keytimes mode — a MAX exclusive</h3>
       <p>Every switch can run <strong>two independent message cycles</strong>: one for short presses, one for long. Here a tap works the reverb (CC 20, white LED) while a half-second hold flips shimmer on top of it (CC 21, magenta).</p>
-      <p>With <code>long_overlay</code>, the shimmer color stays parked on the LED as a mode indicator while taps keep cycling the reverb underneath — one glance tells you both states. Stock firmware gives you one action per switch; MAX gives every switch a short cycle, a long cycle, and an LED that never lies.</p>
+      <p>With <code>long_overlay</code>, the shimmer color rides the LED as a mode indicator while taps keep cycling the reverb underneath — and turning the reverb off still darkens the LED (a short-cycle <code>off</code> is a kill-switch). Stock firmware gives you one action per switch; MAX gives every switch a short cycle, a long cycle, and an LED that never lies.</p>
     </aside>
   </div>
 </section>
@@ -556,7 +556,10 @@
       if (active && !active()) return;
       col.style.setProperty("--led", st.shim ? LED.magenta : LED.white);
       screen.textContent = st.shim ? "SHIM" : "VERB";
-      fs.classList.toggle("lit", st.verb || st.shim);
+      // Kill-switch semantics: the short cycle's "off" state darkens the LED
+      // even while shimmer's long_overlay is active; when the reverb is on,
+      // shimmer owns the color.
+      fs.classList.toggle("lit", st.verb);
       if (status) {
         status.textContent =
           `reverb ${st.verb ? "on " : "off"} · shimmer ${st.shim ? "on" : "off"}`;

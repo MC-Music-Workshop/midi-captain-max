@@ -15,6 +15,7 @@
   import type { DetectedDevice } from '$lib/types';
   import ConfigForm from '$lib/components/ConfigForm.svelte';
   import DeviceSection from '$lib/components/DeviceSection.svelte';
+  import PageBar from '$lib/components/PageBar.svelte';
   import ButtonsSection from '$lib/components/ButtonsSection.svelte';
   import EncoderSection from '$lib/components/EncoderSection.svelte';
   import ExpressionSection from '$lib/components/ExpressionSection.svelte';
@@ -383,6 +384,7 @@
     {#if $selectedDevice && !$isLoading}
       <ConfigForm onSave={saveToDevice}>
         <DeviceSection />
+        <PageBar />
         <ButtonsSection />
         <EncoderSection />
         <ExpressionSection />

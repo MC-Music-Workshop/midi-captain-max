@@ -58,6 +58,7 @@ from core.config import (
     get_dev_mode,
 )
 from core.button import Switch, ButtonState, KeytimesButtonState, dispatch_keytimes_events
+from core.midi_rx import find_cc_rx_action
 from core.hid import dispatch_hid
 
 # =============================================================================
@@ -991,27 +992,26 @@ def _process_midi_msg(msg, source="USB"):
                 update_status(f"PAGE {tgt + 1}")
             return
 
-        for i, btn_config in enumerate(buttons):
-            if btn_config.get("type", "cc") == "cc" and btn_config.get("cc") == cc and btn_config.get("channel", 0) == msg_channel:
-                # Select-mode: activate this button and deactivate group siblings
-                # only when value matches cc_on. Other values are ignored to avoid
-                # false activation. update_select_group is LED/state-only, so no
-                # MIDI echo and no feedback risk. select_repress is intentionally
-                # not consulted on RX — it applies only to local presses; RX is
-                # idempotent LED-and-state-only.
-                if btn_config.get("mode") == "select":
-                    if val == btn_config.get("cc_on", 127):
-                        update_select_group(i + 1, btn_config.get("select_group", ""))
-                        update_status(f"RX CC{cc}={val}")
-                        break
-                    # Same CC number can map to multiple select buttons via cc_on.
-                    continue
-                cc_on = btn_config.get("cc_on", 127)
-                cc_off = btn_config.get("cc_off", 0)
-                new_state = button_states[i].on_midi_receive(val, cc_on, cc_off)
-                set_button_state(i + 1, new_state)
-                update_status(f"RX CC{cc}={val}")
-                break
+        # Matching rules live in core/midi_rx.py (unit-tested); side effects
+        # stay here. update_select_group is LED/state-only, so no MIDI echo
+        # and no feedback risk. select_repress is intentionally not consulted
+        # on RX — it applies only to local presses; RX is idempotent
+        # LED-and-state-only.
+        action, i = find_cc_rx_action(buttons, cc, val, msg_channel)
+        if action == "select":
+            update_select_group(i + 1, buttons[i].get("select_group", ""))
+            update_status(f"RX CC{cc}={val}")
+        elif action == "state":
+            btn_config = buttons[i]
+            cc_on = btn_config.get("cc_on", 127)
+            cc_off = btn_config.get("cc_off", 0)
+            new_state = button_states[i].on_midi_receive(val, cc_on, cc_off)
+            set_button_state(i + 1, new_state)
+            update_status(f"RX CC{cc}={val}")
+        elif action == "ignored":
+            # Select-claimed CC, value matched no cc_on: consumed without
+            # state change (pre-#155 shielding restored, #163).
+            update_status(f"RX CC{cc}={val}")
 
     elif isinstance(msg, NoteOn):
         note = msg.note

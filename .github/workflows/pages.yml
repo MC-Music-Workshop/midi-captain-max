@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment-retry.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
       # Refresh the Kanban snapshot; if the token can't read the org project,
@@ -36,5 +36,15 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site/
+      # deploy-pages intermittently fails with a transient "Deployment failed,
+      # try again later" from the Pages backend; a single retry after a pause
+      # has recovered it every time.
       - id: deployment
+        uses: actions/deploy-pages@v5
+        continue-on-error: true
+      - name: Pause before retry
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 30
+      - id: deployment-retry
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v5

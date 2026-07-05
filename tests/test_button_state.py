@@ -102,7 +102,7 @@ class TestButtonStateMidiReceive:
         assert btn.state == False
     
     def test_threshold_at_64(self):
-        """Value 64 is on, 63 is off."""
+        """Value 64 is on, 63 is off (default cc_on/cc_off)."""
         btn = ButtonState(cc=20)
         
         btn.on_midi_receive(63)
@@ -110,6 +110,22 @@ class TestButtonStateMidiReceive:
         
         btn.on_midi_receive(64)
         assert btn.state == True
+
+    def test_custom_cc_on_below_threshold(self):
+        """Exact cc_on match turns on even when below 64."""
+        btn = ButtonState(cc=20)
+        result = btn.on_midi_receive(50, cc_on=50, cc_off=10)
+
+        assert result == True
+        assert btn.state == True
+
+    def test_custom_cc_off_below_threshold(self):
+        """Exact cc_off match turns off even when above 0."""
+        btn = ButtonState(cc=20, initial_state=True)
+        result = btn.on_midi_receive(10, cc_on=100, cc_off=10)
+
+        assert result == False
+        assert btn.state == False
     
     def test_host_override_persists(self):
         """Host can override local toggle state."""

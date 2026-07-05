@@ -132,16 +132,23 @@ class ButtonState:
         else:  # toggle
             return False, self._state, None
     
-    def on_midi_receive(self, value):
+    def on_midi_receive(self, value, cc_on=127, cc_off=0):
         """Handle incoming MIDI CC value (host override).
         
         Args:
             value: MIDI CC value (0-127)
+            cc_on: Configured ON value (exact match turns LED on)
+            cc_off: Configured OFF value (exact match turns LED off)
             
         Returns:
-            New state (True if value > 63)
+            New on/off state after applying the received value
         """
-        self._state = value > 63
+        if value == cc_on:
+            self._state = True
+        elif value == cc_off:
+            self._state = False
+        else:
+            self._state = value > 63
         return self._state
     
     def get_keytime(self):

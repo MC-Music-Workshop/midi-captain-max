@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { get } from 'svelte/store';
-import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage } from './formStore';
+import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage } from './formStore';
 import type { MidiCaptainConfig, DeviceType, Page } from './types';
 
 // Minimal valid config: one1 = 1 button per page, so validation stays green.
@@ -84,5 +84,34 @@ describe('addPage', () => {
     addPage();
     undo();
     expect(get(formState).config.pages).toHaveLength(1);
+  });
+});
+
+describe('duplicatePage', () => {
+  it('inserts a deep copy after the source and switches to it', () => {
+    loadConfig(makeConfig(2));
+    duplicatePage(0);
+    const cfg = get(formState).config;
+    expect(cfg.pages).toHaveLength(3);
+    expect(cfg.pages[1].name).toBe('P0');
+    expect(cfg.active_page).toBe(1);
+    // Deep copy: editing the duplicate must not touch the source.
+    cfg.pages[1].buttons[0].label = 'EDIT';
+    expect(cfg.pages[0].buttons[0].label).toBe('B0');
+  });
+
+  it('gives the duplicate a fresh __uiId (no shared {#each} keys)', () => {
+    loadConfig(makeConfig(1));
+    duplicatePage(0);
+    const pages = get(formState).config.pages as Page[];
+    expect(typeof pages[1].__uiId).toBe('number');
+    expect(pages[1].__uiId).not.toBe(pages[0].__uiId);
+  });
+
+  it('no-ops at the cap', () => {
+    loadConfig(makeConfig(20));
+    duplicatePage(0);
+    expect(get(formState).config.pages).toHaveLength(20);
+    expect(get(isDirty)).toBe(false);
   });
 });

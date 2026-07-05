@@ -583,6 +583,20 @@ export function addPage() {
   });
 }
 
+export function duplicatePage(index: number) {
+  _commitConfigMutation(cfg => {
+    if (cfg.pages.length >= PAGE_CAP) return false;
+    const src = cfg.pages[index];
+    if (!src) return false;
+    const clone = structuredClone(src);
+    // The clone carries the source's __uiIds (page + nested keytimes) — strip
+    // them so _attachUiIds stamps a fresh identity for every level.
+    _stripUiIds(clone);
+    cfg.pages.splice(index + 1, 0, clone);
+    cfg.active_page = index + 1;
+  });
+}
+
 // Strip type-specific fields that don't belong to the button's current type.
 // Prevents stale cc/note/program/etc. from accumulating in the saved JSON when
 // the user switches a button's type.

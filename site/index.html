@@ -107,6 +107,11 @@
       font-size: 0.72rem;
       color: var(--led, var(--cyan));
       text-shadow: 0 0 6px var(--led, var(--cyan));
+      cursor: text;
+    }
+    .screen:focus {
+      outline: 1px solid var(--cyan);
+      outline-offset: 1px;
     }
     .fs {
       width: 4rem;
@@ -193,10 +198,10 @@
     .dl-row { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
     .dl-btn { min-width: 13rem; text-align: center; }
     .dl-btn svg {
-      width: 1.05em;
-      height: 1.05em;
-      vertical-align: -0.15em;
-      margin-right: 0.35em;
+      width: 1.5em;
+      height: 1.5em;
+      vertical-align: -0.4em;
+      margin-right: 0.4em;
       fill: currentColor;
     }
     .dl-kind { opacity: 0.6; font-weight: 500; }
@@ -383,7 +388,7 @@
     <div class="frow" id="frow-top"></div>
     <div class="frow" id="frow-bottom"></div>
   </div>
-  <p class="hint">Based on the firmware's default config. Stomp around — <strong>TREM</strong> fires once per stomp (tap), the rest toggle.</p>
+  <p class="hint">Based on the firmware's default config. Tap <strong>VERB</strong> for reverb, hold it ½&nbsp;s for shimmer; <strong>PAGE</strong> flips through demo pages. Click any label to rename it.</p>
 
   <div class="cta-row">
     <a class="btn btn-primary" href="#download">Download</a>
@@ -527,86 +532,47 @@
 </script>
 
 <script>
-  // Interactive footswitch demo: the STD10 default config that ships with
-  // the firmware (firmware/dev/config.json) — real labels, LED colors, and
-  // toggle vs momentary behavior. LED chain: buttons 0-4 top row, 5-9 bottom.
+  // Interactive footswitch demo, STD10 layout (LED chain: buttons 0-4 top
+  // row, 5-9 bottom). Page 1 is based on the firmware's shipped default
+  // config (firmware/dev/config.json); pages 2-3 are demo pages reached via
+  // the PAGE switch. SHIM runs the same keytimes reverb/shimmer engine as
+  // the playground below. Screen labels are click-to-edit (not persisted).
   const LED = {
     green: "#4ade80", blue: "#3b82f6", yellow: "#facc15", magenta: "#e879f9",
     white: "#e8e8f0", orange: "#fb923c", cyan: "#22d3ee", red: "#ef4444",
     purple: "#a855f7",
   };
-  const BUTTONS = [
-    { label: "TSC",   color: "green" },
-    { label: "CHOR",  color: "blue" },
-    { label: "DELAY", color: "yellow" },
-    { label: "SHIM",  color: "magenta" },
-    { label: "TREM",  color: "white", tap: true },
-    { label: "WOW",   color: "orange" },
-    { label: "OCT",   color: "cyan" },
-    { label: "FREQ",  color: "red" },
-    { label: "PLATE", color: "purple" },
-    { label: "ROOM",  color: "white" },
-  ];
+  const LONG_MS = 500; // firmware default long_press_threshold_ms
 
-  BUTTONS.forEach((btn, i) => {
-    const col = document.createElement("div");
-    col.className = "fcol";
-    col.style.setProperty("--led", LED[btn.color]);
-
-    const screen = document.createElement("div");
-    screen.className = "screen";
-    screen.textContent = btn.label;
-    col.appendChild(screen);
-
-    const fs = document.createElement("button");
-    fs.className = "fs";
-    fs.setAttribute("aria-label",
-      `Footswitch ${i + 1}: ${btn.label} (${btn.tap ? "tap" : "toggle"})`);
-    if (btn.tap) {
-      // tap: fires once per stomp — LED blips instead of latching
-      let blip = null;
-      fs.addEventListener("click", () => {
-        fs.classList.add("lit");
-        clearTimeout(blip);
-        blip = setTimeout(() => fs.classList.remove("lit"), 180);
-      });
-    } else {
-      fs.addEventListener("click", () => fs.classList.toggle("lit"));
-    }
-    col.appendChild(fs);
-
-    document.getElementById(i < 5 ? "frow-top" : "frow-bottom").appendChild(col);
-  });
-
-  document.querySelector("#frow-top .fs").classList.add("lit"); // invite clicks
-
-  // Keytimes demo: one switch, short cycle (reverb) + long cycle (shimmer),
-  // mirroring firmware keytimes mode with long_overlay — the long color rides
-  // over the short cycle as a mode indicator. 500ms matches the firmware's
-  // default long_press_threshold_ms.
-  (() => {
-    const LONG_MS = 500;
-    const fs = document.getElementById("kt-fs");
-    const col = document.getElementById("kt-col");
-    const status = document.getElementById("kt-status");
-    let verb = false, shim = false;
+  // Keytimes engine: short cycle (reverb, white) + long cycle (shimmer,
+  // magenta) with long_overlay semantics — while shimmer is on, its color
+  // stays parked on the LED and the screen reads SHIM; taps keep cycling
+  // the reverb underneath.
+  function makeKeytimes({ col, screen, fs, status, active }) {
+    const st = { verb: false, shim: false };
     let timer = null, longFired = false, held = false;
 
     function update() {
-      // long_overlay: shimmer color wins while shimmer is on
-      col.style.setProperty("--led", shim ? LED.magenta : LED.white);
-      fs.classList.toggle("lit", verb || shim);
-      status.textContent =
-        `reverb ${verb ? "on " : "off"} · shimmer ${shim ? "on" : "off"}`;
+      if (active && !active()) return;
+      col.style.setProperty("--led", st.shim ? LED.magenta : LED.white);
+      screen.textContent = st.shim ? "SHIM" : "VERB";
+      fs.classList.toggle("lit", st.verb || st.shim);
+      if (status) {
+        status.textContent =
+          `reverb ${st.verb ? "on " : "off"} · shimmer ${st.shim ? "on" : "off"}`;
+      }
     }
-
-    function press() {
+    function press(e) {
       if (held) return;
       held = true;
       longFired = false;
+      // keep receiving pointerup even if the pointer drifts off the switch
+      if (e && e.pointerId != null && fs.setPointerCapture) {
+        try { fs.setPointerCapture(e.pointerId); } catch (_) {}
+      }
       timer = setTimeout(() => {
         longFired = true;
-        shim = !shim;
+        st.shim = !st.shim;
         update();
       }, LONG_MS);
     }
@@ -615,28 +581,142 @@
       held = false;
       clearTimeout(timer);
       if (!longFired) {
-        verb = !verb;
+        st.verb = !st.verb;
         update();
       }
     }
     function cancel() {
       held = false;
       clearTimeout(timer);
-      longFired = false;
     }
-
     fs.addEventListener("pointerdown", press);
     fs.addEventListener("pointerup", release);
-    fs.addEventListener("pointerleave", cancel);
+    fs.addEventListener("pointercancel", cancel);
+    fs.addEventListener("contextmenu", (e) => e.preventDefault());
     fs.addEventListener("keydown", (e) => {
       if (e.key === " " || e.key === "Enter") { e.preventDefault(); press(); }
     });
     fs.addEventListener("keyup", (e) => {
       if (e.key === " " || e.key === "Enter") release();
     });
+    return { st, update };
+  }
 
-    update();
-  })();
+  const PAGES = [
+    [ // page 1 — the shipped default config (SHIM upgraded to keytimes)
+      { label: "TSC",   color: "green" },
+      { label: "CHOR",  color: "blue" },
+      { label: "DELAY", color: "yellow" },
+      { label: "VERB",  color: "white", kt: true },
+      { label: "PAGE",  color: "white", page: true },
+      { label: "WOW",   color: "orange" },
+      { label: "OCT",   color: "cyan" },
+      { label: "FREQ",  color: "red" },
+      { label: "PLATE", color: "purple" },
+      { label: "ROOM",  color: "white" },
+    ],
+    [ // page 2 — amp channels / program changes
+      { label: "CLEAN", color: "green" },
+      { label: "CRNCH", color: "yellow" },
+      { label: "LEAD",  color: "red" },
+      { label: "SOLO",  color: "magenta" },
+      { label: "PAGE",  color: "white", page: true },
+      { label: "ACOUS", color: "cyan" },
+      { label: "RHYTM", color: "blue" },
+      { label: "BOOST", color: "orange" },
+      { label: "PC 12", color: "purple" },
+      { label: "TAP",   color: "white", tap: true },
+    ],
+    [ // page 3 — looper
+      { label: "REC",   color: "red" },
+      { label: "PLAY",  color: "green" },
+      { label: "STOP",  color: "white" },
+      { label: "UNDO",  color: "yellow" },
+      { label: "PAGE",  color: "white", page: true },
+      { label: "DUB",   color: "orange" },
+      { label: "HALF",  color: "cyan" },
+      { label: "REV",   color: "magenta" },
+      { label: "CLEAR", color: "purple" },
+      { label: "VOL",   color: "blue" },
+    ],
+  ];
+
+  let page = 0;
+  const litSets = PAGES.map(() => new Set());
+  const cols = [];
+
+  PAGES[0].forEach((_, i) => {
+    const col = document.createElement("div");
+    col.className = "fcol";
+
+    const screen = document.createElement("div");
+    screen.className = "screen";
+    screen.spellcheck = false;
+    try { screen.contentEditable = "plaintext-only"; }
+    catch (_) { screen.contentEditable = "true"; }
+    screen.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); screen.blur(); }
+    });
+    col.appendChild(screen);
+
+    const fs = document.createElement("button");
+    fs.className = "fs";
+    col.appendChild(fs);
+
+    document.getElementById(i < 5 ? "frow-top" : "frow-bottom").appendChild(col);
+    cols.push({ col, screen, fs });
+  });
+
+  const heroKt = makeKeytimes({
+    ...cols[3],
+    active: () => PAGES[page][3].kt === true,
+  });
+
+  function blip(fs) {
+    fs.classList.add("lit");
+    setTimeout(() => fs.classList.remove("lit"), 180);
+  }
+
+  function renderPage() {
+    PAGES[page].forEach((def, i) => {
+      const { col, screen, fs } = cols[i];
+      col.style.setProperty("--led", LED[def.color]);
+      screen.textContent = def.label;
+      fs.classList.toggle("lit", litSets[page].has(i));
+      const kind = def.kt ? "tap for reverb, hold for shimmer"
+        : def.page ? "next page" : def.tap ? "tap" : "toggle";
+      fs.setAttribute("aria-label", `Footswitch ${i + 1}: ${def.label} (${kind})`);
+    });
+    if (PAGES[page][3].kt) heroKt.update();
+  }
+
+  cols.forEach(({ fs }, i) => {
+    fs.addEventListener("click", () => {
+      const def = PAGES[page][i];
+      if (def.kt) return; // handled by the keytimes engine
+      if (def.page) {
+        page = (page + 1) % PAGES.length;
+        renderPage();
+        blip(fs);
+      } else if (def.tap) {
+        blip(fs);
+      } else {
+        litSets[page].has(i) ? litSets[page].delete(i) : litSets[page].add(i);
+        fs.classList.toggle("lit", litSets[page].has(i));
+      }
+    });
+  });
+
+  litSets[0].add(0); // start with one LED on, inviting clicks
+  renderPage();
+
+  // Keytimes playground: same engine, with a status readout.
+  makeKeytimes({
+    fs: document.getElementById("kt-fs"),
+    col: document.getElementById("kt-col"),
+    screen: document.querySelector("#kt-col .screen"),
+    status: document.getElementById("kt-status"),
+  }).update();
 
   // Download buttons: static hrefs point at the releases page (always works);
   // upgrade to direct one-click asset links via the GitHub API (CORS-enabled).

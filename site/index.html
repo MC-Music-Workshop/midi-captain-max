@@ -184,6 +184,63 @@
     .card p { color: var(--text-dim); font-size: 0.95rem; }
     .card .icon { font-size: 1.6rem; display: block; margin-bottom: 0.7rem; }
 
+    /* ---------- kanban preview ---------- */
+    .board-link { text-decoration: none; color: inherit; display: block; }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+      gap: 1rem;
+      background: var(--bg-raise);
+      border: 1px solid var(--line);
+      border-radius: 0.9rem;
+      padding: 1.4rem;
+      transition: border-color 0.25s, box-shadow 0.25s;
+    }
+    .board-link:hover .board {
+      border-color: var(--magenta);
+      box-shadow: 0 0 30px rgba(232, 121, 249, 0.15);
+    }
+    .col h4 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 0.7rem;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+    .col h4::before {
+      content: "";
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 50%;
+      background: var(--dot, var(--cyan));
+      box-shadow: 0 0 8px var(--dot, var(--cyan));
+    }
+    .ticket {
+      background: var(--chassis);
+      border: 1px solid var(--line);
+      border-radius: 0.5rem;
+      padding: 0.55rem 0.65rem;
+      margin-bottom: 0.6rem;
+    }
+    .ticket .bar {
+      height: 0.45rem;
+      border-radius: 0.25rem;
+      background: #2c2c3c;
+      margin-bottom: 0.35rem;
+    }
+    .ticket .bar.short { width: 60%; margin-bottom: 0; }
+    .board-caption {
+      text-align: center;
+      color: var(--text-dim);
+      margin-top: 1.2rem;
+      font-size: 0.95rem;
+    }
+    .board-caption strong { color: var(--text); }
+    .board-cta { text-align: center; margin-top: 1.6rem; }
+
     /* ---------- show-off ---------- */
     .shot-wrap { text-align: center; }
     .shot {
@@ -253,6 +310,39 @@
       <h3>Open &amp; hackable</h3>
       <p>CircuitPython firmware with full source on GitHub, documented hardware internals, and one-click install straight from the editor.</p>
     </div>
+  </div>
+</section>
+
+<section id="roadmap">
+  <h2>Shipping, constantly</h2>
+  <a class="board-link" href="https://github.com/orgs/MC-Music-Workshop/projects/1/views/1" aria-label="MIDI Captain MAX Kanban board on GitHub">
+    <div class="board" aria-hidden="true">
+      <div class="col" style="--dot:#9a9aad">
+        <h4>In Design</h4>
+        <div class="ticket"><div class="bar"></div><div class="bar short"></div></div>
+        <div class="ticket"><div class="bar short"></div></div>
+      </div>
+      <div class="col" style="--dot:#22d3ee">
+        <h4>In progress</h4>
+        <div class="ticket"><div class="bar"></div><div class="bar short"></div></div>
+        <div class="ticket"><div class="bar"></div><div class="bar short"></div></div>
+        <div class="ticket"><div class="bar short"></div></div>
+      </div>
+      <div class="col" style="--dot:#e879f9">
+        <h4>In review</h4>
+        <div class="ticket"><div class="bar"></div><div class="bar short"></div></div>
+      </div>
+      <div class="col" style="--dot:#4ade80">
+        <h4>Done</h4>
+        <div class="ticket"><div class="bar short"></div></div>
+        <div class="ticket"><div class="bar"></div><div class="bar short"></div></div>
+        <div class="ticket"><div class="bar short"></div></div>
+      </div>
+    </div>
+  </a>
+  <p class="board-caption">This is a <strong>very active project</strong> — features move across the board every week, and the maintainer actually answers issues. Watch it happen live on the public Kanban board.</p>
+  <div class="board-cta">
+    <a class="btn btn-primary" href="https://github.com/orgs/MC-Music-Workshop/projects/1/views/1">See what's coming next</a>
   </div>
 </section>
 

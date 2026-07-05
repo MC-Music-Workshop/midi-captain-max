@@ -1,5 +1,6 @@
 # Press Timings & Long-Press Implementation Plan (#48)
 
+**Status:** Shipped — #48 closed; `mode: "keytimes"` is in the current firmware.
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add OEM-parity press-timing support to footswitches as a **new mode** (`mode: "keytimes"`) — short/long press detection with independent message cycles per button. Existing modes (`toggle`, `momentary`, `flash`, `select`) are unchanged.

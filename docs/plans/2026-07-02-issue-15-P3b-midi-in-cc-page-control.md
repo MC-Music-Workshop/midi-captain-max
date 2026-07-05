@@ -1,5 +1,6 @@
 # Issue #15 P3b — MIDI-IN CC Page Control (Design + Plan)
 
+**Status:** Shipped — merged in PR #161; #15 (Pages parity) remains open for later phases.
 **Date:** 2026-07-02
 **Branch:** `15-pages-p3b`
 **Phase:** P3b. Follows P2 (runtime `switch_page()` mechanism) and P3 (button-triggered

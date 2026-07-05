@@ -570,6 +570,19 @@ export function setActivePage(index: number) {
   });
 }
 
+export function addPage() {
+  _commitConfigMutation(cfg => {
+    if (cfg.pages.length >= PAGE_CAP) return false;
+    // Size the new page to the device (reuse the setDevice sizing table);
+    // fall back to the active page's shape if device is somehow unset.
+    const count = cfg.device
+      ? DEVICE_BUTTON_COUNT[cfg.device]
+      : activePage(cfg).buttons.length;
+    cfg.pages.push({ buttons: createDefaultButtons(0, count - 1) });
+    cfg.active_page = cfg.pages.length - 1;
+  });
+}
+
 // Strip type-specific fields that don't belong to the button's current type.
 // Prevents stale cc/note/program/etc. from accumulating in the saved JSON when
 // the user switches a button's type.

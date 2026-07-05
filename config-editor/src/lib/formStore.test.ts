@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { get } from 'svelte/store';
-import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage } from './formStore';
+import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage } from './formStore';
 import type { MidiCaptainConfig, DeviceType, Page } from './types';
 
 // Minimal valid config: one1 = 1 button per page, so validation stays green.
@@ -58,5 +58,31 @@ describe('setActivePage', () => {
     expect(get(canUndo)).toBe(true);
     undo();
     expect(get(formState).config.active_page).toBe(0);
+  });
+});
+
+describe('addPage', () => {
+  it('appends a device-sized page and switches to it', () => {
+    loadConfig(makeConfig(1)); // one1 → 1 button per page
+    addPage();
+    const cfg = get(formState).config;
+    expect(cfg.pages).toHaveLength(2);
+    expect(cfg.active_page).toBe(1);
+    expect(cfg.pages[1].buttons).toHaveLength(1);
+    expect(get(isDirty)).toBe(true);
+  });
+
+  it('no-ops at the 20-page cap', () => {
+    loadConfig(makeConfig(20));
+    addPage();
+    expect(get(formState).config.pages).toHaveLength(20);
+    expect(get(isDirty)).toBe(false);
+  });
+
+  it('is undoable', () => {
+    loadConfig(makeConfig(1));
+    addPage();
+    undo();
+    expect(get(formState).config.pages).toHaveLength(1);
   });
 });

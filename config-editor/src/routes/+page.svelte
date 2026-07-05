@@ -23,6 +23,7 @@
   import FirmwareInstaller from '$lib/components/FirmwareInstaller.svelte';
   import ReflashCircuitPython from '$lib/components/ReflashCircuitPython.svelte';
   import { loadConfig, validate, normalizeConfig, config } from '$lib/formStore';
+  import { validateAllPages } from '$lib/validation';
 
   let appVersion = $state('');
 
@@ -198,16 +199,20 @@
   
   async function saveToDevice() {
     if (!$selectedDevice) return;
-    
+
     const isValid = validate();
-    if (!isValid) {
-      await message('Please fix validation errors before saving', { 
-        title: 'Validation Error', 
-        kind: 'error' 
+    // D5: all pages must pass, not just the rendered one. Non-active-page
+    // failures land in the footer error list as prefixed summary lines.
+    const pageErrors = validateAllPages(get(config));
+    $validationErrors = pageErrors;
+    if (!isValid || pageErrors.length > 0) {
+      await message('Please fix validation errors before saving', {
+        title: 'Validation Error',
+        kind: 'error'
       });
       return;
     }
-    
+
     $isLoading = true;
     
     try {

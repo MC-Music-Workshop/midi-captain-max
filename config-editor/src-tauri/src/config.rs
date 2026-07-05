@@ -577,6 +577,14 @@ impl MidiCaptainConfig {
             // Page-prefix for every message so errors point at the right bank.
             let pfx = format!("Page {}, ", p + 1);
 
+            // Page name: editor-facing metadata; schema caps it at 24 chars.
+            // chars().count() matches JSON Schema maxLength (code points, not bytes).
+            if let Some(ref name) = page.name {
+                if name.chars().count() > 24 {
+                    errors.push(format!("{}page name '{}' exceeds 24 chars", pfx, name));
+                }
+            }
+
             if page.buttons.len() != expected_buttons {
                 errors.push(format!(
                     "{}expected {} buttons for {:?}, found {}",
@@ -1545,5 +1553,25 @@ mod tests {
         });
         let err = cfg.validate().unwrap_err();
         assert!(err.iter().any(|e| e.contains("page_control.dec CC 128")));
+    }
+
+    #[test]
+    fn test_validate_rejects_long_page_name() {
+        // 25 chars — one over the schema's maxLength of 24.
+        let json = r#"{
+            "device": "one1",
+            "pages": [{
+                "name": "ABCDEFGHIJKLMNOPQRSTUVWXY",
+                "buttons": [{"label": "B1", "cc": 20, "color": "green"}]
+            }],
+            "active_page": 0
+        }"#;
+
+        let config = parse_migrated(json);
+        let errors = config.validate().unwrap_err();
+        assert!(
+            errors.iter().any(|e| e.contains("Page 1") && e.contains("exceeds 24 chars")),
+            "expected page-name error, got: {errors:?}"
+        );
     }
 }

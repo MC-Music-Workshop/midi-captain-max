@@ -607,6 +607,18 @@ export function deletePage(index: number) {
   });
 }
 
+export function movePage(from: number, to: number) {
+  _commitConfigMutation(cfg => {
+    const len = cfg.pages.length;
+    if (from === to || from < 0 || to < 0 || from >= len || to >= len) return false;
+    // Track the active page by object identity so it survives the reorder.
+    const activeObj = cfg.pages[activePageIndex(cfg)];
+    const [moved] = cfg.pages.splice(from, 1);
+    cfg.pages.splice(to, 0, moved);
+    cfg.active_page = cfg.pages.indexOf(activeObj);
+  });
+}
+
 // Strip type-specific fields that don't belong to the button's current type.
 // Prevents stale cc/note/program/etc. from accumulating in the saved JSON when
 // the user switches a button's type.

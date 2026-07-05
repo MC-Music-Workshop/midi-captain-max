@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { get } from 'svelte/store';
-import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage, deletePage } from './formStore';
+import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage, deletePage, movePage } from './formStore';
 import type { MidiCaptainConfig, DeviceType, Page } from './types';
 
 // Minimal valid config: one1 = 1 button per page, so validation stays green.
@@ -139,5 +139,34 @@ describe('deletePage', () => {
     deletePage(0);
     expect(get(formState).config.active_page).toBe(1);
     expect(get(currentPage).name).toBe('P2');
+  });
+});
+
+describe('movePage', () => {
+  it('reorders pages', () => {
+    loadConfig(makeConfig(3));
+    movePage(0, 2);
+    expect(get(formState).config.pages.map(p => p.name)).toEqual(['P1', 'P2', 'P0']);
+  });
+
+  it('active_page follows the moved page', () => {
+    loadConfig(makeConfig(3)); // active = 0 (P0)
+    movePage(0, 2);
+    expect(get(formState).config.active_page).toBe(2);
+    expect(get(currentPage).name).toBe('P0');
+  });
+
+  it('active_page follows when another page moves across it', () => {
+    loadConfig(makeConfig(3));
+    setActivePage(1); // P1
+    movePage(2, 0);   // P2 jumps to front; P1 shifts right
+    expect(get(currentPage).name).toBe('P1');
+    expect(get(formState).config.active_page).toBe(2);
+  });
+
+  it('no-ops on invalid indices', () => {
+    loadConfig(makeConfig(2));
+    movePage(0, 5);
+    expect(get(isDirty)).toBe(false);
   });
 });

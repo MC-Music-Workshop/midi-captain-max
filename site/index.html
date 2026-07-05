@@ -83,28 +83,34 @@
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(34, 211, 238, 0.06);
       max-width: 100%;
     }
-    .screens, .switches {
+    .frow {
       display: flex;
-      gap: 1rem;
+      gap: 0.9rem;
       justify-content: center;
       flex-wrap: wrap;
     }
+    .frow + .frow { margin-top: 1.2rem; }
+    .fcol {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.55rem;
+    }
     .screen {
-      width: 4.6rem;
+      width: 4rem;
       padding: 0.35rem 0.2rem;
+      text-align: center;
       background: #05070a;
       border: 1px solid #1c2733;
       border-radius: 0.3rem;
       font-family: ui-monospace, "SF Mono", Menlo, monospace;
-      font-size: 0.75rem;
-      color: var(--cyan);
-      text-shadow: 0 0 6px rgba(34, 211, 238, 0.6);
-      transition: color 0.2s;
+      font-size: 0.72rem;
+      color: var(--led, var(--cyan));
+      text-shadow: 0 0 6px var(--led, var(--cyan));
     }
-    .switches { margin-top: 1.1rem; }
     .fs {
-      width: 4.6rem;
-      height: 4.6rem;
+      width: 4rem;
+      height: 4rem;
       border-radius: 50%;
       background: radial-gradient(circle at 35% 30%, #3a3a48, #1c1c26 65%);
       border: 3px solid #2e2e3e;
@@ -183,6 +189,29 @@
     .card h3 { font-size: 1.1rem; margin-bottom: 0.5rem; }
     .card p { color: var(--text-dim); font-size: 0.95rem; }
     .card .icon { font-size: 1.6rem; display: block; margin-bottom: 0.7rem; }
+    .card a { color: var(--cyan); text-decoration: none; }
+    .card a:hover { text-decoration: underline; }
+
+    /* ---------- downloads ---------- */
+    .dl-row { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+    .dl-btn { min-width: 13rem; text-align: center; }
+    .dl-kind { opacity: 0.6; font-weight: 500; }
+    .dl-note {
+      text-align: center;
+      color: var(--text-dim);
+      margin: 1.4rem auto 0;
+      font-size: 0.95rem;
+      max-width: 40em;
+    }
+    .dl-note a { color: var(--cyan); text-decoration: none; }
+    .dl-note a:hover { text-decoration: underline; }
+    .dl-note code {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 0.85em;
+      background: var(--bg-raise);
+      padding: 0.1em 0.35em;
+      border-radius: 0.3em;
+    }
 
     /* ---------- kanban preview ---------- */
     .board-link { text-decoration: none; color: inherit; display: block; }
@@ -287,9 +316,11 @@
       html { scroll-behavior: auto; }
     }
     @media (max-width: 480px) {
-      .screen, .fs { width: 3.4rem; }
-      .fs { height: 3.4rem; }
-      .screens, .switches { gap: 0.6rem; }
+      .screen, .fs { width: 2.9rem; }
+      .fs { height: 2.9rem; }
+      .screen { font-size: 0.55rem; }
+      .frow { gap: 0.45rem; }
+      .device { padding: 1rem 0.8rem 1.2rem; }
     }
   </style>
 </head>
@@ -300,16 +331,32 @@
   <p class="tagline">Open firmware for the Paint Audio MIDI Captain. Bidirectional MIDI, a visual config editor, and one-click install — your controller, finally under <em>your</em> control.</p>
 
   <div class="device" aria-label="Interactive demo of the MIDI Captain footswitches">
-    <div class="screens" id="screens"></div>
-    <div class="switches" id="switches"></div>
+    <div class="frow" id="frow-top"></div>
+    <div class="frow" id="frow-bottom"></div>
   </div>
-  <p class="hint">Go on, stomp one. Switch 5 changes pages — just like the real thing.</p>
+  <p class="hint">This is the firmware's actual default config. Stomp around — <strong>TREM</strong> and <strong>ROOM</strong> are momentary (hold them), the rest toggle.</p>
 
   <div class="cta-row">
-    <a class="btn btn-primary" href="#features">Get started</a>
+    <a class="btn btn-primary" href="#download">Download</a>
     <a class="btn btn-ghost" href="https://github.com/MC-Music-Workshop/midi-captain-max">GitHub</a>
   </div>
 </header>
+
+<section id="download">
+  <h2>Get the Config Editor</h2>
+  <div class="dl-row">
+    <a class="btn btn-primary dl-btn" id="dl-mac" href="https://github.com/MC-Music-Workshop/midi-captain-max/releases/latest">
+      🍎 macOS <span class="dl-kind">.dmg</span>
+    </a>
+    <a class="btn btn-primary dl-btn" id="dl-win" href="https://github.com/MC-Music-Workshop/midi-captain-max/releases/latest">
+      🪟 Windows <span class="dl-kind">.exe</span>
+    </a>
+    <a class="btn btn-primary dl-btn" id="dl-linux" href="https://github.com/MC-Music-Workshop/midi-captain-max/releases/latest">
+      🐧 Linux <span class="dl-kind">.AppImage</span>
+    </a>
+  </div>
+  <p class="dl-note"><span id="dl-version"></span>The editor installs the firmware for you — no manual copying. Prefer <code>.msi</code>, <code>.deb</code>, or arm64? They're on the <a href="https://github.com/MC-Music-Workshop/midi-captain-max/releases/latest">release page</a>.</p>
+</section>
 
 <section id="features">
   <h2>Why MAX?</h2>
@@ -371,6 +418,27 @@
   </div>
 </section>
 
+<section id="connect">
+  <h2>Stay in the loop</h2>
+  <div class="cards">
+    <div class="card">
+      <span class="icon" aria-hidden="true">🔔</span>
+      <h3>New-release alerts</h3>
+      <p>On the <a href="https://github.com/MC-Music-Workshop/midi-captain-max">repo</a>, choose <strong>Watch → Custom → Releases</strong> to get an email for every release. Feed reader? <a href="https://github.com/MC-Music-Workshop/midi-captain-max/releases.atom">Releases Atom feed</a>.</p>
+    </div>
+    <div class="card">
+      <span class="icon" aria-hidden="true">💬</span>
+      <h3>Questions &amp; ideas</h3>
+      <p>Say hi in <a href="https://github.com/MC-Music-Workshop/midi-captain-max/discussions">Discussions</a> — setup help, config show-and-tell, feature ideas. The maintainer reads everything.</p>
+    </div>
+    <div class="card">
+      <span class="icon" aria-hidden="true">🐛</span>
+      <h3>Something broken?</h3>
+      <p><a href="https://github.com/MC-Music-Workshop/midi-captain-max/issues">Open an issue</a>. Bug reports with a config attached get fixed fastest.</p>
+    </div>
+  </div>
+</section>
+
 <footer>
   <p>
     <a href="https://github.com/MC-Music-Workshop/midi-captain-max">Source</a> ·
@@ -389,55 +457,75 @@
 </script>
 
 <script>
-  // Interactive footswitch strip: 5 switches, last one cycles "pages".
-  const PAGES = [
-    { name: "RIG",  labels: ["OD", "DLY", "REV", "MOD", "PG 1"], color: "#22d3ee" },
-    { name: "PC",   labels: ["PC 1", "PC 2", "PC 3", "PC 4", "PG 2"], color: "#e879f9" },
-    { name: "LOOP", labels: ["REC", "PLAY", "STOP", "UNDO", "PG 3"], color: "#4ade80" },
+  // Interactive footswitch demo: the STD10 default config that ships with
+  // the firmware (firmware/dev/config.json) — real labels, LED colors, and
+  // toggle vs momentary behavior. LED chain: buttons 0-4 top row, 5-9 bottom.
+  const LED = {
+    green: "#4ade80", blue: "#3b82f6", yellow: "#facc15", magenta: "#e879f9",
+    white: "#e8e8f0", orange: "#fb923c", cyan: "#22d3ee", red: "#ef4444",
+    purple: "#a855f7",
+  };
+  const BUTTONS = [
+    { label: "TSC",   color: "green" },
+    { label: "CHOR",  color: "blue" },
+    { label: "DELAY", color: "yellow" },
+    { label: "SHIM",  color: "magenta" },
+    { label: "TREM",  color: "white", momentary: true },
+    { label: "WOW",   color: "orange" },
+    { label: "OCT",   color: "cyan" },
+    { label: "FREQ",  color: "red" },
+    { label: "PLATE", color: "purple" },
+    { label: "ROOM",  color: "white", momentary: true },
   ];
-  const screensEl = document.getElementById("screens");
-  const switchesEl = document.getElementById("switches");
-  let page = 0;
-  const lit = new Set();
 
-  for (let i = 0; i < 5; i++) {
-    const s = document.createElement("div");
-    s.className = "screen";
-    screensEl.appendChild(s);
+  BUTTONS.forEach((btn, i) => {
+    const col = document.createElement("div");
+    col.className = "fcol";
+    col.style.setProperty("--led", LED[btn.color]);
 
-    const b = document.createElement("button");
-    b.className = "fs";
-    b.addEventListener("click", () => stomp(i, b));
-    switchesEl.appendChild(b);
-  }
+    const screen = document.createElement("div");
+    screen.className = "screen";
+    screen.textContent = btn.label;
+    col.appendChild(screen);
 
-  function render() {
-    const p = PAGES[page];
-    [...screensEl.children].forEach((s, i) => {
-      s.textContent = p.labels[i];
-      s.style.color = p.color;
-      s.style.textShadow = `0 0 6px ${p.color}`;
-    });
-    [...switchesEl.children].forEach((b, i) => {
-      b.style.setProperty("--led", p.color);
-      b.classList.toggle("lit", lit.has(i));
-      b.setAttribute("aria-label", `Footswitch ${i + 1}: ${p.labels[i]}`);
-    });
-  }
-
-  function stomp(i, btn) {
-    if (i === 4) {           // page-switch key
-      page = (page + 1) % PAGES.length;
-      lit.clear();
-      lit.add(4);
+    const fs = document.createElement("button");
+    fs.className = "fs";
+    fs.setAttribute("aria-label",
+      `Footswitch ${i + 1}: ${btn.label} (${btn.momentary ? "momentary" : "toggle"})`);
+    if (btn.momentary) {
+      const set = (on) => fs.classList.toggle("lit", on);
+      fs.addEventListener("pointerdown", () => set(true));
+      fs.addEventListener("pointerup", () => set(false));
+      fs.addEventListener("pointerleave", () => set(false));
+      fs.addEventListener("keydown", (e) => { if (e.key === " " || e.key === "Enter") set(true); });
+      fs.addEventListener("keyup", () => set(false));
     } else {
-      lit.has(i) ? lit.delete(i) : lit.add(i);
+      fs.addEventListener("click", () => fs.classList.toggle("lit"));
     }
-    render();
-  }
+    col.appendChild(fs);
 
-  lit.add(0);                // start with one LED on, inviting clicks
-  render();
+    document.getElementById(i < 5 ? "frow-top" : "frow-bottom").appendChild(col);
+  });
+
+  document.querySelector("#frow-top .fs").classList.add("lit"); // invite clicks
+
+  // Download buttons: static hrefs point at the releases page (always works);
+  // upgrade to direct one-click asset links via the GitHub API (CORS-enabled).
+  fetch("https://api.github.com/repos/MC-Music-Workshop/midi-captain-max/releases/latest")
+    .then((r) => (r.ok ? r.json() : Promise.reject()))
+    .then((rel) => {
+      const find = (test) => rel.assets.find((a) => test(a.name));
+      const wire = (id, asset) => {
+        if (asset) document.getElementById(id).href = asset.browser_download_url;
+      };
+      wire("dl-mac", find((n) => n.endsWith(".dmg")));
+      wire("dl-win", find((n) => n.endsWith("-setup.exe")));
+      wire("dl-linux", find((n) => n.endsWith("_amd64.AppImage")));
+      if (rel.tag_name) {
+        document.getElementById("dl-version").textContent = `Latest: ${rel.tag_name}. `;
+      }
+    })
+    .catch(() => {});
 
   // Kanban preview: swap skeleton tickets for the real board snapshot.
   // The snapshot is inlined in #board-data by tools/fetch-board.sh (works

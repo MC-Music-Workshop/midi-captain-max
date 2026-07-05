@@ -18,12 +18,14 @@ Public landing page for the MIDI Captain MAX project. Purpose: explain + hook vi
 
 1. **Hero** (full viewport, dark `#0a0a0f`):
    - Title "MIDI CAPTAIN MAX", tagline, subtle animated glow gradient.
-   - **Interactive footswitch strip**: stylized device in HTML/CSS — mini screen labels + footswitch circles with LED rings. Clicking a switch lights its ring and updates screen labels, mimicking real page-switching. Pure CSS/JS.
-   - CTAs: "Get started" (scroll to features) and "GitHub" (repo link).
-2. **Feature cards** (3): bidirectional MIDI, visual config editor, open + hackable.
+   - **Interactive footswitch demo**: stylized STD10 in HTML/CSS — 2 rows of 5 switches with per-switch screen labels and LED rings, rendering the firmware's actual default config (`firmware/dev/config.json`): real labels, LED colors, and toggle vs momentary behavior (TREM/ROOM light only while held). Pure CSS/JS.
+   - CTAs: "Download" (scroll to downloads) and "GitHub" (repo link).
+2. **Downloads:** one-click buttons for macOS `.dmg`, Windows `-setup.exe`, Linux `_amd64.AppImage`. Static hrefs point at `releases/latest` (always works); JS upgrades them to direct asset URLs via the GitHub REST API (`releases/latest`, CORS-enabled, unauthenticated) and shows the version. Release asset names are versioned, so static direct links aren't possible.
+3. **Feature cards** (3): bidirectional MIDI, visual config editor, open + hackable.
 3. **Kanban preview ("Shipping, constantly"):** stylized board rendered from `site/board.json` — a snapshot of the real GitHub project (columns In Design / Ready / In progress / In review / Done, up to 4 most-recently-updated items each). Whole board links to the public project. Client-side live fetch was rejected: Projects v2 has no unauthenticated API. Instead the snapshot is regenerated at deploy time and daily by cron; on fetch failure the committed snapshot (stale but valid) ships, and if `board.json` can't load in the browser the skeleton placeholders stay.
 4. **Show-off band:** `docs/img/MCM-config-editor.png` (compressed copy in `site/img/`), framed with glow shadow.
-5. **Footer:** repo/docs links, Helmut Keller attribution (license requirement), "not affiliated with Paint Audio" disclaimer.
+5. **Stay in the loop:** cards for release alerts (GitHub Watch → Custom → Releases, plus `releases.atom` feed), Discussions (questions/contact), and Issues. No mailing-list backend — GitHub-native channels only.
+6. **Footer:** repo/docs links, Helmut Keller attribution (license requirement), "not affiliated with Paint Audio" disclaimer.
 
 ## Files
 

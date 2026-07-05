@@ -47,5 +47,20 @@ jq -s --arg date "$(date -u +%Y-%m-%d)" '
     }
 ' > site/board.json
 
-echo "Wrote site/board.json:"
+# Inline the same snapshot into index.html (#board-data) so the board renders
+# without a fetch, e.g. when the file is opened directly from disk.
+python3 - <<'PY'
+import json, re
+
+snapshot = json.dumps(json.load(open('site/board.json')))
+html = open('site/index.html').read()
+html, n = re.subn(
+  r'(<script id="board-data" type="application/json">\n).*?(\n</script>)',
+  lambda m: m.group(1) + snapshot + m.group(2),
+  html, count=1, flags=re.S)
+assert n == 1, 'board-data block not found in site/index.html'
+open('site/index.html', 'w').write(html)
+PY
+
+echo "Wrote site/board.json (inlined into site/index.html):"
 jq -r '.columns[] | "\(.name): \(.items | length) shown"' site/board.json

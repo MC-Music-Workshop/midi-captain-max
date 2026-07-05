@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { get } from 'svelte/store';
-import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage, deletePage, movePage } from './formStore';
+import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage, deletePage, movePage, updatePageField } from './formStore';
 import type { MidiCaptainConfig, DeviceType, Page } from './types';
 
 // Minimal valid config: one1 = 1 button per page, so validation stays green.
@@ -168,5 +168,26 @@ describe('movePage', () => {
     loadConfig(makeConfig(2));
     movePage(0, 5);
     expect(get(isDirty)).toBe(false);
+  });
+});
+
+describe('updatePageField (D6)', () => {
+  it('writes to the active page only', () => {
+    loadConfig(makeConfig(2));
+    setActivePage(1);
+    updatePageField('name', 'Solo');
+    const cfg = get(formState).config;
+    expect(cfg.pages[1].name).toBe('Solo');
+    expect(cfg.pages[0].name).toBe('P0');
+    expect(get(isDirty)).toBe(true);
+  });
+});
+
+describe('normalizeConfig page fields', () => {
+  it('strips empty page names from save output', () => {
+    loadConfig(makeConfig(1));
+    updatePageField('name', '');
+    const out = normalizeConfig(get(formState).config);
+    expect('name' in out.pages[0]).toBe(false);
   });
 });

@@ -248,16 +248,17 @@ function setNestedValue(obj: any, path: string, value: any) {
   }
 }
 
-export function updateField(path: string, value: any) {
-  // Clear existing debounce
+// Shared write path: set an absolute config path, validate, debounce a history
+// checkpoint. updateField routes control-surface paths through the active-page
+// regex; updatePageField prefixes explicitly (D6 — see PAGE_SCOPED_PATH note).
+function _updateAtPath(absolutePath: string, value: any) {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
   }
-  
-  // Update value immediately
+
   formState.update(state => {
     const newConfig = structuredClone(state.config);
-    setNestedValue(newConfig, pageScopedPath(newConfig, path), value);
+    setNestedValue(newConfig, absolutePath, value);
 
     return {
       ...state,
@@ -265,14 +266,24 @@ export function updateField(path: string, value: any) {
       isDirty: true,
     };
   });
-  
-  // Validate after update
+
   validate();
-  
-  // Debounce history push
+
   debounceTimer = setTimeout(() => {
     formState.update(state => pushHistory(state));
   }, DEBOUNCE_MS);
+}
+
+export function updateField(path: string, value: any) {
+  const cfg = get(formState).config;
+  _updateAtPath(pageScopedPath(cfg, path), value);
+}
+
+// Explicit per-page write (D6): always targets the active page, regardless of
+// field name. Used by per-page UI (name; display override/global_channel in P4c).
+export function updatePageField(path: string, value: any) {
+  const cfg = get(formState).config;
+  _updateAtPath(`pages[${activePageIndex(cfg)}].${path}`, value);
 }
 
 // --- Keytimes-mode helpers (mode: "keytimes" cycle/message mutations) ---
@@ -725,6 +736,9 @@ export function normalizeConfig(cfg: MidiCaptainConfig): MidiCaptainConfig {
       const p: Page = { ...page, buttons: page.buttons.map(normalizeButton) };
       if (p.display && Object.values(p.display).every(v => v === undefined)) {
         delete p.display;
+      }
+      if (p.name === '') {
+        delete p.name;
       }
       return p;
     }),

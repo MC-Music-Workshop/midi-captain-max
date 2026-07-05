@@ -1,0 +1,74 @@
+{
+  "updated": "2026-07-05",
+  "columns": [
+    {
+      "name": "In Design",
+      "items": [
+        {
+          "title": "Feature Request: Dynamic LED Control via Incoming MIDI CC",
+          "number": 118,
+          "url": "https://github.com/MC-Music-Workshop/midi-captain-max/issues/118"
+        },
+        {
+          "title": "Rename `dev_mode` → `setup_mode` (user-facing: \"Setup Mode\")",
+          "number": 127,
+          "url": "https://github.com/MC-Music-Workshop/midi-captain-max/issues/127"
+        }
+      ]
+    },
+    {
+      "name": "Ready",
+      "items": [
+        {
+          "title": "State validation in validation.ts not type-gated",
+          "number": 59,
+          "url": "https://github.com/MC-Music-Workshop/midi-captain-max/issues/59"
+        }
+      ]
+    },
+    {
+      "name": "In progress",
+      "items": [
+        {
+          "title": "Parity: Pages",
+          "number": 15,
+          "url": "https://github.com/MC-Music-Workshop/midi-captain-max/issues/15"
+        },
+        {
+          "title": "Post-#155 follow-up: shield non-select buttons on select-claimed CCs + RX matching polish",
+          "number": 163,
+          "url": "https://github.com/MC-Music-Workshop/midi-captain-max/issues/163"
+        }
+      ]
+    },
+    {
+      "name": "In review",
+      "items": []
+    },
+    {
+      "name": "Done",
+      "items": [
+        {
+          "title": "Sticky Long Color",
+          "number": 157,
+          "url": "https://github.com/MC-Music-Workshop/midi-captain-max/issues/157"
+        },
+        {
+          "title": "Updating select group in response to Helix Stadium Snapshots",
+          "number": 151,
+          "url": "https://github.com/MC-Music-Workshop/midi-captain-max/issues/151"
+        },
+        {
+          "title": "BUG?: Button 0 always fires at startup",
+          "number": 112,
+          "url": "https://github.com/MC-Music-Workshop/midi-captain-max/issues/112"
+        },
+        {
+          "title": "After #48 lands: integrate select-mode with press-timing model",
+          "number": 125,
+          "url": "https://github.com/MC-Music-Workshop/midi-captain-max/issues/125"
+        }
+      ]
+    }
+  ]
+}

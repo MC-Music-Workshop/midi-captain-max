@@ -21,6 +21,7 @@
   import ExpressionSection from '$lib/components/ExpressionSection.svelte';
   import DisplaySection from '$lib/components/DisplaySection.svelte';
   import MidiThruSection from '$lib/components/MidiThruSection.svelte';
+import PageControlSection from '$lib/components/PageControlSection.svelte';
   import FirmwareInstaller from '$lib/components/FirmwareInstaller.svelte';
   import ReflashCircuitPython from '$lib/components/ReflashCircuitPython.svelte';
   import { loadConfig, validate, normalizeConfig, config, currentPage } from '$lib/formStore';
@@ -400,6 +401,7 @@
         {/key}
         <DisplaySection />
         <MidiThruSection />
+        <PageControlSection />
         <FirmwareInstaller
           device={$selectedDevice}
           hasUnsavedChanges={$hasUnsavedChanges}

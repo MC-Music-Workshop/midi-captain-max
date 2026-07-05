@@ -16,6 +16,7 @@ export type {
   ExpressionConfig,
   ExpressionPedals,
   DisplayConfig,
+  PageControl,
 } from './types.generated';
 
 // Keytimes entries/messages carry an optional ephemeral `__uiId` (UI-only, not persisted)

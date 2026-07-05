@@ -1,24 +1,15 @@
 <script lang="ts">
-  import {
-    config, currentPage, validationErrors,
-    setActivePage, addPage, duplicatePage, deletePage, movePage, updatePageField,
-    PAGE_CAP,
-  } from '$lib/formStore';
+  import { config, validationErrors, setActivePage } from '$lib/formStore';
+  import EditPagesModal from './EditPagesModal.svelte';
   import type { Page } from '$lib/types';
 
-  let renaming = $state(false);
-  let renameValue = $state('');
-  let renameInput = $state<HTMLInputElement | null>(null);
+  let managing = $state(false);
 
   let pages = $derived(($config.pages ?? []) as Page[]);
   let activeIndex = $derived(
     pages.length ? Math.max(0, Math.min(pages.length - 1, $config.active_page ?? 0)) : 0
   );
   let nameError = $derived($validationErrors.get('name'));
-
-  $effect(() => {
-    if (renaming) renameInput?.focus();
-  });
 
   function pageLabel(name: string | undefined, i: number): string {
     return name ? `${i + 1}: ${name}` : `Page ${i + 1}`;
@@ -39,104 +30,52 @@
     setActivePage(index);
   }
 
-  function startRename() {
-    renameValue = $currentPage?.name ?? '';
-    renaming = true;
+  function goTo(index: number) {
+    commitPendingEdit();
+    setActivePage(index);
   }
 
-  function commitRename() {
-    if (!renaming) return;
-    renaming = false;
-    // Trimmed empty string clears the name (normalizeConfig strips it on save).
-    updatePageField('name', renameValue.trim());
-  }
-
-  function cancelRename() {
-    renaming = false;
-  }
-
-  function handleRenameKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      commitRename();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      cancelRename();
-    }
+  function openManager() {
+    commitPendingEdit();
+    managing = true;
   }
 </script>
 
 <div class="page-bar">
   <label for="page-select">Page</label>
-  {#if renaming}
-    <input
-      id="page-select"
-      class="rename-input"
-      type="text"
-      maxlength="24"
-      placeholder="Page name"
-      bind:this={renameInput}
-      bind:value={renameValue}
-      onblur={commitRename}
-      onkeydown={handleRenameKeydown}
-    />
-  {:else}
-    <select
-      id="page-select"
-      value={activeIndex}
-      onchange={handlePageSelect}
-    >
-      {#each pages as page, i (page.__uiId ?? i)}
-        <option value={i}>{pageLabel(page.name, i)}</option>
-      {/each}
-    </select>
-  {/if}
+  <select id="page-select" value={activeIndex} onchange={handlePageSelect}>
+    {#each pages as page, i (page.__uiId ?? i)}
+      <option value={i}>{pageLabel(page.name, i)}</option>
+    {/each}
+  </select>
 
-  <div class="page-actions">
-    <button
-      type="button"
-      onclick={() => { commitPendingEdit(); movePage(activeIndex, activeIndex - 1); }}
-      disabled={renaming || activeIndex === 0}
-      title="Move page earlier"
-      aria-label="Move page earlier"
-    >◀</button>
-    <button
-      type="button"
-      onclick={() => { commitPendingEdit(); movePage(activeIndex, activeIndex + 1); }}
-      disabled={renaming || activeIndex >= pages.length - 1}
-      title="Move page later"
-      aria-label="Move page later"
-    >▶</button>
-    <button
-      type="button"
-      onclick={() => { commitPendingEdit(); addPage(); }}
-      disabled={renaming || pages.length >= PAGE_CAP}
-    >
-      Add
-    </button>
-    <button
-      type="button"
-      onclick={() => { commitPendingEdit(); duplicatePage(activeIndex); }}
-      disabled={renaming || pages.length >= PAGE_CAP}
-    >
-      Duplicate
-    </button>
-    <button type="button" onclick={startRename} disabled={renaming}>
-      Rename
-    </button>
-    <button
-      type="button"
-      onclick={() => { commitPendingEdit(); deletePage(activeIndex); }}
-      disabled={renaming || pages.length <= 1}
-    >
-      Delete
-    </button>
-  </div>
+  <button
+    type="button"
+    onclick={() => goTo(activeIndex - 1)}
+    disabled={activeIndex === 0}
+    title="Previous page"
+    aria-label="Previous page"
+  >◀</button>
+  <button
+    type="button"
+    onclick={() => goTo(activeIndex + 1)}
+    disabled={activeIndex >= pages.length - 1}
+    title="Next page"
+    aria-label="Next page"
+  >▶</button>
+
+  <button type="button" class="edit-pages" onclick={openManager}>
+    Edit Pages…
+  </button>
 
   {#if nameError}
     <span class="error">{nameError}</span>
   {/if}
 </div>
+
+{#if managing}
+  <EditPagesModal onClose={() => (managing = false)} />
+{/if}
 
 <style>
   .page-bar {
@@ -157,8 +96,7 @@
     color: var(--color-text-secondary);
   }
 
-  select,
-  .rename-input {
+  select {
     padding: 5px 8px;
     font-size: 13px;
     background-color: var(--color-bg);
@@ -168,12 +106,7 @@
     min-width: 160px;
   }
 
-  .page-actions {
-    display: flex;
-    gap: 6px;
-  }
-
-  .page-actions button {
+  button {
     padding: 4px 10px;
     font-size: 13px;
     border-radius: 4px;
@@ -183,13 +116,17 @@
     cursor: pointer;
   }
 
-  .page-actions button:hover:not(:disabled) {
+  button:hover:not(:disabled) {
     background-color: var(--color-bg-hover);
   }
 
-  .page-actions button:disabled {
+  button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .edit-pages {
+    margin-left: 4px;
   }
 
   .error {

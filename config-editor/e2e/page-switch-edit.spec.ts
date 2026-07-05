@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loadApp, readStoreJson, oneButtonConfig } from './helpers';
+import { loadApp, readStoreJson, oneButtonConfig, twoPageConfig, duplicateCurrentPage } from './helpers';
 
 // Regression tests for the P4a smoke-test bug: field edits use commit-on-blur,
 // but in WebKit clicking a <select>/<button>/blank space does not blur the
@@ -9,7 +9,7 @@ import { loadApp, readStoreJson, oneButtonConfig } from './helpers';
 
 test('in-flight edit commits to the page it was typed on when switching pages', async ({ page }) => {
   await loadApp(page, oneButtonConfig());
-  await page.getByRole('button', { name: 'Duplicate' }).click(); // page 2 (copy) now active
+  await duplicateCurrentPage(page); // page 2 (copy) now active
 
   const cc = page.locator('#btn-0-cc');
   await cc.fill('99'); // typed, still focused — no blur yet
@@ -25,7 +25,7 @@ test('in-flight edit commits to the page it was typed on when switching pages', 
 
 test('in-flight edit cannot leak into the destination page via a later blur', async ({ page }) => {
   await loadApp(page, oneButtonConfig());
-  await page.getByRole('button', { name: 'Duplicate' }).click();
+  await duplicateCurrentPage(page);
 
   const cc = page.locator('#btn-0-cc');
   await cc.fill('99');
@@ -35,4 +35,16 @@ test('in-flight edit cannot leak into the destination page via a later blur', as
   const cfg = await readStoreJson(page);
   expect(cfg.pages[0].buttons[0].cc).toBe(20); // page 1 untouched
   expect(cfg.pages[1].buttons[0].cc).toBe(99); // edit stayed on page 2
+});
+
+test('in-flight edit commits before arrow navigation', async ({ page }) => {
+  await loadApp(page, twoPageConfig());
+
+  const cc = page.locator('#btn-0-cc');
+  await cc.fill('99');
+  await page.getByRole('button', { name: 'Next page' }).click();
+
+  const cfg = await readStoreJson(page);
+  expect(cfg.pages[0].buttons[0].cc).toBe(99); // committed to page A
+  await expect(cc).toHaveValue('30'); // form shows page B
 });

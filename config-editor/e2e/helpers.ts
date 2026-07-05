@@ -10,6 +10,28 @@ export function oneButtonConfig() {
   };
 }
 
+// Two pages with distinct button data, so tests can tell which page the form
+// is rendering.
+export function twoPageConfig() {
+  return {
+    device: 'one1',
+    active_page: 0,
+    pages: [
+      { name: 'A', buttons: [{ label: 'B0', cc: 20, color: 'green' }] },
+      { name: 'B', buttons: [{ label: 'B1', cc: 30, color: 'red' }] },
+    ],
+  };
+}
+
+// Duplicate the active page through the Edit Pages modal (the bar itself has
+// no management buttons).
+export async function duplicateCurrentPage(page: Page) {
+  await page.getByRole('button', { name: 'Edit Pages…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Edit Pages' });
+  await dialog.getByRole('button', { name: 'Duplicate page' }).click();
+  await dialog.getByRole('button', { name: 'Done' }).click();
+}
+
 // Install a window.__TAURI_INTERNALS__ mock before any app code runs, then
 // load the app and wait for the form to render. invoke() calls that would hit
 // the Rust backend are answered from the given config; config writes are

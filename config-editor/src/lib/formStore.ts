@@ -101,10 +101,11 @@ function _nextUiId(): number {
   return ++_uiIdCounter;
 }
 
-// Walk a config and assign `__uiId` to any keytimes entry/message that lacks one.
+// Walk a config and assign `__uiId` to any page / keytimes entry / message that lacks one.
 // Mutates in place; safe to call on a freshly structuredCloned config.
 function _attachUiIds(cfg: MidiCaptainConfig): void {
   for (const page of cfg.pages ?? []) {
+    if (typeof (page as Page).__uiId !== 'number') (page as Page).__uiId = _nextUiId();
     for (const btn of page.buttons) {
       for (const cycle of ['short', 'long'] as const) {
         const entries = (btn as unknown as Record<string, unknown>)[cycle];

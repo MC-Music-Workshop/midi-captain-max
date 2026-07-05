@@ -24,6 +24,21 @@
     return name ? `${i + 1}: ${name}` : `Page ${i + 1}`;
   }
 
+  // Field edits commit on blur, but WebKit doesn't blur a focused input when
+  // the user clicks a <select> or <button> — so an edit can still be "in
+  // flight" when a page operation runs. Force the blur so the edit commits to
+  // the page it was typed on BEFORE the operation changes the active page.
+  function commitPendingEdit() {
+    const el = document.activeElement;
+    if (el instanceof HTMLElement) el.blur();
+  }
+
+  function handlePageSelect(e: Event & { currentTarget: HTMLSelectElement }) {
+    const index = Number(e.currentTarget.value);
+    commitPendingEdit();
+    setActivePage(index);
+  }
+
   function startRename() {
     renameValue = $currentPage?.name ?? '';
     renaming = true;
@@ -69,7 +84,7 @@
     <select
       id="page-select"
       value={activeIndex}
-      onchange={(e) => setActivePage(Number(e.currentTarget.value))}
+      onchange={handlePageSelect}
     >
       {#each pages as page, i (page.__uiId ?? i)}
         <option value={i}>{pageLabel(page.name, i)}</option>
@@ -80,24 +95,28 @@
   <div class="page-actions">
     <button
       type="button"
-      onclick={() => movePage(activeIndex, activeIndex - 1)}
+      onclick={() => { commitPendingEdit(); movePage(activeIndex, activeIndex - 1); }}
       disabled={renaming || activeIndex === 0}
       title="Move page earlier"
       aria-label="Move page earlier"
     >◀</button>
     <button
       type="button"
-      onclick={() => movePage(activeIndex, activeIndex + 1)}
+      onclick={() => { commitPendingEdit(); movePage(activeIndex, activeIndex + 1); }}
       disabled={renaming || activeIndex >= pages.length - 1}
       title="Move page later"
       aria-label="Move page later"
     >▶</button>
-    <button type="button" onclick={addPage} disabled={renaming || pages.length >= PAGE_CAP}>
+    <button
+      type="button"
+      onclick={() => { commitPendingEdit(); addPage(); }}
+      disabled={renaming || pages.length >= PAGE_CAP}
+    >
       Add
     </button>
     <button
       type="button"
-      onclick={() => duplicatePage(activeIndex)}
+      onclick={() => { commitPendingEdit(); duplicatePage(activeIndex); }}
       disabled={renaming || pages.length >= PAGE_CAP}
     >
       Duplicate
@@ -107,7 +126,7 @@
     </button>
     <button
       type="button"
-      onclick={() => deletePage(activeIndex)}
+      onclick={() => { commitPendingEdit(); deletePage(activeIndex); }}
       disabled={renaming || pages.length <= 1}
     >
       Delete

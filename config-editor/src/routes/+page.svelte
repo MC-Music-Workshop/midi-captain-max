@@ -23,7 +23,7 @@
   import MidiThruSection from '$lib/components/MidiThruSection.svelte';
   import FirmwareInstaller from '$lib/components/FirmwareInstaller.svelte';
   import ReflashCircuitPython from '$lib/components/ReflashCircuitPython.svelte';
-  import { loadConfig, validate, normalizeConfig, config } from '$lib/formStore';
+  import { loadConfig, validate, normalizeConfig, config, currentPage } from '$lib/formStore';
   import { validateAllPages } from '$lib/validation';
 
   let appVersion = $state('');
@@ -200,6 +200,11 @@
   
   async function saveToDevice() {
     if (!$selectedDevice) return;
+
+    // Field edits commit on blur, and WebKit doesn't blur the focused input
+    // when Save is clicked (or on ⌘S) — force it so the save includes an
+    // in-flight edit instead of silently dropping it.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
 
     const isValid = validate();
     // D5: all pages must pass, not just the rendered one. Non-active-page
@@ -385,9 +390,14 @@
       <ConfigForm onSave={saveToDevice}>
         <DeviceSection />
         <PageBar />
-        <ButtonsSection />
-        <EncoderSection />
-        <ExpressionSection />
+        <!-- Keyed by page identity: switching pages rebuilds these sections'
+             DOM from the new page's data, so no input state (e.g. typed text
+             not yet committed by blur) can leak between pages. -->
+        {#key $currentPage?.__uiId}
+          <ButtonsSection />
+          <EncoderSection />
+          <ExpressionSection />
+        {/key}
         <DisplaySection />
         <MidiThruSection />
         <FirmwareInstaller

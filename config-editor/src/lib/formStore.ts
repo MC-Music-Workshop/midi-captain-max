@@ -539,6 +539,37 @@ export function setDevice(deviceType: DeviceType) {
   });
 }
 
+// --- Page CRUD helpers (#15 P4a) ---
+//
+// Each helper is one immediate history checkpoint (like syncButtonStates), so
+// undo/redo steps page-wise. A pending debounced field-edit checkpoint is
+// folded into the CRUD checkpoint (its config state is included in the push).
+// `mutate` returns false to abort (no state change, no dirty, no history).
+
+export const PAGE_CAP = 20;
+
+function _commitConfigMutation(mutate: (cfg: MidiCaptainConfig) => boolean | void) {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  formState.update(state => {
+    const newConfig = structuredClone(state.config);
+    if (mutate(newConfig) === false) return state;
+    _attachUiIds(newConfig);
+    return pushHistory({ ...state, config: newConfig });
+  });
+  validate();
+}
+
+export function setActivePage(index: number) {
+  _commitConfigMutation(cfg => {
+    const clamped = Math.max(0, Math.min((cfg.pages?.length ?? 1) - 1, index));
+    if (clamped === (cfg.active_page ?? 0)) return false;
+    cfg.active_page = clamped;
+  });
+}
+
 // Strip type-specific fields that don't belong to the button's current type.
 // Prevents stale cc/note/program/etc. from accumulating in the saved JSON when
 // the user switches a button's type.

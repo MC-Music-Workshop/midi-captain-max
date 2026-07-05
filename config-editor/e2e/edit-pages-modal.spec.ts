@@ -39,19 +39,21 @@ test('Duplicate inserts a copy after the selected page and selects it', async ({
   await expect(rows.nth(2)).toContainText('B');
 });
 
-test('double-click renames a page inline; Enter commits, Escape cancels', async ({ page }) => {
+test('Rename button and double-click rename a page inline; Enter commits, Escape cancels', async ({ page }) => {
   await loadApp(page, twoPageConfig());
   await page.getByRole('button', { name: 'Edit Pages…' }).click();
   const dialog = page.getByRole('dialog', { name: 'Edit Pages' });
   const rows = dialog.locator('.page-row');
 
-  await rows.nth(0).dblclick();
+  // Rename button renames the selected row (discoverable path).
+  await dialog.getByRole('button', { name: 'Rename page' }).click();
   const input = dialog.getByLabel('Page name');
   await input.fill('Loop');
   await input.press('Enter');
   await expect(rows.nth(0)).toContainText('Loop');
 
-  // Escape cancels without committing (and keeps the modal open).
+  // Double-click is the shortcut path; Escape cancels without committing
+  // (and keeps the modal open).
   await rows.nth(0).dblclick();
   await input.fill('Nope');
   await input.press('Escape');

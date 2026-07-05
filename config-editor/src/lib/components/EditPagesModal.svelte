@@ -136,6 +136,12 @@
           aria-label="Duplicate page"
         >Duplicate</button>
         <button
+          onclick={() => startRename(activeIndex)}
+          disabled={renamingIndex !== null}
+          title="Rename page"
+          aria-label="Rename page"
+        >Rename</button>
+        <button
           onclick={() => movePage(activeIndex, activeIndex - 1)}
           disabled={activeIndex === 0}
           title="Move page up"

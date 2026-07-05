@@ -444,6 +444,38 @@ export function validateConfig(config: MidiCaptainConfig): ValidationResult {
     if (err) errors.set('usb_drive_name', err);
   }
 
+  // MIDI-IN CC page control (#15 P3b): device-wide, so it validates here, not
+  // per page. Mirrors the Rust ranges in config.rs so bad values fail inline
+  // instead of as an opaque save error. channel may be null (= any channel).
+  const pc = config.page_control;
+  if (pc) {
+    if (pc.channel !== undefined && pc.channel !== null) {
+      const chError = validators.channel(pc.channel);
+      if (chError) errors.set('page_control.channel', chError);
+    }
+    if (pc.jump?.cc !== undefined) {
+      const ccError = validators.cc(pc.jump.cc);
+      if (ccError) errors.set('page_control.jump.cc', ccError);
+    }
+    for (const key of ['inc', 'dec'] as const) {
+      const slot = pc[key];
+      if (!slot) continue;
+      const p = `page_control.${key}`;
+      if (slot.cc !== undefined) {
+        const ccError = validators.cc(slot.cc);
+        if (ccError) errors.set(`${p}.cc`, ccError);
+      }
+      if (slot.value !== undefined) {
+        const vError = validators.withinRange(slot.value, 0, 127);
+        if (vError) errors.set(`${p}.value`, vError);
+      }
+      if (slot.page_step !== undefined) {
+        const sError = validators.pageStep(slot.page_step);
+        if (sError) errors.set(`${p}.page_step`, sError);
+      }
+    }
+  }
+
   // The editor renders the active page; its errors stay unprefixed so they
   // match the paths components use for both updateField and error lookups.
   const pages = config.pages ?? [];

@@ -72,3 +72,36 @@ describe('page trigger button fields (P4b)', () => {
     expect(validateConfig(pageTriggerConfig({ type: 'cc', cc: 20, page: 99 })).isValid).toBe(true);
   });
 });
+
+describe('page_control validation (P4b)', () => {
+  function pcConfig(pc: unknown): MidiCaptainConfig {
+    return {
+      device: 'one1',
+      active_page: 0,
+      pages: [{ buttons: [{ label: 'OK', cc: 20, color: 'green' }] }],
+      page_control: pc as MidiCaptainConfig['page_control'],
+    };
+  }
+
+  it('accepts a full valid block', () => {
+    const result = validateConfig(pcConfig({
+      enabled: true, channel: 0,
+      jump: { cc: 20 }, inc: { cc: 21, value: 127, page_step: 1 }, dec: { cc: 22 },
+    }));
+    expect(result.isValid).toBe(true);
+  });
+
+  it('rejects out-of-range slot fields with per-field keys', () => {
+    const result = validateConfig(pcConfig({
+      jump: { cc: 200 }, inc: { cc: 21, value: 300, page_step: 0 },
+    }));
+    expect(result.errors.get('page_control.jump.cc')).toContain('127');
+    expect(result.errors.get('page_control.inc.value')).toContain('127');
+    expect(result.errors.get('page_control.inc.page_step')).toContain('at least 1');
+  });
+
+  it('rejects an out-of-range channel', () => {
+    const result = validateConfig(pcConfig({ channel: 16, jump: { cc: 20 } }));
+    expect(result.errors.get('page_control.channel')).toBeTruthy();
+  });
+});

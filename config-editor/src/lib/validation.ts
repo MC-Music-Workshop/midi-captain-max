@@ -1,4 +1,4 @@
-import type { MidiCaptainConfig } from './types';
+import type { MidiCaptainConfig, Page } from './types';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -97,23 +97,22 @@ export const validators = {
   },
 };
 
-export function validateConfig(config: MidiCaptainConfig): ValidationResult {
+// Validate one page's control-surface data against the device. Keys are
+// UNPREFIXED (buttons[i]…, encoder…, expression…) — for the active page they
+// feed the inline error Map that components look up by path (locked convention).
+export function validatePage(page: Page, device: MidiCaptainConfig['device']): Map<string, string> {
   const errors = new Map<string, string>();
-
-  // The editor renders the active page; validate its control-surface data.
-  // Error-map keys stay unprefixed (buttons[i]…, encoder…, expression…) so they
-  // match the paths components use for both updateField and error lookups.
-  const pages = config.pages ?? [];
-  const apIdx = pages.length
-    ? Math.max(0, Math.min(pages.length - 1, config.active_page ?? 0))
-    : 0;
-  const page = pages[apIdx] ?? { buttons: [] };
   const buttons = page.buttons ?? [];
   const encoder = page.encoder;
   const expression = page.expression;
 
+  // Page name: editor-facing metadata, schema caps at 24 chars.
+  if (page.name !== undefined && page.name.length > 24) {
+    errors.set('name', 'Page name must be 24 characters or less');
+  }
+
   // Device-specific validation
-  if (config.device === 'one1') {
+  if (device === 'one1') {
     if (buttons.length > 1) {
       errors.set('device', 'ONE supports only 1 button');
     }
@@ -123,7 +122,7 @@ export function validateConfig(config: MidiCaptainConfig): ValidationResult {
     if (expression?.exp1?.enabled || expression?.exp2?.enabled) {
       errors.set('expression', 'ONE does not support expression pedals');
     }
-  } else if (config.device === 'duo2') {
+  } else if (device === 'duo2') {
     if (buttons.length > 2) {
       errors.set('device', 'DUO2 supports only 2 buttons');
     }
@@ -133,7 +132,7 @@ export function validateConfig(config: MidiCaptainConfig): ValidationResult {
     if (expression?.exp1?.enabled || expression?.exp2?.enabled) {
       errors.set('expression', 'DUO2 does not support expression pedals');
     }
-  } else if (config.device === 'nano4') {
+  } else if (device === 'nano4') {
     if (buttons.length > 4) {
       errors.set('device', 'NANO4 supports only 4 buttons');
     }
@@ -143,7 +142,7 @@ export function validateConfig(config: MidiCaptainConfig): ValidationResult {
     if (expression?.exp1?.enabled || expression?.exp2?.enabled) {
       errors.set('expression', 'NANO4 does not support expression pedals');
     }
-  } else if (config.device === 'mini6') {
+  } else if (device === 'mini6') {
     if (buttons.length > 6) {
       errors.set('device', 'Mini6 supports only 6 buttons');
     }
@@ -153,16 +152,10 @@ export function validateConfig(config: MidiCaptainConfig): ValidationResult {
     if (expression?.exp1?.enabled || expression?.exp2?.enabled) {
       errors.set('expression', 'Mini6 does not support expression pedals');
     }
-  } else if (config.device === 'std10') {
+  } else if (device === 'std10') {
     if (buttons.length > 10) {
       errors.set('device', 'STD10 supports only 10 buttons');
     }
-  }
-  
-  // Validate usb_drive_name
-  if (config.usb_drive_name) {
-    const err = validators.usbDriveName(config.usb_drive_name);
-    if (err) errors.set('usb_drive_name', err);
   }
 
   // Validate all buttons
@@ -418,9 +411,51 @@ export function validateConfig(config: MidiCaptainConfig): ValidationResult {
     const rangeError = validators.range(min, max);
     if (rangeError) errors.set(`${p}.range`, rangeError);
   }
-  
+
+  return errors;
+}
+
+export function validateConfig(config: MidiCaptainConfig): ValidationResult {
+  const errors = new Map<string, string>();
+
+  // Device-wide fields.
+  if (config.usb_drive_name) {
+    const err = validators.usbDriveName(config.usb_drive_name);
+    if (err) errors.set('usb_drive_name', err);
+  }
+
+  // The editor renders the active page; its errors stay unprefixed so they
+  // match the paths components use for both updateField and error lookups.
+  const pages = config.pages ?? [];
+  const apIdx = pages.length
+    ? Math.max(0, Math.min(pages.length - 1, config.active_page ?? 0))
+    : 0;
+  const page = pages[apIdx] ?? { buttons: [] };
+  for (const [key, msg] of validatePage(page, config.device)) {
+    errors.set(key, msg);
+  }
+
   return {
     isValid: errors.size === 0,
     errors,
   };
+}
+
+// D5 save-path check: every NON-active page, as human-readable summary lines
+// for the footer error list ("Page 2 (Bad): buttons[0].cc: CC must be…").
+// The active page is skipped — its errors surface inline via validateConfig.
+export function validateAllPages(config: MidiCaptainConfig): string[] {
+  const lines: string[] = [];
+  const pages = config.pages ?? [];
+  const apIdx = pages.length
+    ? Math.max(0, Math.min(pages.length - 1, config.active_page ?? 0))
+    : 0;
+  pages.forEach((page, i) => {
+    if (i === apIdx) return;
+    for (const [key, msg] of validatePage(page, config.device)) {
+      const label = page.name ? `Page ${i + 1} (${page.name})` : `Page ${i + 1}`;
+      lines.push(`${label}: ${key}: ${msg}`);
+    }
+  });
+  return lines;
 }

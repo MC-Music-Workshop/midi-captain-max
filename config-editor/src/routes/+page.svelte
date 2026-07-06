@@ -15,14 +15,17 @@
   import type { DetectedDevice } from '$lib/types';
   import ConfigForm from '$lib/components/ConfigForm.svelte';
   import DeviceSection from '$lib/components/DeviceSection.svelte';
+  import PageBar from '$lib/components/PageBar.svelte';
   import ButtonsSection from '$lib/components/ButtonsSection.svelte';
   import EncoderSection from '$lib/components/EncoderSection.svelte';
   import ExpressionSection from '$lib/components/ExpressionSection.svelte';
   import DisplaySection from '$lib/components/DisplaySection.svelte';
   import MidiThruSection from '$lib/components/MidiThruSection.svelte';
+import PageControlSection from '$lib/components/PageControlSection.svelte';
   import FirmwareInstaller from '$lib/components/FirmwareInstaller.svelte';
   import ReflashCircuitPython from '$lib/components/ReflashCircuitPython.svelte';
-  import { loadConfig, validate, normalizeConfig, config } from '$lib/formStore';
+  import { loadConfig, validate, normalizeConfig, config, currentPage } from '$lib/formStore';
+  import { validateAllPages } from '$lib/validation';
 
   let appVersion = $state('');
 
@@ -198,16 +201,25 @@
   
   async function saveToDevice() {
     if (!$selectedDevice) return;
-    
+
+    // Field edits commit on blur, and WebKit doesn't blur the focused input
+    // when Save is clicked (or on ⌘S) — force it so the save includes an
+    // in-flight edit instead of silently dropping it.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+
     const isValid = validate();
-    if (!isValid) {
-      await message('Please fix validation errors before saving', { 
-        title: 'Validation Error', 
-        kind: 'error' 
+    // D5: all pages must pass, not just the rendered one. Non-active-page
+    // failures land in the footer error list as prefixed summary lines.
+    const pageErrors = validateAllPages(get(config));
+    $validationErrors = pageErrors;
+    if (!isValid || pageErrors.length > 0) {
+      await message('Please fix validation errors before saving', {
+        title: 'Validation Error',
+        kind: 'error'
       });
       return;
     }
-    
+
     $isLoading = true;
     
     try {
@@ -378,11 +390,18 @@
     {#if $selectedDevice && !$isLoading}
       <ConfigForm onSave={saveToDevice}>
         <DeviceSection />
-        <ButtonsSection />
-        <EncoderSection />
-        <ExpressionSection />
+        <PageBar />
+        <!-- Keyed by page identity: switching pages rebuilds these sections'
+             DOM from the new page's data, so no input state (e.g. typed text
+             not yet committed by blur) can leak between pages. -->
+        {#key $currentPage?.__uiId}
+          <ButtonsSection />
+          <EncoderSection />
+          <ExpressionSection />
+        {/key}
         <DisplaySection />
         <MidiThruSection />
+        <PageControlSection />
         <FirmwareInstaller
           device={$selectedDevice}
           hasUnsavedChanges={$hasUnsavedChanges}

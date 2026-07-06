@@ -3,7 +3,7 @@
   import KeytimesEditor from './KeytimesEditor.svelte';
   import type { ButtonConfig, ButtonColor, ButtonMode, OffMode, MessageType } from '$lib/types';
   import { MESSAGE_TYPE_LABELS, BUTTON_MODE_LABELS } from '$lib/types';
-  import { validationErrors, syncButtonStates, selectGroupNames } from '$lib/formStore';
+  import { validationErrors, syncButtonStates, selectGroupNames, config } from '$lib/formStore';
 
   interface Props {
     button: ButtonConfig;
@@ -32,6 +32,18 @@
   // them (switch_page repaints the button immediately), so the only meaningful mode
   // choice is single-press vs the keytimes long/short gesture path.
   let isPageType = $derived(msgType === 'page_inc' || msgType === 'page_dec' || msgType === 'page_jump');
+  let isPageIncDec = $derived(msgType === 'page_inc' || msgType === 'page_dec');
+  let isPageJump = $derived(msgType === 'page_jump');
+  let pageCount = $derived(($config.pages ?? []).length);
+  // Resolved target for the page_jump hint: the field is a 0-based index, so
+  // name the page it lands on. Null when out of range — the error text owns that.
+  let jumpTarget = $derived.by(() => {
+    if (!isPageJump) return null;
+    const idx = button.page ?? 0;
+    const target = ($config.pages ?? [])[idx];
+    if (!target) return null;
+    return target.name ? `“${target.name}”` : `Page ${idx + 1}`;
+  });
   let showMode = $derived(isCC || isNote || isPCType || isHID);
   // Select mode (radio group) is valid only on plain PC and CC types.
   let canSelectMode = $derived(isPC || isCC);
@@ -123,6 +135,16 @@
   function handlePCStepChange(e: Event) {
     const target = e.target as HTMLInputElement;
     onUpdate('pc_step', parseInt(target.value));
+  }
+
+  function handlePageStepChange(e: Event) {
+    const target = e.target as HTMLInputElement;
+    onUpdate('page_step', target.value === '' ? undefined : parseInt(target.value));
+  }
+
+  function handlePageChange(e: Event) {
+    const target = e.target as HTMLInputElement;
+    onUpdate('page', target.value === '' ? undefined : parseInt(target.value));
   }
 
   function handleFlashMsChange(e: Event) {
@@ -225,6 +247,8 @@
   let velocityOffError = $derived($validationErrors.get(`${basePath}.velocity_off`));
   let programError = $derived($validationErrors.get(`${basePath}.program`));
   let pcStepError = $derived($validationErrors.get(`${basePath}.pc_step`));
+  let pageStepError = $derived($validationErrors.get(`${basePath}.page_step`));
+  let pageError = $derived($validationErrors.get(`${basePath}.page`));
 
   // Display effective channel as 1-16 (stored internally as 0-15)
   let effectiveChannel = $derived(
@@ -356,6 +380,26 @@
         value={button.pc_step ?? 1} onblur={handlePCStepChange} disabled={disabled}
         min="1" max="127" />
       {#if pcStepError}<span class="error-text">{pcStepError}</span>{/if}
+    </div>
+  {:else if isPageIncDec}
+    <div class="field">
+      <label class="field-label" for={fieldId('page-step')}>Step:</label>
+      <input id={fieldId('page-step')} type="number" class="input-cc" class:error={!!pageStepError}
+        value={button.page_step ?? 1} onblur={handlePageStepChange} disabled={disabled}
+        min="1" title="Pages to move per press; wraps at the ends." />
+      {#if pageStepError}<span class="error-text">{pageStepError}</span>{/if}
+    </div>
+  {:else if isPageJump}
+    <div class="field">
+      <label class="field-label" for={fieldId('page')}>Target Page:</label>
+      <input id={fieldId('page')} type="number" class="input-cc" class:error={!!pageError}
+        value={button.page ?? 0} onblur={handlePageChange} disabled={disabled}
+        min="0" max={pageCount - 1} title="0-based page index (0 = first page)." />
+      {#if pageError}
+        <span class="error-text">{pageError}</span>
+      {:else if jumpTarget}
+        <span class="hint-text">→ {jumpTarget}</span>
+      {/if}
     </div>
   {:else if isHID}
     <div class="field">

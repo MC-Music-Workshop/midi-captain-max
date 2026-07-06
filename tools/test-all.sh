@@ -49,6 +49,9 @@ if [ ! -x config-editor/node_modules/.bin/svelte-kit ]; then
 fi
 (cd config-editor && npm run check)
 
+step "vitest (frontend stores)"
+(cd config-editor && npm test)
+
 step "generate:types (schema → TS)"
 (cd config-editor && npm run generate:types)
 

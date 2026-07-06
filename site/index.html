@@ -83,6 +83,18 @@
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(34, 211, 238, 0.06);
       max-width: 100%;
     }
+    /* live TFT screen, painted from the firmware's own display_model */
+    #tft {
+      display: block;
+      margin: 0 auto 1.4rem;
+      width: 12rem;
+      max-width: 100%;
+      border: 2px solid #1c2733;
+      border-radius: 0.4rem;
+      background: #000;
+      image-rendering: pixelated;
+      box-shadow: 0 0 24px rgba(34, 211, 238, 0.12);
+    }
     .frow {
       display: flex;
       gap: 0.9rem;
@@ -462,6 +474,7 @@
   <p class="tagline">Open firmware for the Paint Audio MIDI Captain. Bidirectional MIDI, a visual config editor, and one-click install — your controller, finally under <em>your</em> control.</p>
 
   <div class="device" aria-label="Interactive demo of the MIDI Captain footswitches">
+    <canvas id="tft" width="240" height="240" aria-label="Live rendering of the device's TFT screen" hidden></canvas>
     <div class="frow" id="frow-top"></div>
     <div class="frow" id="frow-bottom"></div>
   </div>
@@ -790,6 +803,12 @@
   };
   wireSwitch(cols[3].fs, heroKt);
 
+  // On-page TFT screen — only live once the wasm engine boots (it has no
+  // model to draw otherwise). bootFirmwareEngine() assigns refreshHeroTft to
+  // rebuild the screen for the active page; renderPage() calls it on flips.
+  let heroTft = null;
+  let refreshHeroTft = () => {};
+
   // Page switching is a long press (page_inc rides a switch's long slot in
   // the wasm engine; this JS engine is the fallback and the pages-2/3 path).
   function makePageHold(fs) {
@@ -846,6 +865,7 @@
         : def.page ? "hold half a second for next page" : def.tap ? "tap" : "toggle";
       fs.setAttribute("aria-label", `Footswitch ${i + 1}: ${def.label} (${kind})`);
     });
+    refreshHeroTft();
     if (PAGES[page][3].kt) heroKt.current.update();
     if (PAGES[page][4].page) heroPage.current.update();
   }
@@ -987,6 +1007,44 @@ def screen_button(cfg_json, on):
   // CSS color.
   const hexColor = (n) => `#${n.toString(16).padStart(6, "0")}`;
 
+  // Canvas painter for the screen model produced by display_model.py.
+  // Geometry, colors, and label text all come from the firmware module; this
+  // only rasterizes. 240x240 to match the real ST7789.
+  function makeTft(canvas, model) {
+    const ctx = canvas.getContext("2d");
+    let buttons = model.buttons.map((b) => ({ ...b }));
+    let status = { ...model.status };
+    const expression = model.expression;
+    function draw() {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (const b of buttons) {
+        ctx.strokeStyle = hexColor(b.box_color);
+        ctx.lineWidth = 1;
+        ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+        ctx.fillStyle = hexColor(b.label_color);
+        ctx.font = "600 13px system-ui, sans-serif"; // stand-in for PTSans-20 PCF
+        ctx.fillText(b.text, b.cx, b.cy);
+      }
+      ctx.font = "600 15px system-ui, sans-serif";
+      ctx.fillStyle = hexColor(status.color);
+      ctx.fillText(status.text, status.x, status.y);
+      ctx.font = "500 11px system-ui, sans-serif";
+      for (const e of expression) {
+        ctx.fillStyle = hexColor(e.color);
+        ctx.fillText(e.text, e.x, e.y);
+      }
+    }
+    return {
+      draw,
+      reset(m) { buttons = m.buttons.map((b) => ({ ...b })); status = { ...m.status }; draw(); },
+      setButton(i, patch) { Object.assign(buttons[i], patch); draw(); },
+      setStatus(text) { status.text = text; draw(); },
+    };
+  }
+
   // Wasm-backed keytimes engine: pointer events set a pressed flag; a
   // requestAnimationFrame loop polls PressTracker with real wall-clock time
   // (exactly how code.py's main loop drives it) while the switch is held.
@@ -1082,6 +1140,14 @@ def screen_button(cfg_json, on):
       else if (m.type === "page_dec") page = (page - (m.page_step || 1) + PAGES.length) % PAGES.length;
       else page = Math.max(0, Math.min(PAGES.length - 1, m.page || 0));
       renderPage();
+      if (heroTft) heroTft.setStatus(`PAGE ${page + 1}`);   // mirrors code.py update_status
+    } else if (heroTft) {
+      // Mirror the update_status strings code.py prints on a TX.
+      const s = m.type === "cc" ? `TX CC${m.cc}=${m.value}`
+        : m.type === "pc" ? `TX PC${m.program}`
+        : m.type === "note" ? `TX Note${m.note}`
+        : m.type;
+      heroTft.setStatus(s);
     }
     heroMidiLog(m);
   }
@@ -1113,12 +1179,30 @@ def screen_button(cfg_json, on):
         screenButton: mp.globals.get("screen_button"),
       };
 
+      // Build the on-page TFT from the firmware's screen model. It mirrors the
+      // active page; refreshHeroTft() rebuilds it on page flips (like
+      // switch_page's re-label) and re-applies any lit toggles.
+      const tftEl = document.getElementById("tft");
+      const screenDefs = (p) => PAGES[p].map((d) => ({ label: d.label, color: d.color }));
+      refreshHeroTft = () => {
+        if (!heroTft) return;
+        heroTft.reset(JSON.parse(py.screenInit(JSON.stringify(screenDefs(page)), 10)));
+        PAGES[page].forEach((def, i) => {
+          if (def.kt || def.page || !litSets[page].has(i)) return;
+          heroTft.setButton(i, JSON.parse(py.screenButton(
+            JSON.stringify({ color: def.color }), true)));
+        });
+      };
+      heroTft = makeTft(tftEl, JSON.parse(py.screenInit(JSON.stringify(screenDefs(0)), 10)));
+      tftEl.hidden = false;
+      refreshHeroTft();
+
       // Swap the keytimes demos onto the firmware engine.
       heroKt.current.cancel();
       heroKt.current = makeWasmKeytimes(py, "hero", KT_CONFIG_HERO, {
         ...cols[3],
         active: () => PAGES[page][3].kt === true,
-      }, heroMidi);
+      }, heroMidi, heroTft, 3);
       pgKt.current.cancel();
       pgKt.current = makeWasmKeytimes(py, "pg", KT_CONFIG, pgKtParts, showMidi);
 
@@ -1129,7 +1213,7 @@ def screen_button(cfg_json, on):
       const tremEngine = makeWasmKeytimes(py, "trem", TREM_CONFIG, {
         ...cols[4],
         active: () => PAGES[page][4].page === true && page === 0,
-      }, heroMidi);
+      }, heroMidi, heroTft, 4);
       let engaged = null; // engine captured at press so a page flip mid-hold can't strand a release
       heroPage.current = {
         press() { engaged = page === 0 ? tremEngine : pageHoldJs; engaged.press(); },
@@ -1147,18 +1231,25 @@ def screen_button(cfg_json, on):
         py.btnCreate(`b${p}_${i}`, 20 + i, def.tap ? "momentary" : "toggle",
           litSets[p].has(i));
       }));
+      const tftPlain = (i, color, on) => {
+        if (heroTft) heroTft.setButton(i, JSON.parse(py.screenButton(
+          JSON.stringify({ color }), on)));
+      };
       plainCore.current = {
         toggle(p, i) {
           const res = JSON.parse(py.btnPress(`b${p}_${i}`));
           py.btnRelease(`b${p}_${i}`);
-          heroMidiLog({ type: "cc", cc: 20 + i, value: res.value });
+          heroMidi({ type: "cc", cc: 20 + i, value: res.value });
+          tftPlain(i, PAGES[p][i].color, res.state);
           return res.state;
         },
         tap(p, i) {
           const down = JSON.parse(py.btnPress(`b${p}_${i}`));
-          heroMidiLog({ type: "cc", cc: 20 + i, value: down.value });
+          heroMidi({ type: "cc", cc: 20 + i, value: down.value });
+          tftPlain(i, PAGES[p][i].color, true);
           const up = JSON.parse(py.btnRelease(`b${p}_${i}`));
-          heroMidiLog({ type: "cc", cc: 20 + i, value: up.value });
+          heroMidi({ type: "cc", cc: 20 + i, value: up.value });
+          setTimeout(() => tftPlain(i, PAGES[p][i].color, false), 180);
         },
       };
 

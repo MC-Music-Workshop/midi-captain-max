@@ -1,5 +1,6 @@
 # Save & Apply — Hot Reload on Save
 
+**Status:** Shipped — Save & Apply hot reload is in the current editor/firmware.
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Replace the "Save to Device" button with a split button whose primary action is **Save & Apply** — write `config.json` to device, then automatically hot-reload (REPL `reload_runtime_config()` via `sys.modules['__main__']`) for runtime fields, or hard-reset (`microcontroller.reset()`) when boot-level fields changed. Secondary actions: **Save** (local file) and **Save to Device, No Reload** (dev-mode only).

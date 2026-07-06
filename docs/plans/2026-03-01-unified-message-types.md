@@ -1,5 +1,6 @@
 # Unified MIDI Message Types Implementation Plan
 
+**Status:** Shipped — unified message `type`s are in the current config schema.
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add Note and PC (Program Change) message type support to both firmware and GUI config editor, unified with the existing CC type and keytimes system from PR #50.

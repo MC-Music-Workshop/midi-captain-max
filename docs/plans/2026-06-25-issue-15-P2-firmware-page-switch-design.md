@@ -1,5 +1,6 @@
 # Issue #15 P2 — Firmware Runtime Page Switching (Design)
 
+**Status:** Shipped — runtime page switching is on `main`; #15 (Pages parity) remains open for later phases.
 **Date:** 2026-06-25
 **Branch:** `15-pages`
 **Phase:** P2 (firmware runtime). P1 (schema + migration) landed in `2f8146c` / `af80cfa`.

@@ -1,5 +1,6 @@
 # Device Reload Implementation Plan
 
+**Status:** Shipped — device reload is in the current firmware/editor.
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add "Reload Device" button to GUI that triggers CircuitPython to reload code.py and config.json without requiring manual power-cycle or serial console access.

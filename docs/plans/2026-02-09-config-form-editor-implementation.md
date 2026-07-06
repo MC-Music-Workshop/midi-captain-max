@@ -1,5 +1,6 @@
 # Config Form Editor Implementation Plan
 
+**Status:** Shipped — the form editor is the current editor UI.
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Replace JSON text editor with visual form UI featuring dropdowns, toggles, text fields, undo/redo, and device-specific handling.

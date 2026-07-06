@@ -1,5 +1,6 @@
 # Issue #15 P2 — Firmware Runtime Page Switching Implementation Plan
 
+**Status:** Shipped — runtime page switching is on `main`; #15 (Pages parity) remains open for later phases.
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add a runtime `switch_page(n)` to the firmware that re-renders the active page (buttons, LEDs, screen, encoder, expression) in RAM, plus per-page MIDI-channel resolution — without the device ever writing the config file.

@@ -10,6 +10,7 @@ on:
       # The live demo runs these firmware modules; redeploy when they change.
       - 'firmware/dev/core/button.py'
       - 'firmware/dev/core/colors.py'
+      - 'firmware/dev/core/display_model.py'
       - 'tools/sync-site-firmware.sh'
   schedule:
     - cron: '17 6 * * *'  # daily, keeps the Kanban snapshot fresh

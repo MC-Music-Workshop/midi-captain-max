@@ -6,6 +6,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-cp firmware/dev/core/button.py firmware/dev/core/colors.py site/firmware/
+cp firmware/dev/core/button.py firmware/dev/core/colors.py \
+   firmware/dev/core/display_model.py site/firmware/
 
-echo "Synced firmware/dev/core/{button,colors}.py -> site/firmware/"
+echo "Synced firmware/dev/core/{button,colors,display_model}.py -> site/firmware/"

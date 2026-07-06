@@ -939,7 +939,7 @@
   const PY_GLUE = `
 import json
 from button import ButtonState, KeytimesButtonState, dispatch_keytimes_events
-from colors import resolve_keytimes_render_color, get_color
+from display_model import keytimes_visual, button_visual, build_screen
 
 _kt = {}
 _btns = {}
@@ -952,34 +952,16 @@ def kt_create(bid, cfg_json):
         len(cfg.get("long") or []),
     ), cfg)
 
-def _render(st, cfg):
-    # Mirrors code.py _render_keytimes_led(): last_fired gates the layer, the
-    # label falls back long -> short -> button, and the label color is the
-    # same resolve at full brightness with a button-color fallback (#143/#157).
-    overlay = cfg.get("long_overlay", False)
-    rgb = resolve_keytimes_render_color(st.last_fired, st.short_color, st.short_dim,
-                                        st.long_color, st.long_dim,
-                                        cfg.get("color"), overlay)
-    if st.last_fired == "long":
-        label = (st.long_label or st.short_label or cfg.get("label", ""))[:6]
-    elif st.last_fired == "short":
-        label = (st.short_label or cfg.get("label", ""))[:6]
-    else:
-        label = cfg.get("label", "")[:6]
-    label_rgb = resolve_keytimes_render_color(st.last_fired, st.short_color, False,
-                                              st.long_color, False,
-                                              cfg.get("color"), overlay)
-    if not any(label_rgb):
-        label_rgb = get_color(cfg.get("color") or "white")
-    return {"rgb": list(rgb), "label": label, "label_rgb": list(label_rgb)}
-
 def kt_poll(bid, pressed, now):
+    # render is the firmware's own screen model (display_model.keytimes_visual):
+    # {text, label_color, box_color} — the same rules code.py's TFT renders.
     st, cfg = _kt[bid]
     events = st.tracker.update(bool(pressed), now)
     msgs = []
     if events:
         dispatch_keytimes_events(events, st, cfg, msgs.append)
-    return json.dumps({"events": events, "messages": msgs, "render": _render(st, cfg)})
+    return json.dumps({"events": events, "messages": msgs,
+                       "render": keytimes_visual(st, cfg)})
 
 def btn_create(bid, cc, mode, initial):
     _btns[bid] = ButtonState(cc, mode, bool(initial))
@@ -991,23 +973,37 @@ def btn_press(bid):
 def btn_release(bid):
     changed, state, value = _btns[bid].on_release()
     return json.dumps({"changed": changed, "state": state, "value": value})
+
+def screen_init(buttons_json, button_count):
+    # font height 20 = the shipped default config's "medium" size.
+    return json.dumps(build_screen(json.loads(buttons_json), button_count, 20,
+                                   False, "EXP1", "EXP2"))
+
+def screen_button(cfg_json, on):
+    return json.dumps(button_visual(json.loads(cfg_json), bool(on)))
 `;
+
+  // Format a 0xRRGGBB int (as produced by display_model / rgb_to_hex) as a
+  // CSS color.
+  const hexColor = (n) => `#${n.toString(16).padStart(6, "0")}`;
 
   // Wasm-backed keytimes engine: pointer events set a pressed flag; a
   // requestAnimationFrame loop polls PressTracker with real wall-clock time
   // (exactly how code.py's main loop drives it) while the switch is held.
-  function makeWasmKeytimes(py, bid, cfg, { col, screen, fs, status, active }, onMidi) {
+  // tft/tftIndex (optional): mirror this switch onto the on-page TFT canvas.
+  function makeWasmKeytimes(py, bid, cfg, { col, screen, fs, status, active }, onMidi, tft, tftIndex) {
     py.ktCreate(bid, JSON.stringify(cfg));
     let pressed = false, raf = null, last = null;
     const flags = { verb: false, shim: false }; // status readout mirror of CC 20/21
 
     function paint() {
       if (!last || (active && !active())) return;
-      const [r, g, b] = last.rgb;
-      const [lr, lg, lb] = last.label_rgb;
-      col.style.setProperty("--led", `rgb(${lr}, ${lg}, ${lb})`);
-      screen.textContent = last.label || cfg.label;
-      fs.classList.toggle("lit", (r || g || b) !== 0);
+      // last is display_model.keytimes_visual output: box_color is the LED/box
+      // color (0 = off), label_color the full-brightness glow used on the ring.
+      col.style.setProperty("--led", hexColor(last.label_color));
+      screen.textContent = last.text || cfg.label;
+      fs.classList.toggle("lit", last.box_color !== 0);
+      if (tft) tft.setButton(tftIndex, last);
       if (status) {
         status.textContent =
           `reverb ${flags.verb ? "on " : "off"} · shimmer ${flags.shim ? "on" : "off"}`;
@@ -1096,14 +1092,16 @@ def btn_release(bid):
         if (!r.ok) throw new Error(`${url}: ${r.status}`);
         return r.text();
       });
-      const [{ loadMicroPython }, buttonSrc, colorsSrc] = await Promise.all([
+      const [{ loadMicroPython }, buttonSrc, colorsSrc, displayModelSrc] = await Promise.all([
         import("./vendor/micropython/micropython.mjs"),
         fetchText("firmware/button.py"),
         fetchText("firmware/colors.py"),
+        fetchText("firmware/display_model.py"),
       ]);
       const mp = await loadMicroPython();
       mp.FS.writeFile("button.py", buttonSrc);
       mp.FS.writeFile("colors.py", colorsSrc);
+      mp.FS.writeFile("display_model.py", displayModelSrc);
       mp.runPython(PY_GLUE);
       const py = {
         ktCreate: mp.globals.get("kt_create"),
@@ -1111,6 +1109,8 @@ def btn_release(bid):
         btnCreate: mp.globals.get("btn_create"),
         btnPress: mp.globals.get("btn_press"),
         btnRelease: mp.globals.get("btn_release"),
+        screenInit: mp.globals.get("screen_init"),
+        screenButton: mp.globals.get("screen_button"),
       };
 
       // Swap the keytimes demos onto the firmware engine.

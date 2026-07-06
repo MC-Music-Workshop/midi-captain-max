@@ -70,6 +70,7 @@ New code belongs in `firmware/dev/` or new directories (never in `original_helmu
 | `firmware/dev/core/button.py` | `ButtonState`: toggle/momentary mode, keytimes cycling |
 | `firmware/dev/core/colors.py` | Color palette and `get_off_color()` |
 | `firmware/dev/core/display_model.py` | Pure TFT screen model: geometry, button/keytimes visuals — shared by `code.py`, the web demo (MicroPython wasm), and tests |
+| `firmware/dev/core/encoder.py` | Pure encoder value/slot logic (`EncoderState.turn()`) — shared by `code.py`, the web demo, and tests |
 | `firmware/dev/devices/{device}.py` | Per-device hardware constants |
 | `config.schema.json` | JSON Schema (draft-07) — single source of truth for config format |
 | `tools/deploy.sh` | Dev deploy to device (rsync, VERSION.txt, device detection) |

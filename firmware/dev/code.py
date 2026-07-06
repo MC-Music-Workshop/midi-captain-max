@@ -59,6 +59,7 @@ from core.config import (
 )
 from core.button import Switch, ButtonState, KeytimesButtonState, dispatch_keytimes_events
 from core.display_model import build_screen, button_visual, keytimes_visual
+from core.encoder import EncoderState
 from core.midi_rx import find_cc_rx_action
 from core.hid import dispatch_hid
 
@@ -392,8 +393,8 @@ else:
     encoder = None
     encoder_last_pos = 0
 
-# Will be set after config is loaded
-encoder_value = 0
+# EncoderState (value/slot logic) built per-page in switch_page(); None until then.
+encoder_state = None
 encoder_push_state = False  # For toggle mode
 
 # Expression pedals (STD10 only)
@@ -510,8 +511,6 @@ pc_flash_timers = [0.0] * BUTTON_COUNT  # Expiry time (monotonic) for PC button 
 hid_flash_timers = [0.0] * BUTTON_COUNT  # Same for HID buttons
 PC_FLASH_DURATION_MS = 200              # Default PC/HID button flash duration in ms
 
-encoder_value = ENC_INITIAL  # placeholder; switch_page() sets to per-page ENC_INITIAL
-encoder_slot = -1
 
 # =============================================================================
 # Display Setup
@@ -791,7 +790,7 @@ def switch_page(n):
     global ENC_PUSH_CHANNEL, ENC_PUSH_CC_ON, ENC_PUSH_CC_OFF, ENC_STEPS
     global enc_config, enc_push_config
     global exp_config, exp1_config, exp2_config, CC_EXP1, CC_EXP2, EXP1_CHANNEL, EXP2_CHANNEL
-    global button_states, keytimes_states, encoder_value, encoder_slot
+    global button_states, keytimes_states, encoder_state
 
     config["active_page"] = _clamp_page(n)
     active_page = get_active_page(config)
@@ -844,8 +843,7 @@ def switch_page(n):
     for i in range(BUTTON_COUNT):
         pc_flash_timers[i] = 0.0
         hid_flash_timers[i] = 0.0
-    encoder_value = ENC_INITIAL
-    encoder_slot = -1
+    encoder_state = EncoderState(CC_ENCODER, ENC_INITIAL, ENC_STEPS)
 
     if HAS_TFT:
         for i in range(BUTTON_COUNT):
@@ -1417,8 +1415,8 @@ def handle_encoder_button():
 
 def handle_encoder():
     """Handle rotary encoder."""
-    global encoder_last_pos, encoder_value, encoder_slot
-    
+    global encoder_last_pos
+
     if not ENC_ENABLED:
         return
 
@@ -1426,27 +1424,18 @@ def handle_encoder():
     if pos != encoder_last_pos:
         delta = pos - encoder_last_pos
         encoder_last_pos = pos
-        
-        # Update internal value (always 0-127)
-        encoder_value = max(0, min(127, encoder_value + delta))
-        
-        if ENC_STEPS and ENC_STEPS > 1:
-            # Stepped mode: calculate which slot we're in
-            # Slot boundaries: 0-25=slot0, 26-50=slot1, etc. for 5 slots
-            slot_size = 128 // ENC_STEPS
-            new_slot = min(encoder_value // slot_size, ENC_STEPS - 1)
-            
-            if new_slot != encoder_slot:
-                encoder_slot = new_slot
-                # Output CC is the slot number (0 to steps-1)
-                midi_send(ControlChange(CC_ENCODER, encoder_slot), channel=ENC_CHANNEL)
-                print(f"[ENCODER] Ch{ENC_CHANNEL+1} CC{CC_ENCODER}={encoder_slot} (slot)")
-                update_status(f"ENC slot {encoder_slot}")
-        else:
-            # Normal mode: send every change
-            midi_send(ControlChange(CC_ENCODER, encoder_value), channel=ENC_CHANNEL)
-            print(f"[ENCODER] Ch{ENC_CHANNEL+1} CC{CC_ENCODER}={encoder_value}")
-            update_status(f"ENC={encoder_value}")
+
+        # Value/slot rules live in core/encoder.py (unit-tested); turn() returns
+        # the CC to send (or None in stepped mode when the slot is unchanged).
+        msg = encoder_state.turn(delta)
+        if msg is not None:
+            midi_send(ControlChange(msg["cc"], msg["value"]), channel=ENC_CHANNEL)
+            if encoder_state.steps:
+                print(f"[ENCODER] Ch{ENC_CHANNEL+1} CC{msg['cc']}={msg['value']} (slot)")
+                update_status(f"ENC slot {msg['value']}")
+            else:
+                print(f"[ENCODER] Ch{ENC_CHANNEL+1} CC{msg['cc']}={msg['value']}")
+                update_status(f"ENC={msg['value']}")
 
 
 def handle_expression():

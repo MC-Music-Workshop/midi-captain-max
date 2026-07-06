@@ -115,7 +115,15 @@
       border: 3px solid #2e2e3e;
       position: relative;
       box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.6), 0 4px 10px rgba(0, 0, 0, 0.5);
+      cursor: grab;
+      touch-action: none;
+      transition: transform 0.08s linear, box-shadow 0.2s;
     }
+    .encoder:active { cursor: grabbing; }
+    .encoder.pushed {
+      box-shadow: inset 0 0 16px rgba(34, 211, 238, 0.5), 0 2px 6px rgba(0, 0, 0, 0.6);
+    }
+    .encoder:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
     /* knurled grip ring */
     .encoder::after {
       content: "";
@@ -524,7 +532,9 @@
     <div class="frow" id="frow-top"></div>
     <div class="frow frow-mid">
       <canvas id="tft" width="240" height="240" aria-label="Live rendering of the device's TFT screen" hidden></canvas>
-      <div class="encoder" aria-hidden="true"><span class="enc-dot"></span></div>
+      <div class="encoder" id="encoder" role="slider" tabindex="0"
+           aria-label="Rotary encoder: drag or scroll to turn (CC 11), click to push (CC 14)"
+           aria-valuemin="0" aria-valuemax="127" aria-valuenow="64"><span class="enc-dot"></span></div>
     </div>
     <div class="frow" id="frow-bottom"></div>
   </div>
@@ -1010,9 +1020,11 @@
 import json
 from button import ButtonState, KeytimesButtonState, dispatch_keytimes_events
 from display_model import keytimes_visual, button_visual, build_screen
+from encoder import EncoderState
 
 _kt = {}
 _btns = {}
+_enc = {}
 
 def kt_create(bid, cfg_json):
     cfg = json.loads(cfg_json)
@@ -1051,6 +1063,13 @@ def screen_init(buttons_json, button_count):
 
 def screen_button(cfg_json, on):
     return json.dumps(button_visual(json.loads(cfg_json), bool(on)))
+
+def enc_create(bid, cc, initial, steps):
+    _enc[bid] = EncoderState(cc, initial, steps if steps else None)
+
+def enc_turn(bid, delta):
+    msg = _enc[bid].turn(delta)
+    return json.dumps({"msg": msg, "value": _enc[bid].value})
 `;
 
   // Format a 0xRRGGBB int (as produced by display_model / rgb_to_hex) as a
@@ -1208,16 +1227,18 @@ def screen_button(cfg_json, on):
         if (!r.ok) throw new Error(`${url}: ${r.status}`);
         return r.text();
       });
-      const [{ loadMicroPython }, buttonSrc, colorsSrc, displayModelSrc] = await Promise.all([
+      const [{ loadMicroPython }, buttonSrc, colorsSrc, displayModelSrc, encoderSrc] = await Promise.all([
         import("./vendor/micropython/micropython.mjs"),
         fetchText("firmware/button.py"),
         fetchText("firmware/colors.py"),
         fetchText("firmware/display_model.py"),
+        fetchText("firmware/encoder.py"),
       ]);
       const mp = await loadMicroPython();
       mp.FS.writeFile("button.py", buttonSrc);
       mp.FS.writeFile("colors.py", colorsSrc);
       mp.FS.writeFile("display_model.py", displayModelSrc);
+      mp.FS.writeFile("encoder.py", encoderSrc);
       mp.runPython(PY_GLUE);
       const py = {
         ktCreate: mp.globals.get("kt_create"),
@@ -1227,6 +1248,8 @@ def screen_button(cfg_json, on):
         btnRelease: mp.globals.get("btn_release"),
         screenInit: mp.globals.get("screen_init"),
         screenButton: mp.globals.get("screen_button"),
+        encCreate: mp.globals.get("enc_create"),
+        encTurn: mp.globals.get("enc_turn"),
       };
 
       // Build the on-page TFT from the firmware's screen model. It mirrors the
@@ -1302,6 +1325,67 @@ def screen_button(cfg_json, on):
           setTimeout(() => tftPlain(i, PAGES[p][i].color, false), 180);
         },
       };
+
+      // Encoder: rotation runs the firmware's EncoderState (CC 11, init 64),
+      // push runs the real ButtonState (CC 14, momentary) — the shipped default
+      // config's encoder mapping (config.json). Drag or scroll to turn, click
+      // to push; keyboard arrows turn, Enter/Space push.
+      py.encCreate("enc", 11, 64, 0);          // steps 0 => normal mode
+      py.btnCreate("enc_push", 14, "momentary", false);
+      const encEl = document.getElementById("encoder");
+      let encAngle = (64 / 127) * 300 - 150;   // map 0-127 -> -150..+150deg
+      const paintEnc = (value) => {
+        encAngle = (value / 127) * 300 - 150;
+        encEl.style.transform = `rotate(${encAngle}deg)`;
+        encEl.setAttribute("aria-valuenow", value);
+      };
+      paintEnc(64);
+      const encTurn = (delta) => {
+        const res = JSON.parse(py.encTurn("enc", delta));
+        paintEnc(res.value);
+        if (res.msg) heroMidi(res.msg);        // logs + status (TX CC11=..)
+      };
+      const encPush = (down) => {
+        const r = JSON.parse(down ? py.btnPress("enc_push") : py.btnRelease("enc_push"));
+        encEl.classList.toggle("pushed", down);
+        heroMidi({ type: "cc", cc: 14, value: r.value });
+      };
+      // Drag to rotate; a click that barely moves is a push instead.
+      const DETENT_PX = 14;
+      let dragging = false, lastX = 0, acc = 0, moved = 0;
+      encEl.addEventListener("pointerdown", (e) => {
+        dragging = true; lastX = e.clientX; acc = 0; moved = 0;
+        if (e.pointerId != null && encEl.setPointerCapture) {
+          try { encEl.setPointerCapture(e.pointerId); } catch (_) {}
+        }
+        e.preventDefault();
+      });
+      encEl.addEventListener("pointermove", (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - lastX;
+        lastX = e.clientX; acc += dx; moved += Math.abs(dx);
+        while (acc >= DETENT_PX) { acc -= DETENT_PX; encTurn(1); }
+        while (acc <= -DETENT_PX) { acc += DETENT_PX; encTurn(-1); }
+      });
+      const endDrag = () => {
+        if (!dragging) return;
+        dragging = false;
+        if (moved < 4) { encPush(true); setTimeout(() => encPush(false), 140); } // treat as a push
+      };
+      encEl.addEventListener("pointerup", endDrag);
+      encEl.addEventListener("pointercancel", () => { dragging = false; });
+      encEl.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        encTurn(e.deltaY < 0 ? 1 : -1);
+      }, { passive: false });
+      encEl.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowUp" || e.key === "ArrowRight") { e.preventDefault(); encTurn(1); }
+        else if (e.key === "ArrowDown" || e.key === "ArrowLeft") { e.preventDefault(); encTurn(-1); }
+        else if (e.key === " " || e.key === "Enter") { e.preventDefault(); encPush(true); }
+      });
+      encEl.addEventListener("keyup", (e) => {
+        if (e.key === " " || e.key === "Enter") encPush(false);
+      });
 
       document.getElementById("kt-live").hidden = false;
       showMidi.idle("stomp the switch — every message here comes straight out of the firmware's dispatch code");

@@ -10,13 +10,13 @@ import type {
 export type { MIDICaptainConfig as MidiCaptainConfig };
 export type { ButtonConfig, ButtonColor };
 export type {
-  Page,
   StateOverride,
   EncoderConfig,
   EncoderPush,
   ExpressionConfig,
   ExpressionPedals,
   DisplayConfig,
+  PageControl,
 } from './types.generated';
 
 // Keytimes entries/messages carry an optional ephemeral `__uiId` (UI-only, not persisted)
@@ -24,6 +24,11 @@ export type {
 // normalizeConfig before write — never reaches disk.
 export type KeytimesEntry = import('./types.generated').KeytimesEntry & { __uiId?: number };
 export type KeytimesMessage = import('./types.generated').KeytimesMessage & { __uiId?: number };
+
+// Pages carry the same optional ephemeral `__uiId` as keytimes entries so the
+// PageBar {#each} keys by stable identity across structuredClone edits.
+// Stripped by normalizeConfig before write — never reaches disk.
+export type Page = import('./types.generated').Page & { __uiId?: number };
 
 // Derived from generated types — no manual sync needed
 export type ButtonMode = NonNullable<ButtonConfig['mode']>;

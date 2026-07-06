@@ -349,6 +349,40 @@ class TestValidateButton:
         assert btn["states"][1]["pc_step"] == 10
 
 
+class TestCcOnOffCollisionWarning:
+    """cc_on == cc_off makes the RX off-branch dead (#163): cc_on is matched
+    first in ButtonState.on_midi_receive, so the button can never be driven
+    off by that value. Config is accepted (valid MIDI bytes) but warned."""
+
+    def test_warns_when_cc_on_equals_cc_off(self, capsys):
+        validate_button({"cc_on": 50, "cc_off": 50}, index=2)
+        out = capsys.readouterr().out
+        assert "[CONFIG WARN]" in out
+        assert "cc_on" in out
+        assert "cc_off" in out
+        assert "Button 3" in out  # 1-indexed, matching existing warnings
+
+    def test_no_warning_for_distinct_values(self, capsys):
+        validate_button({"cc_on": 100, "cc_off": 20}, index=0)
+        assert "[CONFIG WARN]" not in capsys.readouterr().out
+
+    def test_no_warning_for_defaults(self, capsys):
+        validate_button({}, index=0)
+        assert "[CONFIG WARN]" not in capsys.readouterr().out
+
+    def test_no_warning_for_non_cc_types(self, capsys):
+        """pc/note buttons don't carry cc_on/cc_off; stray equal values on the
+        raw dict must not warn."""
+        validate_button({"type": "pc", "cc_on": 50, "cc_off": 50}, index=0)
+        assert "[CONFIG WARN]" not in capsys.readouterr().out
+
+    def test_collision_still_validates(self, capsys):
+        """Warning only — the config is not rejected or altered."""
+        btn = validate_button({"cc_on": 50, "cc_off": 50}, index=0)
+        assert btn["cc_on"] == 50
+        assert btn["cc_off"] == 50
+
+
 class TestButtonMessageTypes:
     """Tests for multi-type button message support."""
 

@@ -101,10 +101,11 @@ function _nextUiId(): number {
   return ++_uiIdCounter;
 }
 
-// Walk a config and assign `__uiId` to any keytimes entry/message that lacks one.
+// Walk a config and assign `__uiId` to any page / keytimes entry / message that lacks one.
 // Mutates in place; safe to call on a freshly structuredCloned config.
 function _attachUiIds(cfg: MidiCaptainConfig): void {
   for (const page of cfg.pages ?? []) {
+    if (typeof (page as Page).__uiId !== 'number') (page as Page).__uiId = _nextUiId();
     for (const btn of page.buttons) {
       for (const cycle of ['short', 'long'] as const) {
         const entries = (btn as unknown as Record<string, unknown>)[cycle];
@@ -247,16 +248,17 @@ function setNestedValue(obj: any, path: string, value: any) {
   }
 }
 
-export function updateField(path: string, value: any) {
-  // Clear existing debounce
+// Shared write path: set an absolute config path, validate, debounce a history
+// checkpoint. updateField routes control-surface paths through the active-page
+// regex; updatePageField prefixes explicitly (D6 — see PAGE_SCOPED_PATH note).
+function _updateAtPath(absolutePath: string, value: any) {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
   }
-  
-  // Update value immediately
+
   formState.update(state => {
     const newConfig = structuredClone(state.config);
-    setNestedValue(newConfig, pageScopedPath(newConfig, path), value);
+    setNestedValue(newConfig, absolutePath, value);
 
     return {
       ...state,
@@ -264,14 +266,24 @@ export function updateField(path: string, value: any) {
       isDirty: true,
     };
   });
-  
-  // Validate after update
+
   validate();
-  
-  // Debounce history push
+
   debounceTimer = setTimeout(() => {
     formState.update(state => pushHistory(state));
   }, DEBOUNCE_MS);
+}
+
+export function updateField(path: string, value: any) {
+  const cfg = get(formState).config;
+  _updateAtPath(pageScopedPath(cfg, path), value);
+}
+
+// Explicit per-page write (D6): always targets the active page, regardless of
+// field name. Used by per-page UI (name; display override/global_channel in P4c).
+export function updatePageField(path: string, value: any) {
+  const cfg = get(formState).config;
+  _updateAtPath(`pages[${activePageIndex(cfg)}].${path}`, value);
 }
 
 // --- Keytimes-mode helpers (mode: "keytimes" cycle/message mutations) ---
@@ -538,6 +550,86 @@ export function setDevice(deviceType: DeviceType) {
   });
 }
 
+// --- Page CRUD helpers (#15 P4a) ---
+//
+// Each helper is one immediate history checkpoint (like syncButtonStates), so
+// undo/redo steps page-wise. A pending debounced field-edit checkpoint is
+// folded into the CRUD checkpoint (its config state is included in the push).
+// `mutate` returns false to abort (no state change, no dirty, no history).
+
+export const PAGE_CAP = 20;
+
+function _commitConfigMutation(mutate: (cfg: MidiCaptainConfig) => boolean | void) {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  formState.update(state => {
+    const newConfig = structuredClone(state.config);
+    if (mutate(newConfig) === false) return state;
+    _attachUiIds(newConfig);
+    return pushHistory({ ...state, config: newConfig });
+  });
+  validate();
+}
+
+export function setActivePage(index: number) {
+  _commitConfigMutation(cfg => {
+    const clamped = Math.max(0, Math.min((cfg.pages?.length ?? 1) - 1, index));
+    if (clamped === (cfg.active_page ?? 0)) return false;
+    cfg.active_page = clamped;
+  });
+}
+
+export function addPage() {
+  _commitConfigMutation(cfg => {
+    if (cfg.pages.length >= PAGE_CAP) return false;
+    // Size the new page to the device (reuse the setDevice sizing table);
+    // fall back to the active page's shape if device is somehow unset.
+    const count = cfg.device
+      ? DEVICE_BUTTON_COUNT[cfg.device]
+      : activePage(cfg).buttons.length;
+    cfg.pages.push({ buttons: createDefaultButtons(0, count - 1) });
+    cfg.active_page = cfg.pages.length - 1;
+  });
+}
+
+export function duplicatePage(index: number) {
+  _commitConfigMutation(cfg => {
+    if (cfg.pages.length >= PAGE_CAP) return false;
+    const src = cfg.pages[index];
+    if (!src) return false;
+    const clone = structuredClone(src);
+    // The clone carries the source's __uiIds (page + nested keytimes) — strip
+    // them so _attachUiIds stamps a fresh identity for every level.
+    _stripUiIds(clone);
+    cfg.pages.splice(index + 1, 0, clone);
+    cfg.active_page = index + 1;
+  });
+}
+
+export function deletePage(index: number) {
+  _commitConfigMutation(cfg => {
+    if (cfg.pages.length <= 1) return false; // D3: never produce an unsaveable config
+    if (!cfg.pages[index]) return false;
+    cfg.pages.splice(index, 1);
+    const ap = cfg.active_page ?? 0;
+    cfg.active_page = Math.min(ap > index ? ap - 1 : ap, cfg.pages.length - 1);
+  });
+}
+
+export function movePage(from: number, to: number) {
+  _commitConfigMutation(cfg => {
+    const len = cfg.pages.length;
+    if (from === to || from < 0 || to < 0 || from >= len || to >= len) return false;
+    // Track the active page by object identity so it survives the reorder.
+    const activeObj = cfg.pages[activePageIndex(cfg)];
+    const [moved] = cfg.pages.splice(from, 1);
+    cfg.pages.splice(to, 0, moved);
+    cfg.active_page = cfg.pages.indexOf(activeObj);
+  });
+}
+
 // Strip type-specific fields that don't belong to the button's current type.
 // Prevents stale cc/note/program/etc. from accumulating in the saved JSON when
 // the user switches a button's type.
@@ -644,6 +736,9 @@ export function normalizeConfig(cfg: MidiCaptainConfig): MidiCaptainConfig {
       const p: Page = { ...page, buttons: page.buttons.map(normalizeButton) };
       if (p.display && Object.values(p.display).every(v => v === undefined)) {
         delete p.display;
+      }
+      if (p.name === '') {
+        delete p.name;
       }
       return p;
     }),

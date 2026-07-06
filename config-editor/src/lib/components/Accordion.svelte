@@ -64,6 +64,7 @@
     font-size: 1rem;
     font-weight: 600;
     text-align: left;
+    color: #333; /* header bg is hardcoded light; see .accordion-content note */
   }
   
   .accordion-header:hover {
@@ -97,5 +98,10 @@
   .accordion-content {
     padding: 1rem;
     background: white;
+    /* The card is hardcoded light (as is most content inside it), so text
+       must not inherit the body's dark-mode --text-primary (#d4d4d4), which
+       renders field labels light-on-white. Pin dark text to match until a
+       proper theme pass converts these components to CSS vars. */
+    color: #333;
   }
 </style>

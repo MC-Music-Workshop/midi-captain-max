@@ -134,12 +134,20 @@ class ButtonState:
     
     def on_midi_receive(self, value, cc_on=127, cc_off=0):
         """Handle incoming MIDI CC value (host override).
-        
+
+        Non-select buttons only: select-mode RX matches exact cc_on in
+        core/midi_rx.py (find_cc_rx_action) and never reaches here — a
+        deliberate policy split; change matching semantics in BOTH places.
+        Values matching neither cc_on nor cc_off fall back to the legacy
+        >63 threshold (so hosts sending generic 0/127 keep working with
+        custom cc_on/cc_off); cc_on is checked first, so cc_on == cc_off
+        can never turn the button off (warned at boot by validate_button).
+
         Args:
             value: MIDI CC value (0-127)
             cc_on: Configured ON value (exact match turns LED on)
             cc_off: Configured OFF value (exact match turns LED off)
-            
+
         Returns:
             New on/off state after applying the received value
         """

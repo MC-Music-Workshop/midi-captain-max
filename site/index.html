@@ -533,7 +533,7 @@
     <div class="frow frow-mid">
       <canvas id="tft" width="240" height="240" aria-label="Live rendering of the device's TFT screen" hidden></canvas>
       <div class="encoder" id="encoder" role="slider" tabindex="0"
-           aria-label="Rotary encoder: drag or scroll to turn (CC 11), click to push (CC 14)"
+           aria-label="Rotary encoder: drag up/down or scroll to turn (CC 11), click to push (CC 14)"
            aria-valuemin="0" aria-valuemax="127" aria-valuenow="64"><span class="enc-dot"></span></div>
     </div>
     <div class="frow" id="frow-bottom"></div>
@@ -1350,11 +1350,12 @@ def enc_turn(bid, delta):
         encEl.classList.toggle("pushed", down);
         heroMidi({ type: "cc", cc: 14, value: r.value });
       };
-      // Drag to rotate; a click that barely moves is a push instead.
+      // Drag up/down to rotate (up = increase, the usual knob gesture); a click
+      // that barely moves is a push instead.
       const DETENT_PX = 14;
-      let dragging = false, lastX = 0, acc = 0, moved = 0;
+      let dragging = false, lastY = 0, acc = 0, moved = 0;
       encEl.addEventListener("pointerdown", (e) => {
-        dragging = true; lastX = e.clientX; acc = 0; moved = 0;
+        dragging = true; lastY = e.clientY; acc = 0; moved = 0;
         if (e.pointerId != null && encEl.setPointerCapture) {
           try { encEl.setPointerCapture(e.pointerId); } catch (_) {}
         }
@@ -1362,8 +1363,8 @@ def enc_turn(bid, delta):
       });
       encEl.addEventListener("pointermove", (e) => {
         if (!dragging) return;
-        const dx = e.clientX - lastX;
-        lastX = e.clientX; acc += dx; moved += Math.abs(dx);
+        const dy = lastY - e.clientY;   // up (smaller clientY) => increase
+        lastY = e.clientY; acc += dy; moved += Math.abs(dy);
         while (acc >= DETENT_PX) { acc -= DETENT_PX; encTurn(1); }
         while (acc <= -DETENT_PX) { acc += DETENT_PX; encTurn(-1); }
       });

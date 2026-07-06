@@ -465,7 +465,11 @@
     <div class="frow" id="frow-top"></div>
     <div class="frow" id="frow-bottom"></div>
   </div>
-  <p class="hint">Based on the firmware's default config. Tap <strong>VERB</strong> for reverb, hold it ½&nbsp;s for shimmer; <strong>PAGE</strong> flips through demo pages. Click any label to rename it.</p>
+  <p class="hint">Based on the firmware's default config. Tap <strong>VERB</strong> for reverb, hold it ½&nbsp;s for shimmer; hold <strong>TREM</strong> ½&nbsp;s to flip through demo pages. Click any label to rename it.</p>
+  <details class="kt-midi-log">
+    <summary>Live MIDI out</summary>
+    <pre id="hero-midi-lines">loading the firmware engine…</pre>
+  </details>
 
   <div class="cta-row">
     <a class="btn btn-primary" href="#download">Download</a>
@@ -710,17 +714,19 @@
   }
 
   const PAGES = [
-    [ // page 1 — the shipped default config (SHIM upgraded to keytimes)
+    [ // page 1 — mirrors firmware/dev/config.json (labels, colors, modes;
+      // its CCs are 20-29, i.e. exactly 20 + i) with two demo upgrades:
+      // SHIM -> keytimes VERB/SHIM, and TREM carries a long-press page_inc.
       { label: "TSC",   color: "green" },
       { label: "CHOR",  color: "blue" },
       { label: "DELAY", color: "yellow" },
       { label: "VERB",  color: "white", kt: true },
-      { label: "PAGE",  color: "white", page: true },
+      { label: "TREM",  color: "white", page: true },
       { label: "WOW",   color: "orange" },
       { label: "OCT",   color: "cyan" },
       { label: "FREQ",  color: "red" },
       { label: "PLATE", color: "purple" },
-      { label: "ROOM",  color: "white" },
+      { label: "ROOM",  color: "white", tap: true },
     ],
     [ // page 2 — amp channels / program changes
       { label: "CLEAN", color: "green" },
@@ -784,6 +790,37 @@
   };
   wireSwitch(cols[3].fs, heroKt);
 
+  // Page switching is a long press (page_inc rides a switch's long slot in
+  // the wasm engine; this JS engine is the fallback and the pages-2/3 path).
+  function makePageHold(fs) {
+    let timer = null, held = false;
+    return {
+      press() {
+        if (held) return;
+        held = true;
+        timer = setTimeout(() => {
+          held = false;
+          page = (page + 1) % PAGES.length;
+          renderPage();
+          blip(fs);
+        }, LONG_MS);
+      },
+      release() {
+        if (!held) return;
+        held = false;
+        clearTimeout(timer);
+        blip(fs); // short tap: just acknowledge
+      },
+      cancel() {
+        held = false;
+        clearTimeout(timer);
+      },
+      update() {},
+    };
+  }
+  const heroPage = { current: makePageHold(cols[4].fs) };
+  wireSwitch(cols[4].fs, heroPage);
+
   // Toggle/tap state for the plain hero switches. The JS core mirrors the
   // firmware's toggle rule (litSets holds the on/off truth); the wasm engine
   // swaps in the firmware's ButtonState per switch.
@@ -806,22 +843,18 @@
       screen.textContent = def.label;
       fs.classList.toggle("lit", litSets[page].has(i));
       const kind = def.kt ? "tap for reverb, hold for shimmer"
-        : def.page ? "next page" : def.tap ? "tap" : "toggle";
+        : def.page ? "hold half a second for next page" : def.tap ? "tap" : "toggle";
       fs.setAttribute("aria-label", `Footswitch ${i + 1}: ${def.label} (${kind})`);
     });
     if (PAGES[page][3].kt) heroKt.current.update();
+    if (PAGES[page][4].page) heroPage.current.update();
   }
 
   cols.forEach(({ fs }, i) => {
     fs.addEventListener("click", () => {
       const def = PAGES[page][i];
-      if (def.kt) return; // handled by the keytimes engine
-      if (def.page) {
-        // Page switching lives in code.py, not button.py — stays JS.
-        page = (page + 1) % PAGES.length;
-        renderPage();
-        blip(fs);
-      } else if (def.tap) {
+      if (def.kt || def.page) return; // handled by the press-and-hold engines
+      if (def.tap) {
         plainCore.current.tap(page, i);
         blip(fs);
       } else {
@@ -875,6 +908,30 @@
   };
   document.getElementById("kt-config-view").textContent =
     JSON.stringify(KT_CONFIG, null, 2);
+
+  // Hero variant of the same cycles, retuned so the readout doesn't collide
+  // with the default config's CCs: reverb on CC 23 (the SHIM switch's real
+  // CC), shimmer on CC 30 (unused by the default config's 20-29).
+  const KT_CONFIG_HERO = JSON.parse(JSON.stringify(KT_CONFIG));
+  KT_CONFIG_HERO.short.forEach((e) => e.up.forEach((m) => { m.cc = 23; }));
+  KT_CONFIG_HERO.long.forEach((e) => e.down.forEach((m) => { m.cc = 30; }));
+
+  // The default config has no page change assigned; the demo rides one on
+  // TREM's long press. Short cycle reproduces TREM's momentary behavior
+  // (down/up slots of one entry); the long entry fires page_inc and releases
+  // the tremolo CC on long_up so a page flip never leaves CC 24 hanging.
+  const TREM_CONFIG = {
+    label: "TREM",
+    color: "white",
+    mode: "keytimes",
+    long_press_threshold_ms: LONG_MS,
+    short: [
+      { down: [{ type: "cc", cc: 24, value: 127 }], up: [{ type: "cc", cc: 24, value: 0 }] },
+    ],
+    long: [
+      { down: [{ type: "page_inc" }], up: [{ type: "cc", cc: 24, value: 0 }] },
+    ],
+  };
 
   // Python glue run inside MicroPython: exposes the firmware's PressTracker /
   // dispatch_keytimes_events / ButtonState behind JSON-string functions so
@@ -984,29 +1041,53 @@ def btn_release(bid):
     return { update: paint, press, release, cancel: release };
   }
 
-  // Live MIDI readout under the playground: every message here came out of
-  // dispatch_keytimes_events() in the real button.py. One-liner flashes the
-  // latest message; the expandable "Live MIDI out" panel keeps a running log.
-  const midiEl = document.getElementById("kt-midi");
-  const midiLog = document.getElementById("kt-midi-lines");
-  let midiTimer = null, midiCount = 0;
-  function showMidi(m) {
-    const txt = m.type === "cc" ? `CC ${m.cc} = ${m.value}`
-      : m.type === "pc" ? `PC ${m.program}`
-      : m.type === "note" ? `Note ${m.note}`
-      : m.type;
-    midiEl.textContent = `→ ${txt}`;
-    midiEl.classList.add("flash");
-    clearTimeout(midiTimer);
-    midiTimer = setTimeout(() => midiEl.classList.remove("flash"), 400);
+  // Live MIDI readouts: every message here came out of the real button.py
+  // (dispatch_keytimes_events or ButtonState). Each expandable "Live MIDI
+  // out" panel keeps a numbered newest-first log; the playground also
+  // flashes the latest message on a one-liner. fn.idle(text) sets
+  // placeholder copy without disturbing an already-populated log.
+  function makeMidiLog(logEl, flashEl) {
+    let count = 0, timer = null;
+    function fn(m) {
+      const txt = m.type === "cc" ? `CC ${m.cc} = ${m.value}`
+        : m.type === "pc" ? `PC ${m.program}`
+        : m.type === "note" ? `Note ${m.note}`
+        : m.type === "page_inc" ? `page +${m.page_step || 1}`
+        : m.type === "page_dec" ? `page -${m.page_step || 1}`
+        : m.type === "page_jump" ? `page = ${(m.page || 0) + 1}`
+        : m.type;
+      if (flashEl) {
+        flashEl.textContent = `→ ${txt}`;
+        flashEl.classList.add("flash");
+        clearTimeout(timer);
+        timer = setTimeout(() => flashEl.classList.remove("flash"), 400);
+      }
+      if (count === 0) logEl.textContent = "";
+      count++;
+      const line = document.createElement("span");
+      line.className = "sent";
+      line.textContent = `${String(count).padStart(3, " ")}  → ${txt}\n`;
+      logEl.prepend(line);
+      while (logEl.childNodes.length > 12) logEl.lastChild.remove();
+    }
+    fn.idle = (text) => { if (count === 0) logEl.textContent = text; };
+    return fn;
+  }
+  const showMidi = makeMidiLog(
+    document.getElementById("kt-midi-lines"),
+    document.getElementById("kt-midi"));
+  const heroMidiLog = makeMidiLog(document.getElementById("hero-midi-lines"));
 
-    if (midiCount === 0) midiLog.textContent = "";
-    midiCount++;
-    const line = document.createElement("span");
-    line.className = "sent";
-    line.textContent = `${String(midiCount).padStart(3, " ")}  → ${txt}\n`;
-    midiLog.prepend(line);
-    while (midiLog.childNodes.length > 12) midiLog.lastChild.remove();
+  // Hero messages can carry page changes: mirror code.py's deferred page
+  // switch (resolve_page_target) before logging.
+  function heroMidi(m) {
+    if (m.type === "page_inc" || m.type === "page_dec" || m.type === "page_jump") {
+      if (m.type === "page_inc") page = (page + (m.page_step || 1)) % PAGES.length;
+      else if (m.type === "page_dec") page = (page - (m.page_step || 1) + PAGES.length) % PAGES.length;
+      else page = Math.max(0, Math.min(PAGES.length - 1, m.page || 0));
+      renderPage();
+    }
+    heroMidiLog(m);
   }
 
   async function bootFirmwareEngine() {
@@ -1034,15 +1115,33 @@ def btn_release(bid):
 
       // Swap the keytimes demos onto the firmware engine.
       heroKt.current.cancel();
-      heroKt.current = makeWasmKeytimes(py, "hero", KT_CONFIG, {
+      heroKt.current = makeWasmKeytimes(py, "hero", KT_CONFIG_HERO, {
         ...cols[3],
         active: () => PAGES[page][3].kt === true,
-      });
+      }, heroMidi);
       pgKt.current.cancel();
       pgKt.current = makeWasmKeytimes(py, "pg", KT_CONFIG, pgKtParts, showMidi);
 
+      // TREM (page 1) runs its keytimes config — tap = momentary tremolo,
+      // hold = page_inc; on the demo-only pages 2/3 the JS page-hold stays.
+      heroPage.current.cancel();
+      const pageHoldJs = makePageHold(cols[4].fs);
+      const tremEngine = makeWasmKeytimes(py, "trem", TREM_CONFIG, {
+        ...cols[4],
+        active: () => PAGES[page][4].page === true && page === 0,
+      }, heroMidi);
+      let engaged = null; // engine captured at press so a page flip mid-hold can't strand a release
+      heroPage.current = {
+        press() { engaged = page === 0 ? tremEngine : pageHoldJs; engaged.press(); },
+        release() { (engaged || pageHoldJs).release(); engaged = null; },
+        cancel() { (engaged || pageHoldJs).cancel(); engaged = null; },
+        update() { if (page === 0) tremEngine.update(); },
+      };
+
       // Route the plain toggle/tap switches through the firmware's
       // ButtonState, seeded from whatever the user already toggled.
+      // CC 20 + i is the shipped default config's real mapping on page 1
+      // (config.json assigns CCs 20-29 in order).
       PAGES.forEach((defs, p) => defs.forEach((def, i) => {
         if (def.kt || def.page) return;
         py.btnCreate(`b${p}_${i}`, 20 + i, def.tap ? "momentary" : "toggle",
@@ -1052,24 +1151,26 @@ def btn_release(bid):
         toggle(p, i) {
           const res = JSON.parse(py.btnPress(`b${p}_${i}`));
           py.btnRelease(`b${p}_${i}`);
+          heroMidiLog({ type: "cc", cc: 20 + i, value: res.value });
           return res.state;
         },
         tap(p, i) {
-          py.btnPress(`b${p}_${i}`);
-          py.btnRelease(`b${p}_${i}`);
+          const down = JSON.parse(py.btnPress(`b${p}_${i}`));
+          heroMidiLog({ type: "cc", cc: 20 + i, value: down.value });
+          const up = JSON.parse(py.btnRelease(`b${p}_${i}`));
+          heroMidiLog({ type: "cc", cc: 20 + i, value: up.value });
         },
       };
 
       document.getElementById("kt-live").hidden = false;
-      if (midiCount === 0) {
-        midiLog.textContent = "stomp the switch — every message here comes straight out of the firmware's dispatch code";
-      }
+      showMidi.idle("stomp the switch — every message here comes straight out of the firmware's dispatch code");
+      heroMidiLog.idle("stomp any switch — real MIDI from the firmware's ButtonState and keytimes dispatch");
     } catch (e) {
       // JS fallback engines stay active.
       console.warn("firmware wasm engine unavailable, using JS fallback:", e);
-      if (midiCount === 0) {
-        midiLog.textContent = "(unavailable — the wasm firmware engine couldn't load in this browser/session, so the demo is on the JS fallback)";
-      }
+      const note = "(unavailable — the wasm firmware engine couldn't load in this browser/session, so the demo is on the JS fallback)";
+      showMidi.idle(note);
+      heroMidiLog.idle(note);
     }
   }
   if (document.readyState === "complete") bootFirmwareEngine();

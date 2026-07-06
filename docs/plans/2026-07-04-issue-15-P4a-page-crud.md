@@ -149,6 +149,8 @@ In `config-editor/src/lib/formStore.ts`, at the top of the `for (const page of c
     if (typeof page.__uiId !== 'number') page.__uiId = _nextUiId();
 ```
 
+Also update the function's doc comment (line 104-105) — it now stamps pages too. Change "assign `__uiId` to any keytimes entry/message that lacks one" to "assign `__uiId` to any page / keytimes entry / message that lacks one".
+
 (No cast needed — `formStore.ts` already imports `Page` from `./types`, which is now the extended type, and `cfg.pages` elements resolve to it via `MidiCaptainConfig`... **verify with svelte-check in Step 6**; if the generated `MIDICaptainConfig.pages` element type doesn't pick up the alias, write `(page as Page).__uiId` instead.)
 
 **Step 5: Run tests to verify they pass**
@@ -748,7 +750,7 @@ This is a mechanical extraction. Add `Page` to the type import (line 1):
 import type { MidiCaptainConfig, Page } from './types';
 ```
 
-Create `validatePage` containing everything in `validateConfig` that reads page data — i.e. move lines 115-420 (device-specific checks, buttons loop, encoder, expression) verbatim into it, replacing every `config.device` with `device`:
+Create `validatePage` containing everything in `validateConfig` that reads **page** data — i.e. move the device-specific chain + buttons loop + encoder + expression (lines 115-160, 168-420) into it, replacing every `config.device` with `device`. **Do NOT move the `usb_drive_name` block (lines 162-166)** — it is device-wide, not page-scoped: it stays in `validateConfig`. Moving it would break compile (`validatePage` has no `config` in scope) and double-validate it per page:
 
 ```ts
 // Validate one page's control-surface data against the device. Keys are
@@ -850,6 +852,8 @@ git commit -m "Extract validatePage; add validateAllPages summary + page-name le
 ### Task 10: Save flow blocks on any page failing
 
 Wire `validateAllPages` into `saveToDevice` and surface the lines in the existing footer error list (`stores.ts` `validationErrors: string[]` — currently never populated; the footer render at `+page.svelte:402-411` already exists).
+
+> **Two stores share the name `validationErrors` — do not cross the imports.** `stores.ts` exports `writable<string[]>` (the footer list, written here). `formStore.ts` exports a derived `Map<string, string>` (the inline active-page errors, read by PageBar via `.get('name')` in Task 12). `+page.svelte` must import the string[] one from `$lib/stores`; PageBar must import the Map one from `$lib/formStore`. Same identifier, different type — mixing them fails type-check.
 
 **Files:**
 - Modify: `config-editor/src/routes/+page.svelte:199-210` (`saveToDevice`)

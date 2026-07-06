@@ -41,7 +41,7 @@ from adafruit_midi.note_off import NoteOff
 from adafruit_midi.system_exclusive import SystemExclusive
 
 # Import core modules (testable logic)
-from core.colors import COLORS, get_color, dim_color, rgb_to_hex, get_off_color, get_off_color_for_display, compute_keytimes_led_color, resolve_keytimes_render_color
+from core.colors import COLORS, get_color, dim_color, rgb_to_hex, get_off_color, compute_keytimes_led_color, resolve_keytimes_render_color
 from core.config import (
     load_config as _load_config_from_file,
     validate_config,
@@ -58,6 +58,7 @@ from core.config import (
     get_dev_mode,
 )
 from core.button import Switch, ButtonState, KeytimesButtonState, dispatch_keytimes_events
+from core.display_model import build_screen, button_visual, keytimes_visual
 from core.hid import dispatch_hid
 
 # =============================================================================
@@ -531,100 +532,71 @@ if HAS_TFT:
     bg_sprite = displayio.TileGrid(bg_bitmap, pixel_shader=bg_palette, x=0, y=0)
     main_group.append(bg_sprite)
 
-    # Auto-size button height based on font
-    button_height = BUTTON_FONT_HEIGHT + 10  # 10px padding
+    # Geometry, boot colors, and label text all come from the shared pure
+    # screen model (core/display_model.py) — the same model the browser demo
+    # and tests consume. This block only turns that model into displayio.
+    screen_model = build_screen(
+        buttons, BUTTON_COUNT, BUTTON_FONT_HEIGHT, HAS_EXPRESSION,
+        exp1_config.get("label", "EXP1"), exp2_config.get("label", "EXP2"))
 
-    if BUTTON_COUNT == 4:
-        # NANO4: 2 buttons per row, widest spacing
-        button_width = 100
-        button_spacing = 120
-        row_size = 2
-    elif BUTTON_COUNT == 6:
-        # Mini6: 3 buttons per row, wider spacing
-        button_width = 70
-        button_spacing = 80
-        row_size = 3
-    else:
-        # STD10: 5 buttons per row
-        button_width = 46
-        button_spacing = 48
-        row_size = 5
-
-    # Adjust row positions to center vertically based on button height
-    top_row_y = 5
-    bottom_row_y = 240 - button_height - 5
-
-    for i in range(BUTTON_COUNT):
-        btn_config = buttons[i] if i < len(buttons) else {"label": str(i + 1), "color": "white"}
-
-        if i < row_size:
-            x = 1 + i * button_spacing
-            y = top_row_y
-        else:
-            x = 1 + (i - row_size) * button_spacing
-            y = bottom_row_y
-
-        color_rgb = get_color(btn_config.get("color", "white"))
-        off_mode = btn_config.get("off_mode", "dim")  # "dim" or "off"
-        off_color = get_off_color_for_display(color_rgb, off_mode)
-
+    for b in screen_model["buttons"]:
         # Create box background with border
-        box_bitmap = displayio.Bitmap(button_width, button_height, 2)
+        box_bitmap = displayio.Bitmap(b["w"], b["h"], 2)
         box_palette = displayio.Palette(2)
         box_palette[0] = 0x000000
-        box_palette[1] = rgb_to_hex(off_color)  # Start in off state
+        box_palette[1] = b["box_color"]  # Start in off state
 
-        for bx in range(button_width):
+        for bx in range(b["w"]):
             box_bitmap[bx, 0] = 1
-            box_bitmap[bx, button_height - 1] = 1
-        for by in range(button_height):
+            box_bitmap[bx, b["h"] - 1] = 1
+        for by in range(b["h"]):
             box_bitmap[0, by] = 1
-            box_bitmap[button_width - 1, by] = 1
+            box_bitmap[b["w"] - 1, by] = 1
 
-        box_sprite = displayio.TileGrid(box_bitmap, pixel_shader=box_palette, x=x, y=y)
+        box_sprite = displayio.TileGrid(box_bitmap, pixel_shader=box_palette, x=b["x"], y=b["y"])
         button_boxes.append((box_sprite, box_palette))
         main_group.append(box_sprite)
 
         # Label
         lbl = label.Label(
             BUTTON_FONT,
-            text=btn_config.get("label", str(i + 1))[:6],
-            color=rgb_to_hex(off_color),
+            text=b["text"],
+            color=b["label_color"],
             anchor_point=(0.5, 0.5),
-            anchored_position=(x + button_width // 2, y + button_height // 2),
+            anchored_position=(b["cx"], b["cy"]),
         )
         button_labels.append(lbl)
         main_group.append(lbl)
 
     # Status area (center)
+    _status = screen_model["status"]
     status_label = label.Label(
         STATUS_FONT,
-        text="Ready",
-        color=0xFFFFFF,
+        text=_status["text"],
+        color=_status["color"],
         anchor_point=(0.5, 0.5),
-        anchored_position=(120, 120),
+        anchored_position=(_status["x"], _status["y"]),
     )
     main_group.append(status_label)
 
     # Expression pedal display (below status, only if device has expression)
     if HAS_EXPRESSION:
-        exp1_lbl_text = exp1_config.get("label", "EXP1")
+        _exp1, _exp2 = screen_model["expression"]
         exp1_label = label.Label(
             EXPRESSION_FONT,
-            text=f"{exp1_lbl_text}: ---",
-            color=0x888888,
+            text=_exp1["text"],
+            color=_exp1["color"],
             anchor_point=(0.5, 0.5),
-            anchored_position=(70, 150),
+            anchored_position=(_exp1["x"], _exp1["y"]),
         )
         main_group.append(exp1_label)
 
-        exp2_lbl_text = exp2_config.get("label", "EXP2")
         exp2_label = label.Label(
             EXPRESSION_FONT,
-            text=f"{exp2_lbl_text}: ---",
-            color=0x888888,
+            text=_exp2["text"],
+            color=_exp2["color"],
             anchor_point=(0.5, 0.5),
-            anchored_position=(170, 150),
+            anchored_position=(_exp2["x"], _exp2["y"]),
         )
         main_group.append(exp2_label)
 
@@ -747,13 +719,17 @@ def set_button_state(switch_idx, on):
                 pixels[base + j] = rgb
         pixels.show()
 
-    # Update display
+    # Update display. Pass a config whose color is already resolved to the
+    # current keytime state; button_visual() then applies the on/off rule
+    # (always-legible dim when off) — the same rule the boot screen used.
     if HAS_TFT and idx < len(button_labels):
-        color_hex = rgb_to_hex(color_rgb if on else get_off_color_for_display(color_rgb, off_mode))
-        button_labels[idx].color = color_hex
+        resolved = dict(btn_config)
+        resolved["color"] = get_button_state_config(btn_config, btn_state.get_keytime()).get("color", "white")
+        visual = button_visual(resolved, on)
+        button_labels[idx].color = visual["label_color"]
         if idx < len(button_boxes):
             _, box_palette = button_boxes[idx]
-            box_palette[1] = color_hex
+            box_palette[1] = visual["box_color"]
 
 
 def init_leds():
@@ -873,12 +849,13 @@ def switch_page(n):
     if HAS_TFT:
         for i in range(BUTTON_COUNT):
             _btn_cfg = buttons[i] if i < len(buttons) else {"label": str(i + 1), "color": "white"}
-            _color_rgb = get_color(_btn_cfg.get("color", "white"))
-            _off_color = get_off_color_for_display(_color_rgb, _btn_cfg.get("off_mode", "dim"))
+            # Same boot-off state build_screen() renders — shared so a page
+            # flip re-labels exactly as the initial screen did.
+            _visual = button_visual(_btn_cfg, on=False)
             button_labels[i].text = _btn_cfg.get("label", str(i + 1))[:6]
-            button_labels[i].color = rgb_to_hex(_off_color)
+            button_labels[i].color = _visual["label_color"]
             _, _box_palette = button_boxes[i]
-            _box_palette[1] = rgb_to_hex(_off_color)
+            _box_palette[1] = _visual["box_color"]
         if HAS_EXPRESSION and exp1_label is not None:
             exp1_label.text = exp1_config.get("label", "EXP1") + ": ---"
             exp2_label.text = exp2_config.get("label", "EXP2") + ": ---"
@@ -1185,29 +1162,16 @@ def _render_keytimes_led(btn_num, state, btn_config):
         pixels.show()
 
     if HAS_TFT and idx < len(button_labels):
-        # Label text: last_fired class owns the string. long falls back to short_label
-        # then button label (a labelless long entry shows the prior short label);
-        # short falls straight to the button label.
-        if state.last_fired == "long":
-            effective_label = (state.long_label or state.short_label or btn_config.get("label", ""))[:6]
-        elif state.last_fired == "short":
-            effective_label = (state.short_label or btn_config.get("label", ""))[:6]
-        else:
-            effective_label = btn_config.get("label", "")[:6]
-        button_labels[idx].text = effective_label
-        # Label color: resolved color at full brightness so dim entries remain legible
-        # (#143). black-on-black (kill-switch / no-color) falls back to button color.
-        label_rgb = resolve_keytimes_render_color(state.last_fired,
-                                                  state.short_color, False,
-                                                  state.long_color, False,
-                                                  btn_config.get("color"),
-                                                  long_overlay)
-        if not any(label_rgb):
-            label_rgb = get_color(btn_config.get("color") or "white")
-        button_labels[idx].color = rgb_to_hex(label_rgb)
+        # Label text + colors follow the shared #143/#157 rules in
+        # display_model.keytimes_visual(). box_color there is the same
+        # rgb_to_hex(rgb) resolved above (same inputs); label_color is the
+        # full-brightness resolve with a black->button-color fallback.
+        visual = keytimes_visual(state, btn_config)
+        button_labels[idx].text = visual["text"]
+        button_labels[idx].color = visual["label_color"]
         if idx < len(button_boxes):
             _, box_palette = button_boxes[idx]
-            box_palette[1] = rgb_to_hex(rgb)
+            box_palette[1] = visual["box_color"]
 
 
 def handle_switches():

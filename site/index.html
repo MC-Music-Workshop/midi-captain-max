@@ -1352,7 +1352,7 @@ def enc_turn(bid, delta):
       };
       // Drag up/down to rotate (up = increase, the usual knob gesture); a click
       // that barely moves is a push instead.
-      const DETENT_PX = 14;
+      const DETENT_PX = 7;
       let dragging = false, lastY = 0, acc = 0, moved = 0;
       encEl.addEventListener("pointerdown", (e) => {
         dragging = true; lastY = e.clientY; acc = 0; moved = 0;

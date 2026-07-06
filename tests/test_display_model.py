@@ -8,7 +8,8 @@ FIRMWARE_DIR = Path(__file__).parent.parent / "firmware" / "dev"
 sys.path.insert(0, str(FIRMWARE_DIR))
 
 from core.button import KeytimesButtonState
-from core.display_model import compute_layout, button_visual, keytimes_visual
+from core.display_model import (compute_layout, button_visual, keytimes_visual,
+                                build_screen)
 
 
 class TestComputeLayout:
@@ -122,3 +123,38 @@ class TestKeytimesVisual:
     def test_label_truncated_to_six_chars(self):
         st = _kt_state(last_fired="short", short_label="LONGLABEL")
         assert keytimes_visual(st, self.CFG)["text"] == "LONGLA"
+
+
+class TestBuildScreen:
+    BUTTONS = [{"label": "TSC", "color": "green"},
+               {"label": "CHOR", "color": "blue"}]
+
+    def test_screen_shape(self):
+        s = build_screen(self.BUTTONS, button_count=10, button_font_height=20,
+                         has_expression=False, exp1_label="EXP1", exp2_label="EXP2")
+        assert s["size"] == (240, 240)
+        assert len(s["buttons"]) == 10
+        assert s["status"] == {"x": 120, "y": 120, "text": "Ready",
+                               "color": 0xFFFFFF}
+        assert s["expression"] == []
+
+    def test_button_entries(self):
+        s = build_screen(self.BUTTONS, 10, 20, False, "EXP1", "EXP2")
+        b0 = s["buttons"][0]
+        assert (b0["x"], b0["y"]) == (1, 5)
+        assert (b0["w"], b0["h"]) == (46, 30)
+        assert b0["text"] == "TSC"
+        assert b0["label_color"] == 0x002600     # boots in off state (dim green)
+        # Missing config beyond the provided list falls back to numbered white
+        assert s["buttons"][2]["text"] == "3"
+
+    def test_expression_entries(self):
+        s = build_screen(self.BUTTONS, 10, 20, True, "VOL", "WAH")
+        assert s["expression"][0] == {"x": 70, "y": 150, "text": "VOL: ---",
+                                      "color": 0x888888}
+        assert s["expression"][1]["text"] == "WAH: ---"
+
+    def test_label_truncation(self):
+        s = build_screen([{"label": "LONGLABEL", "color": "red"}], 4, 20,
+                         False, "EXP1", "EXP2")
+        assert s["buttons"][0]["text"] == "LONGLA"

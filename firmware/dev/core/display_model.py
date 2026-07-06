@@ -117,3 +117,46 @@ def keytimes_visual(state, btn_config):
         "label_color": rgb_to_hex(label_rgb),
         "box_color": rgb_to_hex(rgb),
     }
+
+
+STATUS_POS = (120, 120)
+EXPRESSION_POS = ((70, 150), (170, 150))
+
+
+def build_screen(buttons, button_count, button_font_height,
+                 has_expression, exp1_label, exp2_label):
+    """Initial screen model: every button box+label in its boot (off) state,
+    the status line, and expression readouts when the device has pedals.
+
+    Mirrors the HAS_TFT init block formerly in code.py. code.py turns this
+    into displayio objects; the browser demo paints it onto a canvas.
+    """
+    layout = compute_layout(button_count, button_font_height)
+    entries = []
+    for i in range(button_count):
+        btn_config = buttons[i] if i < len(buttons) else {"label": str(i + 1),
+                                                          "color": "white"}
+        x, y = layout["positions"][i]
+        visual = button_visual(btn_config, on=False)
+        entries.append({
+            "x": x, "y": y,
+            "w": layout["button_width"], "h": layout["button_height"],
+            "cx": layout["centers"][i][0], "cy": layout["centers"][i][1],
+            "text": btn_config.get("label", str(i + 1))[:6],
+            "label_color": visual["label_color"],
+            "box_color": visual["box_color"],
+        })
+
+    expression = []
+    if has_expression:
+        for pos, lbl in zip(EXPRESSION_POS, (exp1_label, exp2_label)):
+            expression.append({"x": pos[0], "y": pos[1],
+                               "text": lbl + ": ---", "color": 0x888888})
+
+    return {
+        "size": SCREEN_SIZE,
+        "buttons": entries,
+        "status": {"x": STATUS_POS[0], "y": STATUS_POS[1],
+                   "text": "Ready", "color": 0xFFFFFF},
+        "expression": expression,
+    }

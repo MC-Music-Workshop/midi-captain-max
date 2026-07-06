@@ -290,6 +290,28 @@
       white-space: nowrap;
     }
     .kt-midi.flash { text-shadow: 0 0 8px var(--cyan); }
+    .kt-midi-log { width: 100%; max-width: 18rem; }
+    .kt-midi-log summary {
+      cursor: pointer;
+      color: var(--cyan);
+      font-size: 0.9rem;
+      text-align: center;
+    }
+    .kt-midi-log pre {
+      background: var(--bg-raise);
+      border: 1px solid var(--line);
+      border-radius: 0.5rem;
+      padding: 0.6rem 0.8rem;
+      margin: 0.6rem 0 0;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 0.72rem;
+      line-height: 1.6;
+      color: var(--text-dim);
+      white-space: pre-wrap;
+      max-height: 9rem;
+      overflow-y: auto;
+    }
+    .kt-midi-log pre .sent { color: var(--cyan); }
     .kt-live { color: #4ade80; }
     .kt-live code { color: inherit; }
     .kt-config { margin-top: 1rem; }
@@ -506,6 +528,10 @@
         <div class="kt-midi" id="kt-midi" aria-live="polite"></div>
       </div>
       <p class="hint"><strong>Tap</strong> = reverb on/off. <strong>Hold ½ second</strong> = shimmer mode.</p>
+      <details class="kt-midi-log">
+        <summary>Live MIDI out</summary>
+        <pre id="kt-midi-lines">loading the firmware engine…</pre>
+      </details>
       <p class="hint kt-live" id="kt-live" hidden>⚡ Live: this switch is running the firmware's actual <code>button.py</code> in your browser.</p>
     </div>
     <aside class="kt-side">
@@ -959,9 +985,11 @@ def btn_release(bid):
   }
 
   // Live MIDI readout under the playground: every message here came out of
-  // dispatch_keytimes_events() in the real button.py.
+  // dispatch_keytimes_events() in the real button.py. One-liner flashes the
+  // latest message; the expandable "Live MIDI out" panel keeps a running log.
   const midiEl = document.getElementById("kt-midi");
-  let midiTimer = null;
+  const midiLog = document.getElementById("kt-midi-lines");
+  let midiTimer = null, midiCount = 0;
   function showMidi(m) {
     const txt = m.type === "cc" ? `CC ${m.cc} = ${m.value}`
       : m.type === "pc" ? `PC ${m.program}`
@@ -971,6 +999,14 @@ def btn_release(bid):
     midiEl.classList.add("flash");
     clearTimeout(midiTimer);
     midiTimer = setTimeout(() => midiEl.classList.remove("flash"), 400);
+
+    if (midiCount === 0) midiLog.textContent = "";
+    midiCount++;
+    const line = document.createElement("span");
+    line.className = "sent";
+    line.textContent = `${String(midiCount).padStart(3, " ")}  → ${txt}\n`;
+    midiLog.prepend(line);
+    while (midiLog.childNodes.length > 12) midiLog.lastChild.remove();
   }
 
   async function bootFirmwareEngine() {
@@ -1025,9 +1061,15 @@ def btn_release(bid):
       };
 
       document.getElementById("kt-live").hidden = false;
+      if (midiCount === 0) {
+        midiLog.textContent = "stomp the switch — every message here comes straight out of the firmware's dispatch code";
+      }
     } catch (e) {
       // JS fallback engines stay active.
       console.warn("firmware wasm engine unavailable, using JS fallback:", e);
+      if (midiCount === 0) {
+        midiLog.textContent = "(unavailable — the wasm firmware engine couldn't load in this browser/session, so the demo is on the JS fallback)";
+      }
     }
   }
   if (document.readyState === "complete") bootFirmwareEngine();

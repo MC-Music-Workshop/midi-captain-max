@@ -83,17 +83,61 @@
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(34, 211, 238, 0.06);
       max-width: 100%;
     }
-    /* live TFT screen, painted from the firmware's own display_model */
+    /* live TFT screen, painted from the firmware's own display_model — sits
+       in the middle band between the button rows, like the real STD10. */
     #tft {
       display: block;
-      margin: 0 auto 1.4rem;
-      width: 12rem;
+      width: 9.5rem;
       max-width: 100%;
       border: 2px solid #1c2733;
       border-radius: 0.4rem;
       background: #000;
       image-rendering: pixelated;
       box-shadow: 0 0 24px rgba(34, 211, 238, 0.12);
+    }
+    /* middle band: TFT centered between the rows (under the middle column),
+       rotary encoder immediately to its right — the real STD10 layout. The
+       1fr/auto/1fr grid keeps the screen centered no matter the encoder width. */
+    .frow-mid {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 1.4rem;
+    }
+    #tft { grid-column: 2; }
+    .encoder { grid-column: 3; justify-self: start; }
+    .encoder {
+      flex: none;
+      width: 4rem;
+      height: 4rem;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #3a3a48, #1c1c26 65%);
+      border: 3px solid #2e2e3e;
+      position: relative;
+      box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.6), 0 4px 10px rgba(0, 0, 0, 0.5);
+    }
+    /* knurled grip ring */
+    .encoder::after {
+      content: "";
+      position: absolute;
+      inset: 20%;
+      border-radius: 50%;
+      background:
+        repeating-conic-gradient(#4a4a5c 0deg 6deg, #2a2a38 6deg 12deg);
+      box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.7);
+    }
+    /* position indicator dot */
+    .enc-dot {
+      position: absolute;
+      top: 12%;
+      left: 50%;
+      width: 0.4rem;
+      height: 0.4rem;
+      margin-left: -0.2rem;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 6px var(--cyan);
+      z-index: 1;
     }
     .frow {
       display: flex;
@@ -463,6 +507,9 @@
       .fs { height: 2.9rem; }
       .screen { font-size: 0.55rem; }
       .frow { gap: 0.45rem; }
+      .frow-mid { gap: 0.6rem; }
+      #tft { width: 7rem; }
+      .encoder { width: 2.9rem; height: 2.9rem; }
       .device { padding: 1rem 0.8rem 1.2rem; }
     }
   </style>
@@ -474,8 +521,11 @@
   <p class="tagline">Open firmware for the Paint Audio MIDI Captain. Bidirectional MIDI, a visual config editor, and one-click install — your controller, finally under <em>your</em> control.</p>
 
   <div class="device" aria-label="Interactive demo of the MIDI Captain footswitches">
-    <canvas id="tft" width="240" height="240" aria-label="Live rendering of the device's TFT screen" hidden></canvas>
     <div class="frow" id="frow-top"></div>
+    <div class="frow frow-mid">
+      <canvas id="tft" width="240" height="240" aria-label="Live rendering of the device's TFT screen" hidden></canvas>
+      <div class="encoder" aria-hidden="true"><span class="enc-dot"></span></div>
+    </div>
     <div class="frow" id="frow-bottom"></div>
   </div>
   <p class="hint">Based on the firmware's default config. Tap <strong>VERB</strong> for reverb, hold it ½&nbsp;s for shimmer. <strong>Page switching:</strong> hold the top-right switch (<strong>TREM</strong>) for ½&nbsp;s. Click any label to rename it.</p>

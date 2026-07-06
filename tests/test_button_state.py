@@ -126,7 +126,36 @@ class TestButtonStateMidiReceive:
 
         assert result == False
         assert btn.state == False
-    
+
+    def test_fallback_value_between_cc_on_and_threshold_stays_off(self):
+        """#163: value matching neither cc_on nor cc_off and <= 63 falls back
+        to the legacy threshold -> OFF, even with a small custom cc_on."""
+        btn = ButtonState(cc=20)
+        assert btn.on_midi_receive(50, cc_on=10, cc_off=0) == False
+
+    def test_fallback_high_value_turns_on_despite_small_cc_on(self):
+        """#163: >63 fallback fires for unmatched values — 80 turns the button
+        ON even though the configured cc_on is 10 (generic hosts keep working)."""
+        btn = ButtonState(cc=20)
+        assert btn.on_midi_receive(80, cc_on=10, cc_off=0) == True
+
+    def test_cc_off_above_threshold_wins_over_fallback(self):
+        """#163: exact cc_off match turns OFF where pre-#155 firmware turned ON
+        (100 > 63). Intended polarity change from #155."""
+        btn = ButtonState(cc=20, initial_state=True)
+        assert btn.on_midi_receive(100, cc_on=127, cc_off=100) == False
+
+    def test_unmatched_value_above_threshold_near_cc_off_still_on(self):
+        """#163: 101 matches nothing -> fallback -> ON, one above a cc_off of 100."""
+        btn = ButtonState(cc=20)
+        assert btn.on_midi_receive(101, cc_on=127, cc_off=100) == True
+
+    def test_cc_on_equals_cc_off_on_wins(self):
+        """#163: collision — cc_on is checked first, so the button can never be
+        driven off by that value (validate_button warns at boot)."""
+        btn = ButtonState(cc=20, initial_state=True)
+        assert btn.on_midi_receive(50, cc_on=50, cc_off=50) == True
+
     def test_host_override_persists(self):
         """Host can override local toggle state."""
         btn = ButtonState(cc=20, mode="toggle", initial_state=True)

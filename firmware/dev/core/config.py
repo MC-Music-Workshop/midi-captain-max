@@ -472,6 +472,15 @@ def validate_button(btn, index=0, global_channel=None):
         validated["cc"] = btn.get("cc", 20 + index)
         validated["cc_on"] = btn.get("cc_on", 127)
         validated["cc_off"] = btn.get("cc_off", 0)
+        # cc_on is matched before cc_off on RX (ButtonState.on_midi_receive),
+        # so equal values leave the off-branch dead: the button could never be
+        # driven off by that value. Accept the config (both are valid MIDI
+        # bytes) but surface it at boot (#163).
+        if validated["cc_on"] == validated["cc_off"]:
+            print(
+                "[CONFIG WARN] Button " + str(index + 1) + " has cc_on == cc_off (" + str(validated["cc_on"]) + "); "
+                "incoming MIDI can never turn this button off — cc_on wins the match."
+            )
     elif msg_type == "note":
         validated["note"] = btn.get("note", 60)
         validated["velocity_on"] = btn.get("velocity_on", 127)

@@ -185,9 +185,9 @@ to non-font display fields) get decided then, not now.
 
 - **Font-reload RAM churn (P4c)** — the original deferral reason. Mitigation: probe
   first (gate above); in-place `.font` swap only; never recreate labels.
-- **P3b hardware check still pending** (owned by P3b, not P4, but P4b's `page` input
-  hint must match): confirm on hardware that OEM-style `CC20 val N` jump treats N as
-  0-based. If 1-based, P3b firmware takes a `-1` and the editor hint text follows.
+- ~~**P3b hardware check still pending**~~ **RESOLVED (hardware-verified
+  2026-07-05, during P4b smoke):** `CC20 val 1` → page 2, `CC20 val 0` → page 1 —
+  jump values are 0-based as designed. No firmware or editor-hint change needed.
 - **Capabilities widening (P4d)** — adding dialog save/open scope is deliberate and
   minimal; do NOT grant blanket `fs:*`; template IO goes through the new commands.
 - **`setDevice` two-step-shrink tail loss** (pre-existing, noted in P1 review) — page

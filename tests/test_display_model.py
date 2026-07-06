@@ -106,6 +106,33 @@ class TestKeytimesVisual:
                        long_color="magenta")
         assert keytimes_visual(st, cfg)["box_color"] == 0xFF00FF
 
+    def test_long_overlay_keeps_long_label_over_short(self):
+        # Mode indicator: while overlay's long layer is active, the label rides
+        # with the color — a short tap must not flip SHIM back to VERB.
+        cfg = dict(self.CFG, long_overlay=True)
+        st = _kt_state(last_fired="short", short_color="green",
+                       long_color="magenta", long_label="SHIM",
+                       short_label="VERB")
+        assert keytimes_visual(st, cfg)["text"] == "SHIM"
+
+    def test_long_overlay_label_persists_even_when_short_kills(self):
+        # Reverb off (short kill-switch) with shimmer still on: LED dark but the
+        # label stays SHIM until shimmer itself is turned off.
+        cfg = dict(self.CFG, long_overlay=True)
+        st = _kt_state(last_fired="short", short_color="off",
+                       long_color="magenta", long_label="SHIM",
+                       short_label="VERB")
+        v = keytimes_visual(st, cfg)
+        assert v["box_color"] == 0x000000
+        assert v["text"] == "SHIM"
+
+    def test_long_overlay_label_reverts_when_long_cleared(self):
+        # Shimmer turned off: long_color cleared -> label falls back to the
+        # short/button label again.
+        cfg = dict(self.CFG, long_overlay=True)
+        st = _kt_state(last_fired="long", short_label="VERB", long_color=None)
+        assert keytimes_visual(st, cfg)["text"] == "VERB"
+
     def test_kill_switch_black_label_falls_back_to_button_color(self):
         # 143: black-on-black guard — label color falls back to button color
         st = _kt_state(last_fired="short", short_color="off")

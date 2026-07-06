@@ -97,7 +97,12 @@ def keytimes_visual(state, btn_config):
                                         btn_config.get("color"),
                                         long_overlay)
 
-    if state.last_fired == "long":
+    # With long_overlay, an active long layer (its color set, not a kill) is a
+    # persistent mode — the label rides with the color, so a short tap doesn't
+    # flip the mode name back. Clearing the long layer (mode off) falls through
+    # to the normal last_fired gating.
+    overlay_mode_on = long_overlay and state.long_color and state.long_color != "off"
+    if overlay_mode_on or state.last_fired == "long":
         text = (state.long_label or state.short_label or btn_config.get("label", ""))[:6]
     elif state.last_fired == "short":
         text = (state.short_label or btn_config.get("label", ""))[:6]

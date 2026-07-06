@@ -3,7 +3,7 @@
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Date:** 2026-07-05
-**Status:** Proposed (not started)
+**Status:** Implemented (2026-07-06) — `core/display_model.py` extracted (`compute_layout`, `button_visual`, `keytimes_visual`, `build_screen`) with 20 pytest cases (`tests/test_display_model.py`), first coverage of the #143/#157 label/color rules. `code.py` builds its TFT from the model (init, `set_button_state`, `_render_keytimes_led`, page-switch relabel); the web demo's `PY_GLUE` dropped its duplicated render rules for `keytimes_visual`; the hero gained a live 240×240 `<canvas>` TFT rendered from the same model. pytest 672 green (incl. 20 new display_model cases), CP-7 parse clean, ruff clean. **Remaining:** on-device flash check (Task 5 Step 6) is the user's gate before merge. (`test-all.sh`'s Rust phase is unrelated-red in this worktree — missing staged `circuitpython/*.uf2` resource, not touched by this work.)
 
 **Goal:** Extract the TFT screen's layout and color/text decision logic from `code.py` into a pure `firmware/dev/core/display_model.py`, so the firmware TFT, the home-page browser demo (via the existing MicroPython wasm engine), and pytest all consume the same screen model — zero drift by construction, same pattern as `core/button.py`.
 

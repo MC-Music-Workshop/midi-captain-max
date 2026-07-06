@@ -282,6 +282,56 @@
       color: var(--text-dim);
       white-space: nowrap;
     }
+    .kt-midi {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 0.72rem;
+      color: var(--cyan);
+      min-height: 1.2rem;
+      white-space: nowrap;
+    }
+    .kt-midi.flash { text-shadow: 0 0 8px var(--cyan); }
+    .kt-midi-log { width: 100%; max-width: 18rem; }
+    .kt-midi-log summary {
+      cursor: pointer;
+      color: var(--cyan);
+      font-size: 0.9rem;
+      text-align: center;
+    }
+    .kt-midi-log pre {
+      background: var(--bg-raise);
+      border: 1px solid var(--line);
+      border-radius: 0.5rem;
+      padding: 0.6rem 0.8rem;
+      margin: 0.6rem 0 0;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 0.72rem;
+      line-height: 1.6;
+      color: var(--text-dim);
+      white-space: pre-wrap;
+      max-height: 9rem;
+      overflow-y: auto;
+    }
+    .kt-midi-log pre .sent { color: var(--cyan); }
+    .kt-live { color: #4ade80; }
+    .kt-live code { color: inherit; }
+    .kt-config { margin-top: 1rem; }
+    .kt-config summary {
+      cursor: pointer;
+      color: var(--cyan);
+      font-size: 0.9rem;
+    }
+    .kt-config pre {
+      background: var(--bg-raise);
+      border: 1px solid var(--line);
+      border-radius: 0.5rem;
+      padding: 0.8rem;
+      margin: 0.7rem 0;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 0.72rem;
+      line-height: 1.5;
+      overflow-x: auto;
+    }
+    .kt-config .cfg-note { font-size: 0.85rem; }
     .kt-side { max-width: 32em; }
     .kt-side h3 { font-size: 1.25rem; margin-bottom: 0.8rem; }
     .kt-side p { color: var(--text-dim); font-size: 0.95rem; margin-bottom: 0.8rem; }
@@ -415,7 +465,11 @@
     <div class="frow" id="frow-top"></div>
     <div class="frow" id="frow-bottom"></div>
   </div>
-  <p class="hint">Based on the firmware's default config. Tap <strong>VERB</strong> for reverb, hold it ½&nbsp;s for shimmer; <strong>PAGE</strong> flips through demo pages. Click any label to rename it.</p>
+  <p class="hint">Based on the firmware's default config. Tap <strong>VERB</strong> for reverb, hold it ½&nbsp;s for shimmer; hold <strong>TREM</strong> ½&nbsp;s to flip through demo pages. Click any label to rename it.</p>
+  <details class="kt-midi-log">
+    <summary>Live MIDI out</summary>
+    <pre id="hero-midi-lines">loading the firmware engine…</pre>
+  </details>
 
   <div class="cta-row">
     <a class="btn btn-primary" href="#download">Download</a>
@@ -475,13 +529,24 @@
           <button class="fs" id="kt-fs" aria-label="Keytimes demo footswitch: tap toggles reverb, hold toggles shimmer"></button>
         </div>
         <div class="kt-status" id="kt-status">reverb off · shimmer off</div>
+        <div class="kt-midi" id="kt-midi" aria-live="polite"></div>
       </div>
       <p class="hint"><strong>Tap</strong> = reverb on/off. <strong>Hold ½ second</strong> = shimmer mode.</p>
+      <details class="kt-midi-log">
+        <summary>Live MIDI out</summary>
+        <pre id="kt-midi-lines">loading the firmware engine…</pre>
+      </details>
+      <p class="hint kt-live" id="kt-live" hidden>⚡ Live: this switch is running the firmware's actual <code>button.py</code> in your browser.</p>
     </div>
     <aside class="kt-side">
       <h3>Keytimes mode — a MAX exclusive</h3>
       <p>Every switch can run <strong>two independent message cycles</strong>: one for short presses, one for long. Here a tap works the reverb (CC 20, white LED) while a half-second hold flips shimmer on top of it (CC 21, magenta).</p>
       <p>With <code>long_overlay</code>, the shimmer color rides the LED as a mode indicator while taps keep cycling the reverb underneath — and turning the reverb off still darkens the LED (a short-cycle <code>off</code> is a kill-switch). Stock firmware gives you one action per switch; MAX gives every switch a short cycle, a long cycle, and an LED that never lies.</p>
+      <details class="kt-config">
+        <summary>See the exact config driving this switch</summary>
+        <pre id="kt-config-view"></pre>
+        <p class="cfg-note">This demo isn't an imitation: the page loads the firmware's own <code>core/button.py</code> into a MicroPython WebAssembly runtime and feeds it this button config — the same JSON you could flash to your device.</p>
+      </details>
     </aside>
   </div>
 </section>
@@ -576,10 +641,13 @@
   };
   const LONG_MS = 500; // firmware default long_press_threshold_ms
 
-  // Keytimes engine: short cycle (reverb, white) + long cycle (shimmer,
-  // magenta) with long_overlay semantics — while shimmer is on, its color
-  // stays parked on the LED and the screen reads SHIM; taps keep cycling
-  // the reverb underneath.
+  // Keytimes engine, JS fallback: short cycle (reverb, white) + long cycle
+  // (shimmer, magenta) with long_overlay semantics — while shimmer is on, its
+  // color stays parked on the LED and the screen reads SHIM; taps keep cycling
+  // the reverb underneath. Once the wasm firmware engine boots (see the
+  // "real firmware" section at the bottom) this engine is swapped out for the
+  // literal core/button.py logic; it stays as the fallback when wasm can't
+  // load (old browser, file://, blocked).
   function makeKeytimes({ col, screen, fs, status, active }) {
     const st = { verb: false, shim: false };
     let timer = null, longFired = false, held = false;
@@ -597,14 +665,10 @@
           `reverb ${st.verb ? "on " : "off"} · shimmer ${st.shim ? "on" : "off"}`;
       }
     }
-    function press(e) {
+    function press() {
       if (held) return;
       held = true;
       longFired = false;
-      // keep receiving pointerup even if the pointer drifts off the switch
-      if (e && e.pointerId != null && fs.setPointerCapture) {
-        try { fs.setPointerCapture(e.pointerId); } catch (_) {}
-      }
       timer = setTimeout(() => {
         longFired = true;
         st.shim = !st.shim;
@@ -624,31 +688,45 @@
       held = false;
       clearTimeout(timer);
     }
-    fs.addEventListener("pointerdown", press);
-    fs.addEventListener("pointerup", release);
-    fs.addEventListener("pointercancel", cancel);
+    return { update, press, release, cancel };
+  }
+
+  // Pointer/keyboard plumbing for a press-and-hold footswitch. Delegates to
+  // ref.current so the engine behind a switch can be swapped (JS fallback →
+  // wasm firmware) without re-binding listeners.
+  function wireSwitch(fs, ref) {
+    fs.addEventListener("pointerdown", (e) => {
+      // keep receiving pointerup even if the pointer drifts off the switch
+      if (e.pointerId != null && fs.setPointerCapture) {
+        try { fs.setPointerCapture(e.pointerId); } catch (_) {}
+      }
+      ref.current.press();
+    });
+    fs.addEventListener("pointerup", () => ref.current.release());
+    fs.addEventListener("pointercancel", () => ref.current.cancel());
     fs.addEventListener("contextmenu", (e) => e.preventDefault());
     fs.addEventListener("keydown", (e) => {
-      if (e.key === " " || e.key === "Enter") { e.preventDefault(); press(); }
+      if (e.key === " " || e.key === "Enter") { e.preventDefault(); ref.current.press(); }
     });
     fs.addEventListener("keyup", (e) => {
-      if (e.key === " " || e.key === "Enter") release();
+      if (e.key === " " || e.key === "Enter") ref.current.release();
     });
-    return { st, update };
   }
 
   const PAGES = [
-    [ // page 1 — the shipped default config (SHIM upgraded to keytimes)
+    [ // page 1 — mirrors firmware/dev/config.json (labels, colors, modes;
+      // its CCs are 20-29, i.e. exactly 20 + i) with two demo upgrades:
+      // SHIM -> keytimes VERB/SHIM, and TREM carries a long-press page_inc.
       { label: "TSC",   color: "green" },
       { label: "CHOR",  color: "blue" },
       { label: "DELAY", color: "yellow" },
       { label: "VERB",  color: "white", kt: true },
-      { label: "PAGE",  color: "white", page: true },
+      { label: "TREM",  color: "white", page: true },
       { label: "WOW",   color: "orange" },
       { label: "OCT",   color: "cyan" },
       { label: "FREQ",  color: "red" },
       { label: "PLATE", color: "purple" },
-      { label: "ROOM",  color: "white" },
+      { label: "ROOM",  color: "white", tap: true },
     ],
     [ // page 2 — amp channels / program changes
       { label: "CLEAN", color: "green" },
@@ -702,10 +780,56 @@
     cols.push({ col, screen, fs });
   });
 
-  const heroKt = makeKeytimes({
-    ...cols[3],
-    active: () => PAGES[page][3].kt === true,
-  });
+  // Engine refs: .current is swapped for the wasm firmware engine when it
+  // boots; all listeners stay bound to the ref.
+  const heroKt = {
+    current: makeKeytimes({
+      ...cols[3],
+      active: () => PAGES[page][3].kt === true,
+    }),
+  };
+  wireSwitch(cols[3].fs, heroKt);
+
+  // Page switching is a long press (page_inc rides a switch's long slot in
+  // the wasm engine; this JS engine is the fallback and the pages-2/3 path).
+  function makePageHold(fs) {
+    let timer = null, held = false;
+    return {
+      press() {
+        if (held) return;
+        held = true;
+        timer = setTimeout(() => {
+          held = false;
+          page = (page + 1) % PAGES.length;
+          renderPage();
+          blip(fs);
+        }, LONG_MS);
+      },
+      release() {
+        if (!held) return;
+        held = false;
+        clearTimeout(timer);
+        blip(fs); // short tap: just acknowledge
+      },
+      cancel() {
+        held = false;
+        clearTimeout(timer);
+      },
+      update() {},
+    };
+  }
+  const heroPage = { current: makePageHold(cols[4].fs) };
+  wireSwitch(cols[4].fs, heroPage);
+
+  // Toggle/tap state for the plain hero switches. The JS core mirrors the
+  // firmware's toggle rule (litSets holds the on/off truth); the wasm engine
+  // swaps in the firmware's ButtonState per switch.
+  const plainCore = {
+    current: {
+      toggle: (p, i) => !litSets[p].has(i),
+      tap: () => {},
+    },
+  };
 
   function blip(fs) {
     fs.classList.add("lit");
@@ -719,25 +843,24 @@
       screen.textContent = def.label;
       fs.classList.toggle("lit", litSets[page].has(i));
       const kind = def.kt ? "tap for reverb, hold for shimmer"
-        : def.page ? "next page" : def.tap ? "tap" : "toggle";
+        : def.page ? "hold half a second for next page" : def.tap ? "tap" : "toggle";
       fs.setAttribute("aria-label", `Footswitch ${i + 1}: ${def.label} (${kind})`);
     });
-    if (PAGES[page][3].kt) heroKt.update();
+    if (PAGES[page][3].kt) heroKt.current.update();
+    if (PAGES[page][4].page) heroPage.current.update();
   }
 
   cols.forEach(({ fs }, i) => {
     fs.addEventListener("click", () => {
       const def = PAGES[page][i];
-      if (def.kt) return; // handled by the keytimes engine
-      if (def.page) {
-        page = (page + 1) % PAGES.length;
-        renderPage();
-        blip(fs);
-      } else if (def.tap) {
+      if (def.kt || def.page) return; // handled by the press-and-hold engines
+      if (def.tap) {
+        plainCore.current.tap(page, i);
         blip(fs);
       } else {
-        litSets[page].has(i) ? litSets[page].delete(i) : litSets[page].add(i);
-        fs.classList.toggle("lit", litSets[page].has(i));
+        const on = plainCore.current.toggle(page, i);
+        litSets[page][on ? "add" : "delete"](i);
+        fs.classList.toggle("lit", on);
       }
     });
   });
@@ -746,12 +869,312 @@
   renderPage();
 
   // Keytimes playground: same engine, with a status readout.
-  makeKeytimes({
+  const pgKtParts = {
     fs: document.getElementById("kt-fs"),
     col: document.getElementById("kt-col"),
     screen: document.querySelector("#kt-col .screen"),
     status: document.getElementById("kt-status"),
-  }).update();
+  };
+  const pgKt = { current: makeKeytimes(pgKtParts) };
+  wireSwitch(pgKtParts.fs, pgKt);
+  pgKt.current.update();
+
+  // ---------- real firmware engine (MicroPython wasm) ----------
+  // Lazy-loaded after first paint: vendor/micropython/ (pinned MicroPython
+  // WebAssembly build) plus firmware/button.py + colors.py — verbatim copies
+  // of firmware/dev/core/, refreshed by tools/sync-site-firmware.sh on every
+  // Pages deploy. On success the demos above swap onto the literal firmware
+  // logic; on any failure (old browser, file://, blocked) the JS engines stay.
+
+  // A real mode:"keytimes" button config — flashable as-is (schema-valid
+  // ButtonConfig). Also rendered into the "see the config" panel.
+  const KT_CONFIG = {
+    label: "VERB",
+    color: "white",
+    mode: "keytimes",
+    long_overlay: true,
+    long_press_threshold_ms: LONG_MS,
+    // Short-cycle messages live in the "up" slot: short_up only fires on a
+    // release before the threshold, so a long press leaves the reverb cycle
+    // untouched (dispatch only advances cycles whose slots actually fired).
+    short: [
+      { up: [{ type: "cc", cc: 20, value: 127 }], color: "white", label: "VERB" },
+      { up: [{ type: "cc", cc: 20, value: 0 }], color: "off", label: "VERB" },
+    ],
+    long: [
+      { down: [{ type: "cc", cc: 21, value: 127 }], color: "magenta", label: "SHIM" },
+      { down: [{ type: "cc", cc: 21, value: 0 }] },
+    ],
+  };
+  document.getElementById("kt-config-view").textContent =
+    JSON.stringify(KT_CONFIG, null, 2);
+
+  // Hero variant of the same cycles, retuned so the readout doesn't collide
+  // with the default config's CCs: reverb on CC 23 (the SHIM switch's real
+  // CC), shimmer on CC 30 (unused by the default config's 20-29).
+  const KT_CONFIG_HERO = JSON.parse(JSON.stringify(KT_CONFIG));
+  KT_CONFIG_HERO.short.forEach((e) => e.up.forEach((m) => { m.cc = 23; }));
+  KT_CONFIG_HERO.long.forEach((e) => e.down.forEach((m) => { m.cc = 30; }));
+
+  // The default config has no page change assigned; the demo rides one on
+  // TREM's long press. Short cycle reproduces TREM's momentary behavior
+  // (down/up slots of one entry); the long entry fires page_inc and releases
+  // the tremolo CC on long_up so a page flip never leaves CC 24 hanging.
+  const TREM_CONFIG = {
+    label: "TREM",
+    color: "white",
+    mode: "keytimes",
+    long_press_threshold_ms: LONG_MS,
+    short: [
+      { down: [{ type: "cc", cc: 24, value: 127 }], up: [{ type: "cc", cc: 24, value: 0 }] },
+    ],
+    long: [
+      { down: [{ type: "page_inc" }], up: [{ type: "cc", cc: 24, value: 0 }] },
+    ],
+  };
+
+  // Python glue run inside MicroPython: exposes the firmware's PressTracker /
+  // dispatch_keytimes_events / ButtonState behind JSON-string functions so
+  // everything crossing the JS boundary is a plain string/number/bool.
+  const PY_GLUE = `
+import json
+from button import ButtonState, KeytimesButtonState, dispatch_keytimes_events
+from colors import resolve_keytimes_render_color, get_color
+
+_kt = {}
+_btns = {}
+
+def kt_create(bid, cfg_json):
+    cfg = json.loads(cfg_json)
+    _kt[bid] = (KeytimesButtonState(
+        cfg.get("long_press_threshold_ms", 500),
+        len(cfg.get("short") or []),
+        len(cfg.get("long") or []),
+    ), cfg)
+
+def _render(st, cfg):
+    # Mirrors code.py _render_keytimes_led(): last_fired gates the layer, the
+    # label falls back long -> short -> button, and the label color is the
+    # same resolve at full brightness with a button-color fallback (#143/#157).
+    overlay = cfg.get("long_overlay", False)
+    rgb = resolve_keytimes_render_color(st.last_fired, st.short_color, st.short_dim,
+                                        st.long_color, st.long_dim,
+                                        cfg.get("color"), overlay)
+    if st.last_fired == "long":
+        label = (st.long_label or st.short_label or cfg.get("label", ""))[:6]
+    elif st.last_fired == "short":
+        label = (st.short_label or cfg.get("label", ""))[:6]
+    else:
+        label = cfg.get("label", "")[:6]
+    label_rgb = resolve_keytimes_render_color(st.last_fired, st.short_color, False,
+                                              st.long_color, False,
+                                              cfg.get("color"), overlay)
+    if not any(label_rgb):
+        label_rgb = get_color(cfg.get("color") or "white")
+    return {"rgb": list(rgb), "label": label, "label_rgb": list(label_rgb)}
+
+def kt_poll(bid, pressed, now):
+    st, cfg = _kt[bid]
+    events = st.tracker.update(bool(pressed), now)
+    msgs = []
+    if events:
+        dispatch_keytimes_events(events, st, cfg, msgs.append)
+    return json.dumps({"events": events, "messages": msgs, "render": _render(st, cfg)})
+
+def btn_create(bid, cc, mode, initial):
+    _btns[bid] = ButtonState(cc, mode, bool(initial))
+
+def btn_press(bid):
+    changed, state, value = _btns[bid].on_press()
+    return json.dumps({"changed": changed, "state": state, "value": value})
+
+def btn_release(bid):
+    changed, state, value = _btns[bid].on_release()
+    return json.dumps({"changed": changed, "state": state, "value": value})
+`;
+
+  // Wasm-backed keytimes engine: pointer events set a pressed flag; a
+  // requestAnimationFrame loop polls PressTracker with real wall-clock time
+  // (exactly how code.py's main loop drives it) while the switch is held.
+  function makeWasmKeytimes(py, bid, cfg, { col, screen, fs, status, active }, onMidi) {
+    py.ktCreate(bid, JSON.stringify(cfg));
+    let pressed = false, raf = null, last = null;
+    const flags = { verb: false, shim: false }; // status readout mirror of CC 20/21
+
+    function paint() {
+      if (!last || (active && !active())) return;
+      const [r, g, b] = last.rgb;
+      const [lr, lg, lb] = last.label_rgb;
+      col.style.setProperty("--led", `rgb(${lr}, ${lg}, ${lb})`);
+      screen.textContent = last.label || cfg.label;
+      fs.classList.toggle("lit", (r || g || b) !== 0);
+      if (status) {
+        status.textContent =
+          `reverb ${flags.verb ? "on " : "off"} · shimmer ${flags.shim ? "on" : "off"}`;
+      }
+    }
+    function poll() {
+      raf = null;
+      const res = JSON.parse(py.ktPoll(bid, pressed, performance.now() / 1000));
+      if (res.events.length) {
+        for (const m of res.messages) {
+          if (m.type === "cc" && m.cc === 20) flags.verb = m.value > 0;
+          if (m.type === "cc" && m.cc === 21) flags.shim = m.value > 0;
+          if (onMidi) onMidi(m);
+        }
+        last = res.render;
+        paint();
+      }
+      if (pressed) raf = requestAnimationFrame(poll);
+    }
+    function press() {
+      if (pressed) return;
+      pressed = true;
+      poll();
+    }
+    function release() {
+      pressed = false;
+      if (raf) cancelAnimationFrame(raf);
+      raf = null;
+      poll();
+    }
+    return { update: paint, press, release, cancel: release };
+  }
+
+  // Live MIDI readouts: every message here came out of the real button.py
+  // (dispatch_keytimes_events or ButtonState). Each expandable "Live MIDI
+  // out" panel keeps a numbered newest-first log; the playground also
+  // flashes the latest message on a one-liner. fn.idle(text) sets
+  // placeholder copy without disturbing an already-populated log.
+  function makeMidiLog(logEl, flashEl) {
+    let count = 0, timer = null;
+    function fn(m) {
+      const txt = m.type === "cc" ? `CC ${m.cc} = ${m.value}`
+        : m.type === "pc" ? `PC ${m.program}`
+        : m.type === "note" ? `Note ${m.note}`
+        : m.type === "page_inc" ? `page +${m.page_step || 1}`
+        : m.type === "page_dec" ? `page -${m.page_step || 1}`
+        : m.type === "page_jump" ? `page = ${(m.page || 0) + 1}`
+        : m.type;
+      if (flashEl) {
+        flashEl.textContent = `→ ${txt}`;
+        flashEl.classList.add("flash");
+        clearTimeout(timer);
+        timer = setTimeout(() => flashEl.classList.remove("flash"), 400);
+      }
+      if (count === 0) logEl.textContent = "";
+      count++;
+      const line = document.createElement("span");
+      line.className = "sent";
+      line.textContent = `${String(count).padStart(3, " ")}  → ${txt}\n`;
+      logEl.prepend(line);
+      while (logEl.childNodes.length > 12) logEl.lastChild.remove();
+    }
+    fn.idle = (text) => { if (count === 0) logEl.textContent = text; };
+    return fn;
+  }
+  const showMidi = makeMidiLog(
+    document.getElementById("kt-midi-lines"),
+    document.getElementById("kt-midi"));
+  const heroMidiLog = makeMidiLog(document.getElementById("hero-midi-lines"));
+
+  // Hero messages can carry page changes: mirror code.py's deferred page
+  // switch (resolve_page_target) before logging.
+  function heroMidi(m) {
+    if (m.type === "page_inc" || m.type === "page_dec" || m.type === "page_jump") {
+      if (m.type === "page_inc") page = (page + (m.page_step || 1)) % PAGES.length;
+      else if (m.type === "page_dec") page = (page - (m.page_step || 1) + PAGES.length) % PAGES.length;
+      else page = Math.max(0, Math.min(PAGES.length - 1, m.page || 0));
+      renderPage();
+    }
+    heroMidiLog(m);
+  }
+
+  async function bootFirmwareEngine() {
+    try {
+      const fetchText = (url) => fetch(url).then((r) => {
+        if (!r.ok) throw new Error(`${url}: ${r.status}`);
+        return r.text();
+      });
+      const [{ loadMicroPython }, buttonSrc, colorsSrc] = await Promise.all([
+        import("./vendor/micropython/micropython.mjs"),
+        fetchText("firmware/button.py"),
+        fetchText("firmware/colors.py"),
+      ]);
+      const mp = await loadMicroPython();
+      mp.FS.writeFile("button.py", buttonSrc);
+      mp.FS.writeFile("colors.py", colorsSrc);
+      mp.runPython(PY_GLUE);
+      const py = {
+        ktCreate: mp.globals.get("kt_create"),
+        ktPoll: mp.globals.get("kt_poll"),
+        btnCreate: mp.globals.get("btn_create"),
+        btnPress: mp.globals.get("btn_press"),
+        btnRelease: mp.globals.get("btn_release"),
+      };
+
+      // Swap the keytimes demos onto the firmware engine.
+      heroKt.current.cancel();
+      heroKt.current = makeWasmKeytimes(py, "hero", KT_CONFIG_HERO, {
+        ...cols[3],
+        active: () => PAGES[page][3].kt === true,
+      }, heroMidi);
+      pgKt.current.cancel();
+      pgKt.current = makeWasmKeytimes(py, "pg", KT_CONFIG, pgKtParts, showMidi);
+
+      // TREM (page 1) runs its keytimes config — tap = momentary tremolo,
+      // hold = page_inc; on the demo-only pages 2/3 the JS page-hold stays.
+      heroPage.current.cancel();
+      const pageHoldJs = makePageHold(cols[4].fs);
+      const tremEngine = makeWasmKeytimes(py, "trem", TREM_CONFIG, {
+        ...cols[4],
+        active: () => PAGES[page][4].page === true && page === 0,
+      }, heroMidi);
+      let engaged = null; // engine captured at press so a page flip mid-hold can't strand a release
+      heroPage.current = {
+        press() { engaged = page === 0 ? tremEngine : pageHoldJs; engaged.press(); },
+        release() { (engaged || pageHoldJs).release(); engaged = null; },
+        cancel() { (engaged || pageHoldJs).cancel(); engaged = null; },
+        update() { if (page === 0) tremEngine.update(); },
+      };
+
+      // Route the plain toggle/tap switches through the firmware's
+      // ButtonState, seeded from whatever the user already toggled.
+      // CC 20 + i is the shipped default config's real mapping on page 1
+      // (config.json assigns CCs 20-29 in order).
+      PAGES.forEach((defs, p) => defs.forEach((def, i) => {
+        if (def.kt || def.page) return;
+        py.btnCreate(`b${p}_${i}`, 20 + i, def.tap ? "momentary" : "toggle",
+          litSets[p].has(i));
+      }));
+      plainCore.current = {
+        toggle(p, i) {
+          const res = JSON.parse(py.btnPress(`b${p}_${i}`));
+          py.btnRelease(`b${p}_${i}`);
+          heroMidiLog({ type: "cc", cc: 20 + i, value: res.value });
+          return res.state;
+        },
+        tap(p, i) {
+          const down = JSON.parse(py.btnPress(`b${p}_${i}`));
+          heroMidiLog({ type: "cc", cc: 20 + i, value: down.value });
+          const up = JSON.parse(py.btnRelease(`b${p}_${i}`));
+          heroMidiLog({ type: "cc", cc: 20 + i, value: up.value });
+        },
+      };
+
+      document.getElementById("kt-live").hidden = false;
+      showMidi.idle("stomp the switch — every message here comes straight out of the firmware's dispatch code");
+      heroMidiLog.idle("stomp any switch — real MIDI from the firmware's ButtonState and keytimes dispatch");
+    } catch (e) {
+      // JS fallback engines stay active.
+      console.warn("firmware wasm engine unavailable, using JS fallback:", e);
+      const note = "(unavailable — the wasm firmware engine couldn't load in this browser/session, so the demo is on the JS fallback)";
+      showMidi.idle(note);
+      heroMidiLog.idle(note);
+    }
+  }
+  if (document.readyState === "complete") bootFirmwareEngine();
+  else window.addEventListener("load", bootFirmwareEngine, { once: true });
 
   // Download buttons: static hrefs point at the releases page (always works);
   // upgrade to direct one-click asset links via the GitHub API (CORS-enabled).

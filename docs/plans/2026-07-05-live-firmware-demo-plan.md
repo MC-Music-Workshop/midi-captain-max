@@ -1,7 +1,7 @@
 # Home Page: Run Real Firmware Button Logic in the Browser — Plan
 
 **Date:** 2026-07-05
-**Status:** Proposed (not started)
+**Status:** Implemented (2026-07-05) — MicroPython wasm vendored in `site/vendor/micropython/`, firmware snapshots in `site/firmware/` (synced by `tools/sync-site-firmware.sh` on every Pages deploy), hero + playground run `core/button.py`/`colors.py` with a schema-valid keytimes config, live MIDI readout + config viewer added; JS engine retained as fallback (old browsers, `file://`).
 **Context:** The home page's footswitch demos (`site/index.html`) currently re-implement button behavior in JS. Goal: run the *literal* firmware code so the demo is the same functionality by construction, not by imitation.
 
 ## Why this is feasible

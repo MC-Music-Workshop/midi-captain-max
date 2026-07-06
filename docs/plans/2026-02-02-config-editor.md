@@ -1,5 +1,6 @@
 # MIDI Captain MAX Config Editor Implementation Plan
 
+**Status:** Shipped — became the current Config Editor app.
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 ---

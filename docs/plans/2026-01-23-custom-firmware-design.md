@@ -1,5 +1,6 @@
 # MIDI Captain Custom Firmware — Design Document
 
+**Status:** Shipped — this design became the current firmware.
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Create a generic, config-driven, bidirectional MIDI firmware for Paint Audio MIDI Captain pedals (6 and 10-switch variants).

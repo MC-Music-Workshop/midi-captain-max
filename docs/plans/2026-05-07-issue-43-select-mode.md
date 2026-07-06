@@ -1,6 +1,6 @@
 # Plan: SELECT mode (Issue #43)
 
-**Status:** Design locked, ready to implement
+**Status:** Shipped — #43 closed; SELECT mode is in the current firmware.
 **Issue:** https://github.com/MC-Music-Workshop/midi-captain-max/issues/43
 **Author:** Design hashed out 2026-05-06 / 07. Plan written for execution by another model.
 

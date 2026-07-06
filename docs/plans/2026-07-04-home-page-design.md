@@ -1,7 +1,7 @@
 # MIDI Captain MAX Home Page — Design
 
 **Date:** 2026-07-04
-**Status:** Approved (brainstormed interactively)
+**Status:** Shipped 2026-07-05 (PRs #167, #170–#172); see git history for later changes.
 
 ## Goal
 

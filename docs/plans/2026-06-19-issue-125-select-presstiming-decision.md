@@ -1,6 +1,6 @@
 # Decision: select-mode × press-timing (Issue #125)
 
-**Status:** Decided — Option 1 (keep flat). No code change. Revisit if a real use case demands it.
+**Status:** Decided — Option 1 (keep flat), no code change; #125 closed. Revisit if a real use case demands it.
 **Issue:** https://github.com/MC-Music-Workshop/midi-captain-max/issues/125
 **Decided:** 2026-06-19
 **Depends on (all landed):** #43 (select mode), #48 (press-timing model), #47 (multi-message).

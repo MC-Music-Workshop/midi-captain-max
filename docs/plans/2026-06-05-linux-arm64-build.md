@@ -1,6 +1,6 @@
 # Plan: arm64 Linux build for the Config Editor
 
-**Status:** Implemented on branch `149-arm-linux-build` — pending CI verification.
+**Status:** Shipped — #149 closed; arm64 Linux assets are in releases (v1.12.1+).
 **Tracking issue:** #149.
 **Branch:** `linux` (worktree at `.worktrees/linux`).
 **Follows:** #26 (amd64 Linux build + GPG signing, merged in #148).

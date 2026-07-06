@@ -73,3 +73,47 @@ def button_visual(btn_config, on):
     rgb = color_rgb if on else get_off_color_for_display(color_rgb, off_mode)
     hex_color = rgb_to_hex(rgb)
     return {"label_color": hex_color, "box_color": hex_color}
+
+
+def keytimes_visual(state, btn_config):
+    """Screen text + colors for a mode:"keytimes" button.
+
+    Extracted from code.py _render_keytimes_led() so firmware, browser demo,
+    and tests share the #143/#157 rules:
+      - box/LED color: last_fired gates which layer wins (see
+        resolve_keytimes_render_color); long_overlay opts into persistence.
+      - label text: last fired class owns it; long falls back to short_label
+        then the button label; short falls straight to the button label.
+      - label color: same resolve at full brightness (dim stripped), with a
+        black->button-color fallback so it is never black-on-black.
+
+    Returns {"text": str, "label_color": 0xRRGGBB, "box_color": 0xRRGGBB}.
+    """
+    long_overlay = btn_config.get("long_overlay", False)
+
+    rgb = resolve_keytimes_render_color(state.last_fired,
+                                        state.short_color, state.short_dim,
+                                        state.long_color, state.long_dim,
+                                        btn_config.get("color"),
+                                        long_overlay)
+
+    if state.last_fired == "long":
+        text = (state.long_label or state.short_label or btn_config.get("label", ""))[:6]
+    elif state.last_fired == "short":
+        text = (state.short_label or btn_config.get("label", ""))[:6]
+    else:
+        text = btn_config.get("label", "")[:6]
+
+    label_rgb = resolve_keytimes_render_color(state.last_fired,
+                                              state.short_color, False,
+                                              state.long_color, False,
+                                              btn_config.get("color"),
+                                              long_overlay)
+    if not any(label_rgb):
+        label_rgb = get_color(btn_config.get("color") or "white")
+
+    return {
+        "text": text,
+        "label_color": rgb_to_hex(label_rgb),
+        "box_color": rgb_to_hex(rgb),
+    }

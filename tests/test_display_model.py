@@ -7,7 +7,8 @@ from pathlib import Path
 FIRMWARE_DIR = Path(__file__).parent.parent / "firmware" / "dev"
 sys.path.insert(0, str(FIRMWARE_DIR))
 
-from core.display_model import compute_layout, button_visual
+from core.button import KeytimesButtonState
+from core.display_model import compute_layout, button_visual, keytimes_visual
 
 
 class TestComputeLayout:
@@ -59,3 +60,65 @@ class TestButtonVisual:
     def test_missing_color_falls_back_white(self):
         v = button_visual({}, on=True)
         assert v["label_color"] == 0xFFFFFF
+
+
+def _kt_state(**kw):
+    st = KeytimesButtonState(threshold_ms=500, short_length=2, long_length=2)
+    for k, v in kw.items():
+        setattr(st, k, v)
+    return st
+
+
+class TestKeytimesVisual:
+    CFG = {"label": "VERB", "color": "white", "mode": "keytimes"}
+
+    def test_before_first_press_shows_button_label_and_color(self):
+        v = keytimes_visual(_kt_state(), self.CFG)
+        assert v["text"] == "VERB"
+        assert v["box_color"] == 0xFFFFFF      # falls back to button color
+        assert v["label_color"] == 0xFFFFFF
+
+    def test_short_fired_shows_short_label_and_color(self):
+        st = _kt_state(last_fired="short", short_color="green", short_label="ON")
+        v = keytimes_visual(st, self.CFG)
+        assert v["text"] == "ON"
+        assert v["box_color"] == 0x00FF00
+
+    def test_long_label_falls_back_to_short_then_button(self):
+        # 143: a labelless long entry shows the prior short label
+        st = _kt_state(last_fired="long", short_label="ON")
+        v = keytimes_visual(st, self.CFG)
+        assert v["text"] == "ON"
+        st2 = _kt_state(last_fired="long")
+        assert keytimes_visual(st2, self.CFG)["text"] == "VERB"
+
+    def test_last_fired_short_suppresses_stale_long_color(self):
+        # 157: long color must not stick once a short press fires
+        st = _kt_state(last_fired="short", short_color="green",
+                       long_color="magenta")
+        v = keytimes_visual(st, self.CFG)
+        assert v["box_color"] == 0x00FF00
+
+    def test_long_overlay_keeps_long_color_over_short(self):
+        cfg = dict(self.CFG, long_overlay=True)
+        st = _kt_state(last_fired="short", short_color="green",
+                       long_color="magenta")
+        assert keytimes_visual(st, cfg)["box_color"] == 0xFF00FF
+
+    def test_kill_switch_black_label_falls_back_to_button_color(self):
+        # 143: black-on-black guard — label color falls back to button color
+        st = _kt_state(last_fired="short", short_color="off")
+        v = keytimes_visual(st, self.CFG)
+        assert v["box_color"] == 0x000000       # LED/box genuinely off
+        assert v["label_color"] == 0xFFFFFF     # label stays legible
+
+    def test_dim_stripped_from_label_color(self):
+        # 143: label color renders at full brightness even for dim entries
+        st = _kt_state(last_fired="short", short_color="green", short_dim=True)
+        v = keytimes_visual(st, self.CFG)
+        assert v["box_color"] == 0x002600       # box honors dim
+        assert v["label_color"] == 0x00FF00     # label does not
+
+    def test_label_truncated_to_six_chars(self):
+        st = _kt_state(last_fired="short", short_label="LONGLABEL")
+        assert keytimes_visual(st, self.CFG)["text"] == "LONGLA"

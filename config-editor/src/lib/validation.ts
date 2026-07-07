@@ -302,6 +302,24 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
                   }
                   break;
                 }
+                case 'page_inc':
+                case 'page_dec': {
+                  if (msg.page_step !== undefined) {
+                    const e = validators.pageStep(msg.page_step);
+                    if (e) errors.set(`${mp}.page_step`, e);
+                  }
+                  break;
+                }
+                case 'page_jump': {
+                  // Cross-field: 0-based target, max is pageCount - 1. Firmware
+                  // clamps; the editor fails loud (P1 asymmetry rule).
+                  if (msg.page !== undefined) {
+                    if (!Number.isInteger(msg.page) || msg.page < 0 || msg.page >= pageCount) {
+                      errors.set(`${mp}.page`, `Target page must be between 0 and ${pageCount - 1} (0-based)`);
+                    }
+                  }
+                  break;
+                }
                 case 'hid': {
                   if (msg.delay_ms !== undefined) {
                     if (!Number.isInteger(msg.delay_ms) || msg.delay_ms < 1 || msg.delay_ms > 5000) {

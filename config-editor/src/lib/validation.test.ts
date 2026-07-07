@@ -73,6 +73,41 @@ describe('page trigger button fields (P4b)', () => {
   });
 });
 
+describe('keytimes page-switch messages', () => {
+  // A keytimes-mode button whose short-press down slot holds one message.
+  // Two pages exist (indices 0, 1); index 2+ is out of range.
+  function ktConfig(msg: Record<string, unknown>): MidiCaptainConfig {
+    return {
+      device: 'one1',
+      active_page: 0,
+      pages: [
+        { name: 'Home', buttons: [{ label: 'GO', color: 'green', mode: 'keytimes', short: [{ down: [msg] }] }] as never },
+        { name: 'Solo', buttons: [{ label: 'OK', cc: 20, color: 'green' }] },
+      ],
+    } as never;
+  }
+
+  const base = 'buttons[0].short[0].down[0]';
+
+  it('rejects a keytimes page_jump target outside the page list', () => {
+    const result = validateConfig(ktConfig({ type: 'page_jump', page: 2 }));
+    expect(result.errors.get(`${base}.page`)).toContain('between 0 and 1');
+  });
+
+  it('accepts a valid keytimes page_jump target', () => {
+    expect(validateConfig(ktConfig({ type: 'page_jump', page: 1 })).isValid).toBe(true);
+  });
+
+  it('rejects a keytimes page_inc step below 1', () => {
+    const result = validateConfig(ktConfig({ type: 'page_inc', page_step: 0 }));
+    expect(result.errors.get(`${base}.page_step`)).toContain('at least 1');
+  });
+
+  it('accepts a valid keytimes page_dec step', () => {
+    expect(validateConfig(ktConfig({ type: 'page_dec', page_step: 2 })).isValid).toBe(true);
+  });
+});
+
 describe('page_control validation (P4b)', () => {
   function pcConfig(pc: unknown): MidiCaptainConfig {
     return {

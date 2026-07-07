@@ -2,6 +2,7 @@
   import type { KeytimesMessage, MessageType } from '$lib/types';
   import { MESSAGE_TYPE_LABELS } from '$lib/types';
   import {
+    config,
     removeKeytimesMessage,
     setKeytimesMessageType,
     updateField,
@@ -63,6 +64,22 @@
   function handleRemove() {
     removeKeytimesMessage(buttonIndex, cycle, entryIndex, slot, msgIndex);
   }
+
+  // Page-switch messages carry no MIDI channel; hide the channel input for them.
+  let isPageType = $derived(
+    message.type === 'page_inc' || message.type === 'page_dec' || message.type === 'page_jump'
+  );
+
+  // page_jump target is a 0-based index; name the page it lands on (mirrors
+  // ButtonRow's hint). Null when out of range — the error text owns that case.
+  let pageCount = $derived(($config.pages ?? []).length);
+  let jumpTarget = $derived.by(() => {
+    if (message.type !== 'page_jump') return null;
+    const idx = message.page ?? 0;
+    const target = ($config.pages ?? [])[idx];
+    if (!target) return null;
+    return target.name ? `“${target.name}”` : `Page ${idx + 1}`;
+  });
 
   // Field error lookups
   function errFor(field: string): string | undefined {
@@ -127,6 +144,27 @@
                oninput={(e) => handleIntField('step', e)}
                class:error={!!errFor('step')} />
       </label>
+    {:else if message.type === 'page_inc' || message.type === 'page_dec'}
+      <label class="inline">
+        Step:
+        <input type="number" min="1"
+               value={message.page_step ?? 1}
+               oninput={(e) => handleIntField('page_step', e)}
+               title="Pages to move per press; wraps at the ends."
+               class:error={!!errFor('page_step')} />
+      </label>
+    {:else if message.type === 'page_jump'}
+      <label class="inline">
+        Target Page:
+        <input type="number" min="0" max={pageCount - 1}
+               value={message.page ?? 0}
+               oninput={(e) => handleIntField('page', e)}
+               title="0-based page index (0 = first page)."
+               class:error={!!errFor('page')} />
+      </label>
+      {#if !errFor('page') && jumpTarget}
+        <span class="kt-hint">→ {jumpTarget}</span>
+      {/if}
     {:else if message.type === 'hid'}
       <label class="inline">
         Action:
@@ -165,7 +203,7 @@
       {/if}
     {/if}
 
-    {#if message.type !== 'hid'}
+    {#if message.type !== 'hid' && !isPageType}
       <label class="inline">
         Ch:
         <input type="number" min="1" max="16"
@@ -214,6 +252,12 @@
   input[type="number"] { width: 4rem; }
   input[type="text"] { width: 6rem; }
   select { font-size: 0.8125rem; }
+
+  .kt-hint {
+    font-size: 0.75rem;
+    color: #666;
+    white-space: nowrap;
+  }
 
   input.error {
     border-color: #c00;

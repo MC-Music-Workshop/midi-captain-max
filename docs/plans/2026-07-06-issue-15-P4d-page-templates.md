@@ -44,7 +44,7 @@ Sanity (must pass before you start): `(cd config-editor/src-tauri && cargo test)
 Closes the remaining half of review item #8 (`Page.name` was closed in P4a; per-page `global_channel` is the rest). The check goes inside the existing per-page loop, right after the page-name check, mirroring the device-wide and button channel messages.
 
 **Files:**
-- Modify: `config-editor/src-tauri/src/config.rs` (per-page loop, after the `page.name` block at `:582-586`)
+- Modify: `config-editor/src-tauri/src/config.rs` (per-page loop, after the `page.name` block at `:581-586`)
 - Modify: `config-editor/src-tauri/src/config.rs` `mod tests` (`:854+`)
 
 **Step 1: Write the failing tests**
@@ -84,14 +84,14 @@ Expected: `rejects_…` FAILS (no such error emitted); `accepts_…` already pas
 
 **Step 3: Implement**
 
-In `config.rs`, inside `for (p, page) in self.pages.iter().enumerate()`, immediately after the `if let Some(ref name) = page.name { … }` block (`:582-586`):
+In `config.rs`, inside `for (p, page) in self.pages.iter().enumerate()`, immediately after the `if let Some(ref name) = page.name { … }` block (`:581-586`):
 
 ```rust
             // Per-page MIDI channel override (0-15 internally, displayed 1-16).
             // Absent = inherit the device-wide default (firmware resolves this, P2).
             if let Some(ch) = page.global_channel {
                 if ch > 15 {
-                    errors.push(format!("{}global_channel {} is invalid (must be 1-16, stored as 0-15)", pfx, ch + 1));
+                    errors.push(format!("{}global_channel value {} is invalid (must be 1-16, stored as 0-15)", pfx, ch + 1));
                 }
             }
 ```
@@ -302,7 +302,7 @@ Expected: PASS.
 </style>
 ```
 
-> If `Accordion`/`.field-group`/`.help-text` conventions differ from what you see in `DisplaySection.svelte`, match that file — it is the reference for section styling.
+> `DisplaySection.svelte` does **not** use `.field-group`/`.help-text`/`.error-text` (it's built on `.field-row`/`.display-section` instead) — do not copy it for these classes. Match `DeviceSection.svelte` for `.field-group`/`.help-text`, and `EncoderSection.svelte` or `PageControlSection.svelte` for `.error-text`.
 
 **Step 6: Wire into `+page.svelte`**
 
@@ -944,6 +944,15 @@ Add to the `<script>`:
 
   let picking = $state(false);
   let templates = $state<TemplateInfo[]>([]);
+
+  // `commitPendingEdit` is NOT exported from PageBar.svelte (it's a private
+  // helper there) — this modal needs its own copy of the same one-liner so a
+  // field mid-edit (e.g. a typed-but-not-yet-blurred channel value) commits
+  // before export/insert reads the page.
+  function commitPendingEdit() {
+    const el = document.activeElement;
+    if (el instanceof HTMLElement) el.blur();
+  }
 
   async function saveAsTemplate() {
     commitPendingEdit();

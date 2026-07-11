@@ -118,6 +118,12 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
     errors.set('name', 'Page name must be 24 characters or less');
   }
 
+  // Per-page MIDI channel override (0-15). Absent = inherit device default.
+  if (page.global_channel !== undefined) {
+    const chError = validators.channel(page.global_channel);
+    if (chError) errors.set('global_channel', chError);
+  }
+
   // Device-specific validation
   if (device === 'one1') {
     if (buttons.length > 1) {

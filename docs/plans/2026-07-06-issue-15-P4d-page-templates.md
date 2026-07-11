@@ -41,7 +41,7 @@ Sanity (must pass before you start): `(cd config-editor/src-tauri && cargo test)
 
 ### Task 1: Rust `validate()` — per-page `global_channel` 0–15 check
 
-Closes the remaining half of review item #8 (`Page.name` was closed in P4a; per-page `global_channel` is the rest). The check goes inside the existing per-page loop, right after the page-name check, mirroring the device-wide and button channel messages.
+Closes the remaining half of review item #8 (`Page.name` was closed in P4a; per-page `global_channel` is the rest). The check goes inside the existing per-page loop, right after the page-name check. Message wording follows the **page-name check's own convention** (lowercase continuation after the `"Page N, "` prefix, e.g. `"Page 1, page name '...' exceeds 24 chars"`) rather than the device-wide `"Global channel value..."` string — those two messages read differently anyway (one is already page-prefixed, one isn't), so matching the sibling check in the same loop is the more useful consistency.
 
 **Files:**
 - Modify: `config-editor/src-tauri/src/config.rs` (per-page loop, after the `page.name` block at `:581-586`)
@@ -61,8 +61,8 @@ fn rejects_per_page_global_channel_over_15() {
     }"#;
     let cfg = parse_migrated(json);
     let errs = cfg.validate().unwrap_err();
-    assert!(errs.iter().any(|e| e.contains("global_channel") && e.contains("Page 1")),
-        "expected a Page 1 global_channel error, got {errs:?}");
+    assert!(errs.iter().any(|e| e.contains("page channel") && e.contains("Page 1")),
+        "expected a Page 1 channel error, got {errs:?}");
 }
 
 #[test]
@@ -89,9 +89,12 @@ In `config.rs`, inside `for (p, page) in self.pages.iter().enumerate()`, immedia
 ```rust
             // Per-page MIDI channel override (0-15 internally, displayed 1-16).
             // Absent = inherit the device-wide default (firmware resolves this, P2).
+            // Wording mirrors the page-name check above ("page name '...' exceeds
+            // 24 chars"), not the device-wide "Global channel value..." message —
+            // that one isn't page-prefixed, so it reads differently regardless.
             if let Some(ch) = page.global_channel {
                 if ch > 15 {
-                    errors.push(format!("{}global_channel value {} is invalid (must be 1-16, stored as 0-15)", pfx, ch + 1));
+                    errors.push(format!("{}page channel value {} is invalid (must be 1-16, stored as 0-15)", pfx, ch + 1));
                 }
             }
 ```
@@ -265,7 +268,9 @@ Expected: PASS.
       updatePageField('global_channel', undefined); // inherit device default
       return;
     }
-    const clamped = Math.max(1, Math.min(16, parseInt(raw, 10)));
+    const parsed = parseInt(raw, 10);
+    if (Number.isNaN(parsed)) return; // garbage input (e.g. a lone "-"); leave the stored value alone
+    const clamped = Math.max(1, Math.min(16, parsed));
     updatePageField('global_channel', clamped - 1);
   }
 </script>
@@ -936,8 +941,7 @@ Add two actions to the modal footer. **Save as template…** exports the active 
 Add to the `<script>`:
 
 ```ts
-  import { save, open } from '@tauri-apps/plugin-dialog';
-  import { message } from '@tauri-apps/plugin-dialog';
+  import { save, open, message } from '@tauri-apps/plugin-dialog';
   import {
     exportPageTemplate, importPageTemplate, listPageTemplates,
     pageTemplatesDir, type TemplateInfo,

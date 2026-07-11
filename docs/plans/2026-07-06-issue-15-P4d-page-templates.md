@@ -363,7 +363,9 @@ test('per-page MIDI channel writes to the active page, blank inherits', async ({
   expect(json.pages[0].global_channel).toBe(9); // 10 displayed -> 9 stored
 
   // Switch to page B: the field must NOT show page A's value.
-  await page.getByLabel('Page').selectOption('1');
+  // `exact: true` — the new "Page MIDI Channel:" label also contains "Page",
+  // so a substring match would resolve to two elements (strict-mode violation).
+  await page.getByLabel('Page', { exact: true }).selectOption('1');
   await expect(page.getByLabel('Page MIDI Channel:')).toHaveValue('');
 
   json = await readStoreJson(page);
@@ -376,7 +378,7 @@ test('per-page MIDI channel writes to the active page, blank inherits', async ({
 ```bash
 cd config-editor && npx playwright test page-settings.spec.ts
 ```
-Expected: PASS. (If the label selector is ambiguous with the device-wide "Global MIDI Channel:", the distinct label text "Page MIDI Channel:" disambiguates — confirm the two labels differ, which they do.)
+Expected: PASS. Two label gotchas, both handled above: (1) `getByLabel('Page MIDI Channel:')` is distinct from the device-wide `"Global MIDI Channel:"`, so the channel field is unambiguous. (2) The page **selector**'s label is the bare word `"Page"` (`PageBar.svelte`), which is a *substring* of `"Page MIDI Channel:"` — so selecting it needs `{ exact: true }` (already applied) or it hits a strict-mode "resolved to 2 elements" error.
 
 **Step 3: Commit**
 
@@ -407,7 +409,7 @@ Create `templates.rs` with the test module scaffold first:
 //! device via `MidiCaptainConfig::validate()` — no silent reshaping (D9).
 
 use crate::commands::{write_sync, ConfigError};
-use crate::config::{DeviceType, Page};
+use crate::config::Page; // DeviceType added in Task 6, where it's first used.
 use std::fs;
 use std::path::Path;
 
@@ -612,7 +614,7 @@ pub(crate) fn read_template(path: &Path, device: DeviceType) -> Result<serde_jso
 }
 ```
 
-> Imports: `read_template` / `device_shape_errors` use `DeviceType`, `Page`, and `std::fs` — all already imported by the Task 5 scaffold. No new top-level `use` needed; `MidiCaptainConfig` is intentionally not imported (unused).
+> Imports: add `DeviceType` to the Task 5 `use crate::config::…` line (now `use crate::config::{DeviceType, Page};`) — this task is where it's first used. `Page` and `std::fs` are already imported; `MidiCaptainConfig` is intentionally not imported (unused).
 
 > **DRY note:** `device_shape_errors` mirrors three checks that also live in `validate()`'s per-page loop. They're left duplicated rather than extracted: `validate()`'s versions are entangled with the `Page N, ` prefix and the full-config loop, and a shared helper would need to thread that context. Three one-line checks is below the extraction threshold; revisit only if a fourth shape rule appears.
 
@@ -815,11 +817,11 @@ Append to `formStore.test.ts` (mirror how existing CRUD tests reset/seed the sto
 ```ts
 describe('addPageFromTemplate (P4d)', () => {
   it('inserts the page after the active page, stamps a fresh __uiId, and switches to it', () => {
-    // Seed a 1-page one1 config via the same path the other CRUD tests use.
-    loadConfigForTest({ device: 'one1', active_page: 0,
-      pages: [{ name: 'Home', buttons: [{ label: 'B0', cc: 20, color: 'green' }] }] });
+    // Seed a 1-page one1 config via the same load path the other CRUD tests use.
+    loadConfig({ device: 'one1', active_page: 0,
+      pages: [{ name: 'Home', buttons: [{ label: 'B0', cc: 20, color: 'green' }] }] } as never);
     addPageFromTemplate({ name: 'Tmpl', buttons: [{ label: 'T0', cc: 30, color: 'red' }] });
-    const cfg = get(config);
+    const cfg = get(formState).config;
     expect(cfg.pages).toHaveLength(2);
     expect(cfg.pages[1].name).toBe('Tmpl');
     expect(cfg.active_page).toBe(1);
@@ -829,14 +831,14 @@ describe('addPageFromTemplate (P4d)', () => {
   it('is a no-op at the 20-page cap', () => {
     const pages = Array.from({ length: PAGE_CAP }, (_, i) =>
       ({ name: `P${i}`, buttons: [{ label: 'B', cc: 20, color: 'green' }] }));
-    loadConfigForTest({ device: 'one1', active_page: 0, pages });
+    loadConfig({ device: 'one1', active_page: 0, pages } as never);
     addPageFromTemplate({ buttons: [{ label: 'X', cc: 1, color: 'green' }] });
-    expect(get(config).pages).toHaveLength(PAGE_CAP);
+    expect(get(formState).config.pages).toHaveLength(PAGE_CAP);
   });
 });
 ```
 
-> Use whatever seeding helper the existing `formStore.test.ts` CRUD tests use (e.g. a `loadConfig`/`setConfigForTest`). If none exists, seed by calling the store's load path the other tests already call — do not invent a new one.
+> `formStore.test.ts` already imports `loadConfig`, `formState`, and `get`; add `PAGE_CAP` and `addPageFromTemplate` to that import line. Seed with `loadConfig(... as never)` — the same load path every existing CRUD test uses (`loadConfig(makeConfig(n))`); do not invent a new seeding helper.
 
 **Step 2: Run to verify failure**
 

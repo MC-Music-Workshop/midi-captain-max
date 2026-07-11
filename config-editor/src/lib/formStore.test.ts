@@ -190,4 +190,13 @@ describe('normalizeConfig page fields', () => {
     const out = normalizeConfig(get(formState).config);
     expect('name' in out.pages[0]).toBe(false);
   });
+
+  it('normalizeConfig drops a per-page global_channel that was cleared to undefined', () => {
+    const cfg = {
+      device: 'one1', active_page: 0,
+      pages: [{ name: 'Home', global_channel: undefined, buttons: [{ label: 'B0', cc: 20, color: 'green' }] }],
+    } as never;
+    const out = normalizeConfig(cfg);
+    expect('global_channel' in out.pages[0]).toBe(false);
+  });
 });

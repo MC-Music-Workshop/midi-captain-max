@@ -740,6 +740,9 @@ export function normalizeConfig(cfg: MidiCaptainConfig): MidiCaptainConfig {
       if (p.name === '') {
         delete p.name;
       }
+      if (p.global_channel === undefined) {
+        delete p.global_channel;
+      }
       return p;
     }),
   };

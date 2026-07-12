@@ -3,6 +3,7 @@ mod config;
 mod device;
 mod installer;
 mod reflash;
+mod templates;
 
 use commands::{eject_device, enter_bootloader, read_config, read_config_raw, restart_device, validate_config, write_config, write_config_raw};
 use device::{scan_devices, start_device_watcher, stop_device_watcher};

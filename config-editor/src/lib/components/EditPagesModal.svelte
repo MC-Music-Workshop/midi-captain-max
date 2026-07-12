@@ -27,15 +27,17 @@
   async function saveAsTemplate() {
     commitPendingEdit();
     const page = activePageForExport();
-    const dir = await pageTemplatesDir();
-    const suggested = (page.name || `Page ${activeIndex + 1}`).replace(/[^\w -]/g, '_');
-    const path = await save({
-      title: 'Save page as template',
-      defaultPath: `${dir}/${suggested}.json`,
-      filters: [{ name: 'Page template', extensions: ['json'] }],
-    });
-    if (!path) return; // user cancelled
+    // The whole flow is inside the try so a dir-resolution or dialog failure
+    // surfaces as a message instead of an unhandled rejection.
     try {
+      const dir = await pageTemplatesDir();
+      const suggested = (page.name || `Page ${activeIndex + 1}`).replace(/[^\w -]/g, '_');
+      const path = await save({
+        title: 'Save page as template',
+        defaultPath: `${dir}/${suggested}.json`,
+        filters: [{ name: 'Page template', extensions: ['json'] }],
+      });
+      if (!path) return; // user cancelled
       await exportPageTemplate(path, page);
     } catch (e) {
       await message(String((e as { message?: string })?.message ?? e), { title: 'Export failed', kind: 'error' });
@@ -63,14 +65,20 @@
   }
 
   async function browseForTemplate() {
-    const dir = await pageTemplatesDir();
-    const path = await open({
-      title: 'Add page from template',
-      defaultPath: dir,
-      multiple: false,
-      filters: [{ name: 'Page template', extensions: ['json'] }],
-    });
-    if (typeof path === 'string') await addFrom(path);
+    // addFrom handles its own import errors; this try covers dir resolution
+    // and the dialog itself, which otherwise die as unhandled rejections.
+    try {
+      const dir = await pageTemplatesDir();
+      const path = await open({
+        title: 'Add page from template',
+        defaultPath: dir,
+        multiple: false,
+        filters: [{ name: 'Page template', extensions: ['json'] }],
+      });
+      if (typeof path === 'string') await addFrom(path);
+    } catch (e) {
+      await message(String((e as { message?: string })?.message ?? e), { title: 'Import failed', kind: 'error' });
+    }
   }
 
   let pages = $derived(($config.pages ?? []) as Page[]);

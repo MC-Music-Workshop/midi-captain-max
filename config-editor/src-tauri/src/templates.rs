@@ -1,6 +1,7 @@
 //! Page template import/export (#15 P4d). Templates are host-side JSON files,
-//! one `Page` object per file. Import validates the page against the *current*
-//! device via `MidiCaptainConfig::validate()` — no silent reshaping (D9).
+//! one `Page` object per file. Import checks the page's *shape* against the
+//! current device (see `device_shape_errors`) — no silent reshaping (D9);
+//! value-level problems import fine and surface as normal in-editor errors.
 
 use crate::commands::{write_sync, ConfigError};
 use crate::config::{DeviceType, Page};
@@ -88,7 +89,7 @@ pub(crate) fn list_templates_in(dir: &Path) -> Result<Vec<TemplateInfo>, ConfigE
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("json") {
+        if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("json") {
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                 out.push(TemplateInfo {
                     name: stem.to_string(),
@@ -220,6 +221,16 @@ mod tests {
         let list = list_templates_in(dir.path()).unwrap();
         let names: Vec<_> = list.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(names, ["Alpha", "Zebra"]);
+    }
+
+    #[test]
+    fn list_templates_ignores_directories_named_like_templates() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir(dir.path().join("Folder.json")).unwrap();
+        fs::write(dir.path().join("Real.json"), "{}").unwrap();
+        let names: Vec<_> = list_templates_in(dir.path()).unwrap()
+            .into_iter().map(|t| t.name).collect();
+        assert_eq!(names, ["Real"]);
     }
 
     #[test]

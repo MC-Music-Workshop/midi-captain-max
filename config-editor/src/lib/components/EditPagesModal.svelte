@@ -269,6 +269,10 @@
     border-radius: 8px;
     width: 90%;
     max-width: 420px;
+    /* Flex items default to min-width: auto, so without this the footer's
+       row of buttons (now 8, since P4d added two) can force the modal wider
+       than max-width instead of wrapping. */
+    min-width: 0;
     max-height: 70vh;
     display: flex;
     flex-direction: column;
@@ -356,15 +360,16 @@
 
   .modal-footer {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
     padding: 12px 18px;
     border-top: 1px solid var(--color-border);
   }
 
   .row-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
   }
 
@@ -392,6 +397,7 @@
   }
 
   .done-btn {
+    align-self: flex-end;
     background-color: var(--color-primary);
     color: white;
     border-color: var(--color-primary);

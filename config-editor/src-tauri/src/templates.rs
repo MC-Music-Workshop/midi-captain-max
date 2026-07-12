@@ -6,6 +6,7 @@ use crate::commands::{write_sync, ConfigError};
 use crate::config::{DeviceType, Page};
 use std::fs;
 use std::path::Path;
+use tauri::{command, AppHandle, Manager};
 
 #[derive(Debug, serde::Serialize)]
 pub struct TemplateInfo {
@@ -98,6 +99,38 @@ pub(crate) fn list_templates_in(dir: &Path) -> Result<Vec<TemplateInfo>, ConfigE
     }
     out.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(out)
+}
+
+/// Absolute path of the default templates folder (`<app_data_dir>/templates`),
+/// created on demand. The frontend uses this as the file pickers' default path.
+fn templates_dir(app: &AppHandle) -> Result<std::path::PathBuf, ConfigError> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| ConfigError::msg(format!("Could not resolve app data dir: {e}")))?
+        .join("templates");
+    fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+#[command]
+pub fn page_templates_dir(app: AppHandle) -> Result<String, ConfigError> {
+    Ok(templates_dir(&app)?.to_string_lossy().to_string())
+}
+
+#[command]
+pub fn export_page_template(path: String, page: Page) -> Result<(), ConfigError> {
+    write_template(Path::new(&path), &page)
+}
+
+#[command]
+pub fn import_page_template(path: String, device: DeviceType) -> Result<serde_json::Value, ConfigError> {
+    read_template(Path::new(&path), device)
+}
+
+#[command]
+pub fn list_page_templates(app: AppHandle) -> Result<Vec<TemplateInfo>, ConfigError> {
+    list_templates_in(&templates_dir(&app)?)
 }
 
 #[cfg(test)]

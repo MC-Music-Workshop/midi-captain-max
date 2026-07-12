@@ -80,6 +80,26 @@ pub(crate) fn read_template(path: &Path, device: DeviceType) -> Result<serde_jso
     Ok(serde_json::to_value(&page)?)
 }
 
+/// List `*.json` templates in `dir` (created if absent), sorted by file stem.
+pub(crate) fn list_templates_in(dir: &Path) -> Result<Vec<TemplateInfo>, ConfigError> {
+    fs::create_dir_all(dir)?;
+    let mut out = Vec::new();
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("json") {
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                out.push(TemplateInfo {
+                    name: stem.to_string(),
+                    path: path.to_string_lossy().to_string(),
+                });
+            }
+        }
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,5 +176,24 @@ mod tests {
             "buttons": [{"label": "GO", "type": "page_jump", "page": 9, "color": "green"}]
         }));
         assert!(read_template(&p, DeviceType::One1).is_ok());
+    }
+
+    #[test]
+    fn list_templates_returns_sorted_json_stems() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("Zebra.json"), "{}").unwrap();
+        fs::write(dir.path().join("Alpha.json"), "{}").unwrap();
+        fs::write(dir.path().join("notes.txt"), "ignore me").unwrap();
+        let list = list_templates_in(dir.path()).unwrap();
+        let names: Vec<_> = list.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, ["Alpha", "Zebra"]);
+    }
+
+    #[test]
+    fn list_templates_creates_missing_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("templates");
+        assert!(list_templates_in(&sub).unwrap().is_empty());
+        assert!(sub.is_dir());
     }
 }

@@ -136,6 +136,6 @@ export async function exportPageTemplate(path: string, page: Page): Promise<void
 
 // Rejects only device-shape mismatches; value problems (jump targets, etc.)
 // come in and are flagged by in-editor validation.
-export async function importPageTemplate(path: string, device: string): Promise<Page> {
+export async function importPageTemplate(path: string, device: MidiCaptainConfig['device']): Promise<Page> {
   return invoke('import_page_template', { path, device });
 }

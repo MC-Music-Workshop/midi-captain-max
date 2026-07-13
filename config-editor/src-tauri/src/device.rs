@@ -399,38 +399,49 @@ pub fn stop_device_watcher() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
+    /// An empty directory with an exact volume name, inside a tempdir — so
+    /// these tests never touch /Volumes and can't be affected by whatever
+    /// drives are actually mounted (a real MIDICAPTAIN used to flip
+    /// has_config to true and fail the suite).
+    #[cfg(not(target_os = "windows"))]
+    fn fake_volume(dir: &tempfile::TempDir, name: &str) -> PathBuf {
+        let vol = dir.path().join(name);
+        std::fs::create_dir(&vol).unwrap();
+        vol
+    }
+
     #[test]
     #[cfg(not(target_os = "windows"))]
     fn test_check_volume_circuitpy() {
         // Test that CIRCUITPY volume name is recognized
-        let path = PathBuf::from("/Volumes/CIRCUITPY");
-        let result = check_volume(&path);
+        let dir = tempfile::tempdir().unwrap();
+        let result = check_volume(&fake_volume(&dir, "CIRCUITPY"));
         // Should return Some because the name matches, has_config will be false
         assert!(result.is_some());
         let device = result.unwrap();
         assert_eq!(device.name, "CIRCUITPY");
-        assert!(!device.has_config); // No actual config file exists in test
+        assert!(!device.has_config); // No config file in the fake volume
     }
-    
+
     #[test]
     #[cfg(not(target_os = "windows"))]
     fn test_check_volume_midicaptain() {
         // Test that MIDICAPTAIN volume name is recognized
-        let path = PathBuf::from("/Volumes/MIDICAPTAIN");
-        let result = check_volume(&path);
+        let dir = tempfile::tempdir().unwrap();
+        let result = check_volume(&fake_volume(&dir, "MIDICAPTAIN"));
         assert!(result.is_some());
         let device = result.unwrap();
         assert_eq!(device.name, "MIDICAPTAIN");
         assert!(!device.has_config);
     }
-    
+
     #[test]
     #[cfg(not(target_os = "windows"))]
     fn test_check_volume_case_insensitive() {
         // Test case insensitivity
-        let path = PathBuf::from("/Volumes/circuitpy");
-        let result = check_volume(&path);
+        let dir = tempfile::tempdir().unwrap();
+        let result = check_volume(&fake_volume(&dir, "circuitpy"));
         assert!(result.is_some());
         let device = result.unwrap();
         assert_eq!(device.name, "circuitpy"); // Preserves original case
@@ -439,8 +450,8 @@ mod tests {
     #[test]
     #[cfg(not(target_os = "windows"))]
     fn test_check_volume_invalid() {
-        let path = PathBuf::from("/Volumes/SomeOtherDrive");
-        let result = check_volume(&path);
+        let dir = tempfile::tempdir().unwrap();
+        let result = check_volume(&fake_volume(&dir, "SomeOtherDrive"));
         assert!(result.is_none());
     }
     

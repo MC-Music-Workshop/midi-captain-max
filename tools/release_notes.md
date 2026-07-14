@@ -29,6 +29,15 @@ By default, the installer preserves your existing `config.json`. Enable **Reset 
 
 The app will copy the firmware, reload the device, and update it in place.
 
+## First Run of the Config Editor
+
+The first time you use the page-template feature (**Edit Pages… → Save as template… / Add from template…**), the editor creates a folder in your Documents:
+
+- `Documents/MIDICaptainMAX/templates`: your saved page templates. The save dialog and the template picker both point here by default.
+- `Documents/MIDICaptainMAX/pages`: reserved for saved pages.
+
+Templates are plain JSON files, one page each — feel free to back them up, rename them in Finder/Explorer, or share them with other MIDI Captain users.
+
 ## First Run on OEM Firmware
 
 If your MIDI Captain is still running the factory Paint Audio firmware, the Config Editor may show `OEM (no VERSION.txt file)`.

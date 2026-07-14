@@ -14,7 +14,7 @@ Once MIDI Captain MAX is installed, manual firmware updates are no longer needed
 You can download either:
 
 - The appropriate Config Editor installer for your OS: `.dmg` for macOS, `.exe` or `.msi` for Windows, `.AppImage` (portable) or `.deb` (Debian/Ubuntu) for Linux. **The Config Editor includes the bundled firmware, so you don't need to download it separately**, or
-- The `MIDI-Captain-MAX-${VERSION}-complete.zip` package if you want the GUI and the firmware as separate packages.<br>For example, if you need to use the deploy script for the first install, or for an unsupported OS, this package includes everything you need. (The GUI still includes the bundled firmware; the zip is just for convenience if you want to use the deploy script instead of the GUI installer.)
+- The `MIDI-Captain-MAX-${VERSION}-complete.zip` package if you want the GUI and the firmware as separate packages.<br>For example, if you prefer the deploy script, or are on an unsupported OS, this package includes everything you need. (The GUI still includes the bundled firmware; the zip is just for convenience if you want to use the deploy script instead of the GUI installer.)
 
 ## Updating an Existing MIDI Captain MAX Install
 
@@ -42,7 +42,13 @@ Templates are plain JSON files, one page each — feel free to back them up, ren
 
 If your MIDI Captain is still running the factory Paint Audio firmware, the Config Editor may show `OEM (no VERSION.txt file)`.
 
-The first install requires a one-time deploy script run to write a `config.json` with your device type — the GUI installer cannot detect device type without it.
+The deploy script is no longer required — the entire first install can be done from the Config Editor. The installer only needs to know your device type, and you tell it that by saving a config from the editor first:
+
+1. Hold Button 1 / KEY0 while plugging in USB to enter the OEM USB settings mode. A `MIDICAPTAIN` drive should appear.
+2. Open the Config Editor and select the device. Since there's no MAX `config.json` on the drive yet, the editor starts a fresh default config.
+3. Set **Device Type** to your model and click **Save to Device**.
+4. Scroll to the **Firmware Installation** section and click **Install Firmware**. For a first install, enable **Reset config.json to bundled defaults** so you start from the full default template for your device.
+   - If the button blocks with a CircuitPython version error, see the next section, then come back.
 
 ### If the Config Editor shows a CircuitPython version error (2026-batch devices)
 
@@ -50,11 +56,13 @@ The first install requires a one-time deploy script run to write a `config.json`
 
 1. In the **Firmware Installation** section, open **Advanced / Recovery**.
 2. Click **Reflash CircuitPython 7.3.1**. The editor sends a command over serial, reboots the device into its RP2040 bootloader, copies the bundled `.uf2`, and waits for `CIRCUITPY` to remount — no physical button hold needed.
-3. Once `CIRCUITPY` remounts, continue to the deploy script steps below (the device is already mounted; skip step 1).
+3. Once `CIRCUITPY` remounts, continue with the first-install steps above (the device is already mounted; skip step 1).
 
 If the editor can't reach the device over serial, see the [manual bootloader entry guide](https://github.com/MC-Music-Workshop/midi-captain-max/blob/main/docs/recovery-bootloader-entry.md) (doc pending)
 
-### Deploy script — required for all OEM first installs
+### Deploy script (alternative)
+
+Prefer the command line, or on an OS the GUI doesn't support? The deploy script still performs a full first install:
 
 1. Hold Button 1 / KEY0 while plugging in USB to enter the OEM USB settings mode. A `MIDICAPTAIN` drive should appear.
 2. Download and extract `MIDI-Captain-MAX-${VERSION}-complete.zip` from the Assets section below.

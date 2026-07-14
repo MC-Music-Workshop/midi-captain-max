@@ -9,6 +9,7 @@ import type {
   InstallProgress,
   InstallReport,
   ReflashProgress,
+  Page,
 } from './types';
 
 // Config operations
@@ -116,4 +117,25 @@ export function onDeviceDisconnected(callback: (name: string) => void) {
   return listen<string>('device-disconnected', (event) => {
     callback(event.payload);
   });
+}
+
+// Page templates (#15 P4d)
+export interface TemplateInfo { name: string; path: string; }
+
+export async function pageTemplatesDir(): Promise<string> {
+  return invoke('page_templates_dir');
+}
+
+export async function listPageTemplates(): Promise<TemplateInfo[]> {
+  return invoke('list_page_templates');
+}
+
+export async function exportPageTemplate(path: string, page: Page): Promise<void> {
+  return invoke('export_page_template', { path, page });
+}
+
+// Rejects only device-shape mismatches; value problems (jump targets, etc.)
+// come in and are flagged by in-editor validation.
+export async function importPageTemplate(path: string, device: MidiCaptainConfig['device']): Promise<Page> {
+  return invoke('import_page_template', { path, device });
 }

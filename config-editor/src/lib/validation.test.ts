@@ -140,3 +140,33 @@ describe('page_control validation (P4b)', () => {
     expect(result.errors.get('page_control.channel')).toBeTruthy();
   });
 });
+
+describe('per-page global_channel (P4d)', () => {
+  function cfgWith(ch: number): MidiCaptainConfig {
+    return {
+      device: 'one1',
+      active_page: 0,
+      pages: [{ name: 'Home', global_channel: ch, buttons: [{ label: 'B0', cc: 20, color: 'green' }] }],
+    } as never;
+  }
+
+  it('rejects a per-page channel above 15 (active page, unprefixed key)', () => {
+    expect(validateConfig(cfgWith(16)).errors.get('global_channel')).toContain('between 1 and 16');
+  });
+
+  it('accepts a per-page channel in range', () => {
+    expect(validateConfig(cfgWith(15)).isValid).toBe(true);
+  });
+
+  it('surfaces a bad channel on a NON-active page as a prefixed save-blocker line', () => {
+    const cfg = {
+      device: 'one1', active_page: 0,
+      pages: [
+        { name: 'Home', buttons: [{ label: 'B0', cc: 20, color: 'green' }] },
+        { name: 'Bad', global_channel: 99, buttons: [{ label: 'B1', cc: 21, color: 'red' }] },
+      ],
+    } as never;
+    const lines = validateAllPages(cfg);
+    expect(lines.some(l => l.includes('Page 2 (Bad)') && l.includes('global_channel'))).toBe(true);
+  });
+});

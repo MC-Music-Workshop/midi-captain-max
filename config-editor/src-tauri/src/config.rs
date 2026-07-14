@@ -585,6 +585,14 @@ impl MidiCaptainConfig {
                 }
             }
 
+            // Per-page MIDI channel override (0-15 internally, displayed 1-16).
+            // Absent = inherit the device-wide default (firmware resolves this, P2).
+            if let Some(ch) = page.global_channel {
+                if ch > 15 {
+                    errors.push(format!("{}page channel value {} is invalid (must be 1-16, stored as 0-15)", pfx, ch + 1));
+                }
+            }
+
             if page.buttons.len() != expected_buttons {
                 errors.push(format!(
                     "{}expected {} buttons for {:?}, found {}",
@@ -1644,6 +1652,28 @@ mod tests {
             "active_page": 0
         }"#;
 
+        assert!(parse_migrated(json).validate().is_ok());
+    }
+
+    #[test]
+    fn rejects_per_page_global_channel_over_15() {
+        // one1 = 1 button/page keeps every other check green.
+        let json = r#"{
+            "device": "one1",
+            "pages": [{ "global_channel": 16, "buttons": [{"label": "B0", "cc": 20, "color": "green"}] }]
+        }"#;
+        let cfg = parse_migrated(json);
+        let errs = cfg.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("page channel") && e.contains("Page 1")),
+            "expected a Page 1 channel error, got {errs:?}");
+    }
+
+    #[test]
+    fn accepts_per_page_global_channel_in_range() {
+        let json = r#"{
+            "device": "one1",
+            "pages": [{ "global_channel": 15, "buttons": [{"label": "B0", "cc": 20, "color": "green"}] }]
+        }"#;
         assert!(parse_migrated(json).validate().is_ok());
     }
 }

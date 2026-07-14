@@ -165,6 +165,33 @@ Drives a device into RP2040 ROM bootloader mode over serial (`microcontroller.on
 - **Reflashing the `.uf2` reformats the CIRCUITPY filesystem** — `code.py`, `config.json`, `lib/` are all wiped. The intended recovery flow is reflash CP → then reinstall MCM via Install Firmware. Back up custom `config.json` first.
 - **CTA wiring for the #132 refusal**: the CP-version preflight (`installer.rs`) stamps `CP_VERSION_UNSUPPORTED_CODE` ("cp_version_unsupported") into `ConfigError.details[0]`. `FirmwareInstaller.svelte` matches that code (not the human message) to surface the reflash CTA at the error. `details` is otherwise unused by the install path — it's the machine-signal channel.
 
+## Page Templates (`templates.rs`, #15 P4d)
+
+Templates are host-side JSON files, one bare `Page` object per file (no
+`pages`/`device` wrapper — D7). Import checks device *shape* only (button
+count, encoder/expression capability — D9); value problems (out-of-range jump
+targets, etc.) import fine and surface as normal in-editor validation errors.
+
+- **Default folder is `~/Documents/MIDICaptainMAX/templates`** (resolved via
+  `document_dir()`, created on demand) — under Documents, not the hidden
+  app-data dir, so users can manage templates in Finder. A sibling
+  `MIDICaptainMAX/pages/` folder is created alongside, reserved for saved
+  pages.
+- **Accepted security tradeoff (recorded 2026-07-13):**
+  `export_page_template` / `import_page_template` accept arbitrary
+  user-chosen paths over IPC *without* `validate_device_path` — "save/load
+  anywhere via the native file picker" is the feature (D8). This means a
+  hypothetically compromised webview could read/overwrite any user-writable
+  file, unlike every other path-taking command, which is device-scoped. Risk
+  accepted because the webview only ever loads bundled content. If hardening
+  is ever wanted, move the save/open dialogs into Rust
+  (`tauri_plugin_dialog`'s Rust API) so the chosen path never crosses IPC.
+- Template IO is Rust `std::fs`, so it needs **no** JS `fs` capability; the
+  JS-side pickers are covered by `dialog:default` (already grants
+  `allow-save`/`allow-open` in tauri-plugin-dialog 2.6.0 — do not add scope
+  entries to `capabilities/default.json` unless a future plugin version drops
+  them).
+
 ## Tauri Windows Installer
 
 `tauri.conf.json` `bundle.windows.nsis.installMode`:

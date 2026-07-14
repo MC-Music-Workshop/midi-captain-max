@@ -1,11 +1,85 @@
 <script lang="ts">
+  import { save, open, message } from '@tauri-apps/plugin-dialog';
   import {
     config, setActivePage, addPage, duplicatePage, deletePage, movePage,
-    updatePageField, PAGE_CAP,
+    updatePageField, PAGE_CAP, activePageForExport, addPageFromTemplate,
   } from '$lib/formStore';
+  import {
+    exportPageTemplate, importPageTemplate, listPageTemplates,
+    pageTemplatesDir, type TemplateInfo,
+  } from '$lib/api';
   import type { Page } from '$lib/types';
 
   let { onClose }: { onClose: () => void } = $props();
+
+  let picking = $state(false);
+  let templates = $state<TemplateInfo[]>([]);
+
+  // `commitPendingEdit` is NOT exported from PageBar.svelte (it's a private
+  // helper there) — this modal needs its own copy of the same one-liner so a
+  // field mid-edit (e.g. a typed-but-not-yet-blurred channel value) commits
+  // before export/insert reads the page.
+  function commitPendingEdit() {
+    const el = document.activeElement;
+    if (el instanceof HTMLElement) el.blur();
+  }
+
+  async function saveAsTemplate() {
+    commitPendingEdit();
+    const page = activePageForExport();
+    // The whole flow is inside the try so a dir-resolution or dialog failure
+    // surfaces as a message instead of an unhandled rejection.
+    try {
+      const dir = await pageTemplatesDir();
+      const suggested = (page.name || `Page ${activeIndex + 1}`).replace(/[^\w -]/g, '_');
+      const path = await save({
+        title: 'Save page as template',
+        defaultPath: `${dir}/${suggested}.json`,
+        filters: [{ name: 'Page template', extensions: ['json'] }],
+      });
+      if (!path) return; // user cancelled
+      await exportPageTemplate(path, page);
+    } catch (e) {
+      await message(String((e as { message?: string })?.message ?? e), { title: 'Export failed', kind: 'error' });
+    }
+  }
+
+  async function openTemplatePicker() {
+    commitPendingEdit();
+    templates = await listPageTemplates().catch(() => []);
+    picking = true;
+  }
+
+  async function addFrom(path: string) {
+    picking = false;
+    try {
+      // Shape-checked in Rust; a bad jump target (or other value) still imports
+      // and gets flagged in-editor, so the page always lands.
+      const page = await importPageTemplate(path, $config.device);
+      addPageFromTemplate(page);
+    } catch (e) {
+      const err = e as { message?: string; details?: string[] };
+      const detail = err?.details?.length ? `\n\n${err.details.join('\n')}` : '';
+      await message(`${err?.message ?? e}${detail}`, { title: 'Import failed', kind: 'error' });
+    }
+  }
+
+  async function browseForTemplate() {
+    // addFrom handles its own import errors; this try covers dir resolution
+    // and the dialog itself, which otherwise die as unhandled rejections.
+    try {
+      const dir = await pageTemplatesDir();
+      const path = await open({
+        title: 'Add page from template',
+        defaultPath: dir,
+        multiple: false,
+        filters: [{ name: 'Page template', extensions: ['json'] }],
+      });
+      if (typeof path === 'string') await addFrom(path);
+    } catch (e) {
+      await message(String((e as { message?: string })?.message ?? e), { title: 'Import failed', kind: 'error' });
+    }
+  }
 
   let pages = $derived(($config.pages ?? []) as Page[]);
   // Selection IS the active page: clicking a row switches the form behind the
@@ -153,9 +227,34 @@
           title="Move page down"
           aria-label="Move page down"
         >↓</button>
+        <button onclick={saveAsTemplate} title="Save this page as a template">Save as template…</button>
+        <button
+          onclick={openTemplatePicker}
+          disabled={pages.length >= PAGE_CAP}
+          title="Add a page from a template"
+        >Add from template…</button>
       </div>
       <button class="done-btn" onclick={onClose}>Done</button>
     </div>
+
+    {#if picking}
+      <div class="template-picker">
+        <div class="tp-header">
+          <span>Choose a template</span>
+          <button class="tp-close" onclick={() => (picking = false)} aria-label="Cancel">✕</button>
+        </div>
+        {#if templates.length}
+          <ul class="tp-list">
+            {#each templates as t (t.path)}
+              <li><button type="button" onclick={() => addFrom(t.path)}>{t.name}</button></li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="tp-empty">No saved templates yet.</p>
+        {/if}
+        <button class="tp-browse" onclick={browseForTemplate}>Browse…</button>
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -178,6 +277,10 @@
     border-radius: 8px;
     width: 90%;
     max-width: 420px;
+    /* Flex items default to min-width: auto, so without this the footer's
+       row of buttons (now 8, since P4d added two) can force the modal wider
+       than max-width instead of wrapping. */
+    min-width: 0;
     max-height: 70vh;
     display: flex;
     flex-direction: column;
@@ -265,15 +368,16 @@
 
   .modal-footer {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
     padding: 12px 18px;
     border-top: 1px solid var(--color-border);
   }
 
   .row-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
   }
 
@@ -301,8 +405,81 @@
   }
 
   .done-btn {
+    align-self: flex-end;
     background-color: var(--color-primary);
     color: white;
     border-color: var(--color-primary);
+  }
+
+  .template-picker {
+    border-top: 1px solid var(--color-border);
+    padding: 12px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .tp-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .tp-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    font-size: 14px;
+  }
+
+  .tp-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 160px;
+    overflow-y: auto;
+  }
+
+  .tp-list button {
+    width: 100%;
+    text-align: left;
+    padding: 6px 10px;
+    font-size: 13px;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .tp-list button:hover {
+    background-color: var(--color-bg-hover);
+  }
+
+  .tp-empty {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    margin: 0;
+  }
+
+  .tp-browse {
+    align-self: flex-start;
+    padding: 4px 10px;
+    font-size: 13px;
+    border-radius: 4px;
+    border: 1px solid var(--color-border);
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    cursor: pointer;
+  }
+
+  .tp-browse:hover {
+    background-color: var(--color-bg-hover);
   }
 </style>

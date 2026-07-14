@@ -42,6 +42,7 @@ export async function loadApp(page: Page, config: unknown) {
     let nextId = 0;
     const callbacks = new Map<number, unknown>();
     (window as any).__E2E_WRITES__ = [];
+    (window as any).__E2E_TEMPLATES__ = [];
     (window as any).__TAURI_INTERNALS__ = {
       metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
       transformCallback(cb: unknown) {
@@ -74,6 +75,23 @@ export async function loadApp(page: Page, config: unknown) {
           case 'write_config_raw':
             (window as any).__E2E_WRITES__.push(args);
             return null;
+          case 'page_templates_dir': return '/e2e/templates';
+          case 'list_page_templates':
+            return (window as any).__E2E_TEMPLATES__ ?? [];
+          case 'plugin:dialog|save':
+            return '/e2e/templates/Exported.json';
+          case 'plugin:dialog|open':
+            return (window as any).__E2E_OPEN_PATH__ ?? null;
+          case 'export_page_template':
+            (window as any).__E2E_EXPORTED__ = (args as any).page;
+            (window as any).__E2E_TEMPLATES__ = [{ name: 'Exported', path: '/e2e/templates/Exported.json' }];
+            return null;
+          case 'import_page_template':
+            // A test may stage a specific page to "import"; otherwise serve
+            // whatever export stored (mimics reading the file back).
+            return (window as any).__E2E_IMPORT__
+              ?? (window as any).__E2E_EXPORTED__
+              ?? { buttons: [{ label: 'T0', cc: 30, color: 'green' }] };
           default:
             throw new Error(`e2e Tauri mock: unhandled command "${cmd}"`);
         }

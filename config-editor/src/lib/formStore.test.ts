@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { get } from 'svelte/store';
-import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage, deletePage, movePage, updatePageField } from './formStore';
+import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage, deletePage, movePage, updatePageField, PAGE_CAP, addPageFromTemplate } from './formStore';
 import type { MidiCaptainConfig, DeviceType, Page } from './types';
 
 // Minimal valid config: one1 = 1 button per page, so validation stays green.
@@ -189,5 +189,36 @@ describe('normalizeConfig page fields', () => {
     updatePageField('name', '');
     const out = normalizeConfig(get(formState).config);
     expect('name' in out.pages[0]).toBe(false);
+  });
+
+  it('normalizeConfig drops a per-page global_channel that was cleared to undefined', () => {
+    const cfg = {
+      device: 'one1', active_page: 0,
+      pages: [{ name: 'Home', global_channel: undefined, buttons: [{ label: 'B0', cc: 20, color: 'green' }] }],
+    } as never;
+    const out = normalizeConfig(cfg);
+    expect('global_channel' in out.pages[0]).toBe(false);
+  });
+});
+
+describe('addPageFromTemplate (P4d)', () => {
+  it('inserts the page after the active page, stamps a fresh __uiId, and switches to it', () => {
+    // Seed a 1-page one1 config via the same load path the other CRUD tests use.
+    loadConfig({ device: 'one1', active_page: 0,
+      pages: [{ name: 'Home', buttons: [{ label: 'B0', cc: 20, color: 'green' }] }] } as never);
+    addPageFromTemplate({ name: 'Tmpl', buttons: [{ label: 'T0', cc: 30, color: 'red' }] });
+    const cfg = get(formState).config;
+    expect(cfg.pages).toHaveLength(2);
+    expect(cfg.pages[1].name).toBe('Tmpl');
+    expect(cfg.active_page).toBe(1);
+    expect(typeof (cfg.pages[1] as any).__uiId).toBe('number');
+  });
+
+  it('is a no-op at the 20-page cap', () => {
+    const pages = Array.from({ length: PAGE_CAP }, (_, i) =>
+      ({ name: `P${i}`, buttons: [{ label: 'B', cc: 20, color: 'green' }] }));
+    loadConfig({ device: 'one1', active_page: 0, pages } as never);
+    addPageFromTemplate({ buttons: [{ label: 'X', cc: 1, color: 'green' }] });
+    expect(get(formState).config.pages).toHaveLength(PAGE_CAP);
   });
 });

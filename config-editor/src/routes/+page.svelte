@@ -16,6 +16,7 @@
   import ConfigForm from '$lib/components/ConfigForm.svelte';
   import DeviceSection from '$lib/components/DeviceSection.svelte';
   import PageBar from '$lib/components/PageBar.svelte';
+  import PageSettingsSection from '$lib/components/PageSettingsSection.svelte';
   import ButtonsSection from '$lib/components/ButtonsSection.svelte';
   import EncoderSection from '$lib/components/EncoderSection.svelte';
   import ExpressionSection from '$lib/components/ExpressionSection.svelte';
@@ -395,6 +396,7 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
              DOM from the new page's data, so no input state (e.g. typed text
              not yet committed by blur) can leak between pages. -->
         {#key $currentPage?.__uiId}
+          <PageSettingsSection />
           <ButtonsSection />
           <EncoderSection />
           <ExpressionSection />

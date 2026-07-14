@@ -608,6 +608,28 @@ export function duplicatePage(index: number) {
   });
 }
 
+// Insert an imported template page after the active page and switch to it.
+// The value comes from import_page_template (already device-validated in Rust);
+// __uiIds are stripped then re-stamped by _commitConfigMutation, same as duplicate.
+export function addPageFromTemplate(page: unknown) {
+  _commitConfigMutation(cfg => {
+    if (cfg.pages.length >= PAGE_CAP) return false;
+    const clone = structuredClone(page) as Page;
+    _stripUiIds(clone);
+    const at = activePageIndex(cfg) + 1;
+    cfg.pages.splice(at, 0, clone);
+    cfg.active_page = at;
+  });
+}
+
+// A __uiId-stripped deep clone of the active page, for export as a template.
+export function activePageForExport(): Page {
+  const cfg = get(formState).config;
+  const clone = structuredClone(cfg.pages[activePageIndex(cfg)]);
+  _stripUiIds(clone);
+  return clone;
+}
+
 export function deletePage(index: number) {
   _commitConfigMutation(cfg => {
     if (cfg.pages.length <= 1) return false; // D3: never produce an unsaveable config
@@ -739,6 +761,9 @@ export function normalizeConfig(cfg: MidiCaptainConfig): MidiCaptainConfig {
       }
       if (p.name === '') {
         delete p.name;
+      }
+      if (p.global_channel === undefined) {
+        delete p.global_channel;
       }
       return p;
     }),

@@ -88,6 +88,11 @@
     #tft {
       display: block;
       width: 9.5rem;
+    }
+    /* id selector would otherwise beat the UA [hidden] rule, leaving an empty
+       black canvas showing in the JS-fallback (wasm-unavailable) path. */
+    #tft[hidden] { display: none; }
+    #tft {
       max-width: 100%;
       border: 2px solid #1c2733;
       border-radius: 0.4rem;

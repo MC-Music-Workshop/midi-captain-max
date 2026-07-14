@@ -14,7 +14,7 @@ Once MIDI Captain MAX is installed, manual firmware updates are no longer needed
 You can download either:
 
 - The appropriate Config Editor installer for your OS: `.dmg` for macOS, `.exe` or `.msi` for Windows, `.AppImage` (portable) or `.deb` (Debian/Ubuntu) for Linux. **The Config Editor includes the bundled firmware, so you don't need to download it separately**, or
-- The `MIDI-Captain-MAX-v1.10.0-complete.zip` package if you want the GUI and the firmware as separate packages.<br>For example, if you need to use the deploy script for the first install, or for an unsupported OS, this package includes everything you need. (The GUI still includes the bundled firmware; the zip is just for convenience if you want to use the deploy script instead of the GUI installer.)
+- The `MIDI-Captain-MAX-${VERSION}-complete.zip` package if you want the GUI and the firmware as separate packages.<br>For example, if you need to use the deploy script for the first install, or for an unsupported OS, this package includes everything you need. (The GUI still includes the bundled firmware; the zip is just for convenience if you want to use the deploy script instead of the GUI installer.)
 
 ## Updating an Existing MIDI Captain MAX Install
 
@@ -57,7 +57,7 @@ If the editor can't reach the device over serial, see the [manual bootloader ent
 ### Deploy script — required for all OEM first installs
 
 1. Hold Button 1 / KEY0 while plugging in USB to enter the OEM USB settings mode. A `MIDICAPTAIN` drive should appear.
-2. Download and extract `MIDI-Captain-MAX-v1.10.0-complete.zip` from the Assets section below.
+2. Download and extract `MIDI-Captain-MAX-${VERSION}-complete.zip` from the Assets section below.
 3. Run the included deploy script once with your device type:
    <br>_NOTE: only enter the desired device type, not the full list of options.
    <br>For example, if you have a Nano 4, run `./deploy.sh --device nano4`_.

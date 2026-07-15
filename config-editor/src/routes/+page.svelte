@@ -255,20 +255,23 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
     
     $isLoading = true;
     try {
-      if ($selectedDevice.has_config) {
-        console.log('Reloading config from:', $selectedDevice.config_path);
-        const configRaw = await readConfigRaw($selectedDevice.config_path);
-        console.log('Config reloaded, length:', configRaw.length);
-        const configObj = JSON.parse(configRaw);
-        
-        // Load into form store
-        loadConfig(configObj);
-        
-        $currentConfigRaw = configRaw;
-        $hasUnsavedChanges = false;
-        $validationErrors = [];
-        $statusMessage = 'Config reloaded from device';
-      }
+      // Don't gate on the snapshot's has_config — it's frozen at detection
+      // time and can be stale (e.g. device re-detected mid-mount after the
+      // post-install reboot), which turned this button into a silent no-op.
+      // Attempt the read; a genuinely missing config.json surfaces as an
+      // error in the footer instead.
+      console.log('Reloading config from:', $selectedDevice.config_path);
+      const configRaw = await readConfigRaw($selectedDevice.config_path);
+      console.log('Config reloaded, length:', configRaw.length);
+      const configObj = JSON.parse(configRaw);
+
+      // Load into form store
+      loadConfig(configObj);
+
+      $currentConfigRaw = configRaw;
+      $hasUnsavedChanges = false;
+      $validationErrors = [];
+      $statusMessage = 'Config reloaded from device';
     } catch (e: any) {
       console.error('Error reloading config:', e);
       $statusMessage = `Error reloading config: ${e.message || e}`;

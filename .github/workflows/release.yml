@@ -209,6 +209,7 @@ jobs:
             echo "NOTES=🧪 **Beta Release** - Feature complete, undergoing final testing." >> $GITHUB_ENV
           elif [[ "$VERSION" == *"rc"* ]]; then
             echo "PRERELEASE=true" >> $GITHUB_OUTPUT
+            echo "DRAFT=false" >> $GITHUB_OUTPUT # rc releases auto-publish
             echo "NOTES=🚀 **Release Candidate** - Final testing before stable release." >> $GITHUB_ENV
           else
             echo "PRERELEASE=false" >> $GITHUB_OUTPUT

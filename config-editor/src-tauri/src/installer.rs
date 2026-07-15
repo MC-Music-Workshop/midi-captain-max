@@ -500,12 +500,28 @@ pub fn install_firmware_from(
         let current = idx + 1;
         match op {
             Op::Copy { rel, src, dst } => {
-                let bundle_hex = bundle_manifest.get(rel).cloned();
+                // The active config is the one op whose source is a
+                // device-specific template (`config-<type>.json`), so key its
+                // bundle hash by the template, not by `rel` — otherwise the
+                // manifest records the std10 template's hash after a non-std10
+                // reset. It's also exempt from the manifest skip: the plan only
+                // includes config.json when it's missing or the user asked for
+                // a reset, and firmware.md5 goes stale whenever the editor
+                // rewrites config.json, so a manifest match doesn't mean the
+                // file on the device holds the bundled default.
+                let is_active_config = rel == "config.json";
+                let hash_key = if is_active_config {
+                    config_source_name(device_type)
+                } else {
+                    rel.as_str()
+                };
+                let bundle_hex = bundle_manifest.get(hash_key).cloned();
                 let device_hex = device_manifest.get(rel);
-                let same_hash = matches!(
-                    (bundle_hex.as_ref(), device_hex),
-                    (Some(a), Some(b)) if a == b
-                );
+                let same_hash = !is_active_config
+                    && matches!(
+                        (bundle_hex.as_ref(), device_hex),
+                        (Some(a), Some(b)) if a == b
+                    );
                 if same_hash && dst.exists() {
                     files_skipped += 1;
                     progress(InstallProgress {
@@ -780,6 +796,56 @@ mod tests {
         assert!(!report.config_preserved);
         let cfg = fs::read_to_string(device.path().join("config.json")).unwrap();
         assert!(cfg.contains(r#""from":"bundle""#), "bundled config must replace user's");
+        assert!(!cfg.contains("user-edit"));
+    }
+
+    #[test]
+    fn reset_config_overwrites_edits_made_after_prior_install() {
+        // Regression: a prior install left firmware.md5 recording the bundled
+        // default's hash for config.json; the editor then rewrote config.json
+        // without touching the manifest. The stale manifest entry must not
+        // veto the reset copy as "already up to date".
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        seed_device(device.path(), "std10");
+
+        install(bundle.path(), device.path(), true); // writes firmware.md5
+        seed_device(device.path(), "std10"); // user edit; manifest untouched
+
+        install(bundle.path(), device.path(), true);
+
+        let cfg = fs::read_to_string(device.path().join("config.json")).unwrap();
+        assert!(cfg.contains(r#""from":"bundle""#), "reset must restore bundled default");
+        assert!(!cfg.contains("user-edit"));
+    }
+
+    #[test]
+    fn manifest_records_device_template_hash_after_non_std10_reset() {
+        // Regression: the config.json manifest entry was keyed off the bundle's
+        // std10 template even when a non-std10 template was copied, so every
+        // reset after the first saw "same hash" and skipped the copy.
+        let bundle = TempDir::new().unwrap();
+        let device = TempDir::new().unwrap();
+        make_bundle(bundle.path());
+        seed_device(device.path(), "mini6");
+
+        install(bundle.path(), device.path(), true);
+
+        let template_hash = hash_file(&bundle.path().join("config-mini6.json")).unwrap();
+        let manifest = read_device_manifest(device.path());
+        assert_eq!(
+            manifest.get("config.json"),
+            Some(&template_hash),
+            "manifest must record the hash of the template actually copied"
+        );
+
+        seed_device(device.path(), "mini6"); // user edit; manifest untouched
+        install(bundle.path(), device.path(), true);
+
+        let cfg = fs::read_to_string(device.path().join("config.json")).unwrap();
+        assert!(cfg.contains(r#""device":"mini6""#));
+        assert!(cfg.contains(r#""from":"bundle""#), "second reset must restore bundled default");
         assert!(!cfg.contains("user-edit"));
     }
 

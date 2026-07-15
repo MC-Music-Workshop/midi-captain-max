@@ -156,6 +156,15 @@ Mirrors `deploy.sh`'s copy order. Key rules:
 - **Don't `sync_all` the manifest (`firmware.md5`).** `fsync` on the USB MSC volume can hang for tens of seconds while CircuitPython is at REPL. The manifest is non-safety-critical; bare `fs::write` is correct.
 - **Manifest reflects what's on the device, not what's in the bundle.** Build `final_manifest` during plan execution from Copy/Skip ops only; for `config_preserved` cases hash the actual on-device `config.json`.
 - **Pre-flight halt is best-effort.** `commands::halt_and_disable_autoreload` is wrapped in `let _ =` — serial port may be held by `tio`/`screen`, and `boot.py` already disables autoreload.
+- **The manifest skip is only trustworthy for files the installer alone writes.** `firmware.md5` goes stale whenever anything else writes the device: editor saves (`write_config` never touches the manifest), hand edits, and `deploy.sh`/`deploy.ps1` (which hash the *repo* dev dir, not the device). The active `config.json` is therefore exempt from the same-hash skip — the plan only includes it when it's missing or the user asked for a reset — and its manifest entry keys off the device-specific template actually copied (`config_source_name(device_type)`), not `rel`. Other files still trust the manifest, so a hand-edited `code.py` survives a reinstall of the same version. Deleting `firmware.md5` on the device is the escape hatch that forces a full install.
+- **Reset can't rescue a `config.json` with a broken `device` field.** `detect_device_type` reads the current on-device config to pick which template to copy, so a corrupt/device-less config fails the install before the reset happens.
+
+## Device Snapshots Go Stale (`+page.svelte`, `device.rs`)
+
+`DetectedDevice` is a point-in-time snapshot: `has_config` is a one-shot `exists()` at scan time (`device.rs`). A device re-detected mid-mount — which happens routinely during the post-install soft reboot — can freeze `has_config: false` into the selected-device store for the rest of the session.
+
+- **Never gate a user-initiated read on `snapshot.has_config`.** It turned the Reload button into a silent no-op (no error, no status change). Attempt the read and let a missing file error into the footer. `selectDevice` still gates on it (lower risk: its snapshot is usually fresh from a click, and it reports "No config.json found").
+- **The post-install auto-reload races the device reboot.** The install command initiates the soft reboot *before* returning, so `onInstalled → reloadFromDevice` can read during the remount window; a lost race leaves stale form state with only a footer status message. When the GUI contradicts the device, read `/Volumes/MIDICAPTAIN/config.json` directly to see which side is wrong.
 
 ## Reflash CircuitPython / Bootloader Entry (`enter_bootloader`, `ReflashCircuitPython.svelte`)
 

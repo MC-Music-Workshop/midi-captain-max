@@ -42,7 +42,8 @@
   }
   
   .no-expression {
-    color: var(--text-secondary, #666);
+    /* Pinned light to match the accordion's hardcoded-white card; see issue #175. */
+    color: #666;
     font-style: italic;
     padding: 1rem;
   }

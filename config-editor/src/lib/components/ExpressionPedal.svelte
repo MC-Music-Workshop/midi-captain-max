@@ -152,10 +152,15 @@
 
 <style>
   .pedal-config {
-    border: 1px solid var(--border-color, #ddd);
+    /* Pinned light like the neighboring sections (see Accordion.svelte stopgap and
+       issue #175): this was the only card using the theme variables, so in dark mode
+       it flipped dark inside the hardcoded-white accordion. Convert together with
+       the rest in the #175 sweep. */
+    border: 1px solid #ddd;
     border-radius: 4px;
     padding: 1rem;
-    background: var(--bg-secondary, #fafafa);
+    background: #fafafa;
+    color: #333;
   }
   
   .pedal-header {
@@ -197,7 +202,7 @@
   
   .field-label {
     font-size: 0.875rem;
-    color: var(--text-secondary, #666);
+    color: #666;
     min-width: 4rem;
   }
   
@@ -205,7 +210,7 @@
   input[type="number"],
   select {
     padding: 0.375rem 0.5rem;
-    border: 1px solid var(--border-color, #ccc);
+    border: 1px solid #ccc;
     border-radius: 3px;
     font-size: 0.875rem;
     font-family: inherit;

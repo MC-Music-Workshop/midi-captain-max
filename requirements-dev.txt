@@ -2,7 +2,12 @@
 # Install with: pip install -r requirements-dev.txt
 
 # Linting
-ruff>=0.14.0
+# Upper bound is deliberate: ruff's default rule selection changes between
+# minor releases (0.16 widened it), and an unpinned floor let CI install a
+# ruff that failed the lint gate on code nobody had touched. pyproject.toml
+# now names the rule set explicitly, so this bound is belt-and-braces —
+# bump it when adopting a new minor, not implicitly at the next CI run.
+ruff>=0.16.3,<0.17
 
 # Testing with hardware mocks
 pytest>=8.0.0

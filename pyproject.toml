@@ -3,6 +3,15 @@
 include = ["firmware/**/*.py", "tests/**/*.py", "tools/**/*.py"]
 
 [tool.ruff.lint]
+# Pin the rule set explicitly. Ruff's *default* selection is not stable across
+# releases — 0.16 widened it from the historical `E4,E7,E9,F` to also include
+# `I`, `B`, `S`, `BLE`, `UP`, `FURB`, and `RUF`, which turned a green tree into
+# 92 findings on untouched code (vendored `lib/adafruit_hid/`, `experiments/`)
+# the moment CI's unpinned `ruff>=…` floated up. Naming the rules here means the
+# lint gate is decided by this file, not by whichever ruff CI happened to
+# install. Adopting a new family is a deliberate edit to this list.
+select = ["E4", "E7", "E9", "F"]
+
 # Globally-ignored rules. These are deliberate codebase patterns, not bugs:
 #
 # E402: module-level imports below code. firmware/dev/code.py prints a boot

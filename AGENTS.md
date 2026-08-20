@@ -106,7 +106,7 @@ cd config-editor && npm run generate:types       # regenerate types from schema
 
 Lint is folded into `./tools/test-all.sh`, which runs `ruff` (Python) and `cargo clippy` (Rust) alongside the test suites. Run that script at the verification checkpoint — once before claiming completion or requesting review, not after every edit.
 
-`pyproject.toml` configures ruff to ignore four rules that flag deliberate codebase patterns (`E402`, `E712`, `F401`, `F403`); see the comments in that file for rationale before adding new exceptions. `cargo clippy` runs warnings-only; the tree is currently clean.
+`pyproject.toml` names the enabled rule set explicitly (`select = ["E4", "E7", "E9", "F"]`) and ignores four rules that flag deliberate codebase patterns (`E402`, `E712`, `F401`, `F403`); see the comments in that file for rationale before adding new exceptions. The explicit `select` is load-bearing: ruff's *default* selection widens between minor releases (0.16 added `I`, `B`, `S`, `BLE`, `UP`, `FURB`, `RUF`), and with the old unpinned `ruff>=0.14.0` that silently turned CI red with 92 findings on code nobody had touched — mostly vendored `lib/adafruit_hid/` and `experiments/`. `requirements-dev.txt` also pins ruff to one minor (`>=0.16.3,<0.17`). Adopting a new rule family is a deliberate edit to `select`, not a side effect of a CI dependency resolve. `cargo clippy` runs warnings-only; the tree is currently clean.
 
 To run lint alone (without the full test suite):
 ```bash

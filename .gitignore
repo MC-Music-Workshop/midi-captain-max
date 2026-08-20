@@ -44,3 +44,8 @@ config-editor/src-tauri/resources/firmware/*
 # Bundled CircuitPython .uf2 for the GUI reflash button (issue #134) — populated
 # by tools/fetch-cp-uf2.sh (called from bundle-firmware-for-dev.sh + CI).
 config-editor/src-tauri/resources/circuitpython/*.uf2
+
+# VitePress user docs site
+docs-site/node_modules/
+docs-site/.vitepress/cache/
+_publish/

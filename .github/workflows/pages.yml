@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'site/**'
+      - 'docs/user/**'
+      - 'docs-site/**'
       - 'tools/fetch-board.sh'
       - '.github/workflows/pages.yml'
       # The live demo runs these firmware modules; redeploy when they change.
@@ -45,10 +47,27 @@ jobs:
       # the deployed site always matches what's on main.
       - name: Sync firmware modules into site
         run: tools/sync-site-firmware.sh
+      # Build the user docs (VitePress) and assemble the final publish dir:
+      # hand-built landing page at /, generated docs under /docs/.
+      - uses: actions/setup-node@v6
+        with:
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      - name: Build user docs
+        working-directory: docs-site
+        run: |
+          npm ci
+          npm run build
+      - name: Assemble publish directory
+        run: |
+          rm -rf _publish
+          cp -r site _publish
+          mkdir -p _publish/docs
+          cp -r docs-site/dist/. _publish/docs/
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: site/
+          path: _publish/
       # deploy-pages intermittently fails with a transient "Deployment failed,
       # try again later" from the Pages backend; a single retry after a pause
       # has recovered it every time.

@@ -2,7 +2,7 @@
 
 The stock MIDI Captain firmware is send-only: the pedal talks, nothing talks back. MCM is bidirectional. Your host — Helix, Ableton, MainStage, a lighting rig, anything that can send MIDI — can drive the pedal's LEDs and button state, so what you see on the floor always matches what's actually happening in the rig.
 
-This document covers the two per-button receive modes: **state sync** and **select sync**. Two related inbound features — MIDI-IN page switching (`page_control`) and the MIDI THRU routing matrix — are documented separately.
+This document covers the two per-button receive modes: **state sync** and **select sync**. Two related inbound features — [MIDI-IN page switching](./page-control.md) and the [MIDI THRU routing matrix](./midi-thru.md) — are documented separately.
 
 ## How messages arrive
 

@@ -10,7 +10,7 @@
   import {
     scanDevices, startDeviceWatcher, readConfigRaw, writeConfigRaw,
     onDeviceConnected, onDeviceDisconnected, restartDevice, ejectDevice,
-    rpiRp2MountPath
+    rpiRp2MountPath, detectOemV5Port
   } from '$lib/api';
   import type { DetectedDevice } from '$lib/types';
   import ConfigForm from '$lib/components/ConfigForm.svelte';
@@ -34,6 +34,9 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
   // the reflash affordance only surfaces when the user has actually staged
   // the device into bootloader mode — no clutter in the normal UI.
   let rpiRp2DetectedPath = $state<string | null>(null);
+  // Possible OEM FW5+ device (CDC port present, no device volume mounted).
+  // Heuristic — the banner requires explicit user action; never auto-touch.
+  let oemV5Port = $state<string | null>(null);
   let rpiRp2PollTimer: ReturnType<typeof setInterval> | null = null;
 
   // Event listener cleanup functions
@@ -135,6 +138,12 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
       const pollRpiRp2 = async () => {
         try {
           rpiRp2DetectedPath = await rpiRp2MountPath();
+          // Only look for the OEM-v5 signature when there's nothing better
+          // to show: no bootloader mounted and no device detected.
+          oemV5Port =
+            !rpiRp2DetectedPath && $devices.length === 0
+              ? await detectOemV5Port()
+              : null;
         } catch {
           // Transient — keep polling on next tick.
         }
@@ -389,6 +398,34 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
     </div>
   {/if}
 
+  {#if !rpiRp2DetectedPath && oemV5Port}
+    <div class="rpi-banner oem-v5" role="status">
+      <span class="label">
+        <strong>Possible PaintAudio OEM FW5 device</strong> on
+        <code>{oemV5Port}</code>. FW5 pedals can't be configured here, but
+        they can be migrated to MIDI Captain MAX.
+        <strong>Migration replaces the OEM firmware and erases its on-pedal
+        configs</strong> — to back up first, power on holding Switch&nbsp;1
+        and copy the pedal's drive to your computer. Only proceed if this
+        port is your MIDI Captain, not another Pico-based device.
+      </span>
+      <ReflashCircuitPython
+        oemV5Port={oemV5Port}
+        triggerLabel="Migrate to MIDI Captain MAX"
+        onComplete={async () => {
+          $devices = await scanDevices();
+          oemV5Port = null;
+          // The reflash renames the volume (e.g. MIDICAPTAIN → CIRCUITPY),
+          // so name-based reselection can't match — pick the device up
+          // directly when it's unambiguous.
+          if ($devices.length === 1) {
+            await selectDevice($devices[0]);
+          }
+        }}
+      />
+    </div>
+  {/if}
+
 
   <div class="editor-container">
     {#if $selectedDevice && !$isLoading}
@@ -553,6 +590,12 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
   .no-device {
     color: var(--text-secondary);
     font-style: italic;
+  }
+
+  .rpi-banner.oem-v5 {
+    /* Red-shifted variant: heuristic detection + firmware-replacing action. */
+    background: rgba(220, 82, 82, 0.12);
+    border-color: var(--danger, #c0605c);
   }
 
   .rpi-banner {

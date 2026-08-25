@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { enterBootloader, reflashCircuitpython, rpiRp2MountPath, scanDevices } from '$lib/api';
+  import { enterBootloader, enterBootloaderOemV5, reflashCircuitpython, rpiRp2MountPath, scanDevices } from '$lib/api';
   import type { DetectedDevice, ReflashProgress } from '$lib/types';
 
   interface Props {
@@ -16,9 +16,22 @@
      *  themselves. Without this prop the flow assumes RPI-RP2 is already
      *  mounted (used by the top-level banner). */
     device?: DetectedDevice | null;
+    /** CDC port of a detected (possible) OEM FW5+ device. When set, the flow
+     *  enters the bootloader via the 1200-baud touch on this port; the rest
+     *  of the reflash is unchanged (CircuitPython auto-formats FW5's leftover
+     *  filesystem region on first boot). Mutually exclusive with `device`. */
+    oemV5Port?: string | null;
+    /** Trigger-button label override (migration banner uses its own copy). */
+    triggerLabel?: string;
   }
 
-  let { highlight = false, onComplete, device = null }: Props = $props();
+  let {
+    highlight = false,
+    onComplete,
+    device = null,
+    oemV5Port = null,
+    triggerLabel = 'Reflash CircuitPython 7.3.1',
+  }: Props = $props();
 
   type State =
     | { kind: 'idle' }
@@ -213,7 +226,25 @@
       return;
     }
 
-    // 3. No device prop: just wait for the user to enter bootloader manually.
+    // 3. Migration mode (possible OEM FW5 device): 1200-baud touch on the
+    //    detected CDC port. Same stash-the-error pattern as the REPL path —
+    //    a successful touch drops the port mid-call, so errors are expected;
+    //    the RPI-RP2 poll is the source of truth.
+    if (oemV5Port) {
+      flow = { kind: 'enteringBootloader' };
+      entryError = null;
+      try {
+        await enterBootloaderOemV5(oemV5Port);
+      } catch (e: any) {
+        entryError = e?.message ?? String(e);
+      }
+      flow = { kind: 'awaitingBootloader' };
+      bootloaderPollTimer = setInterval(pollForBootloader, 1000);
+      startBootloaderWatchdog();
+      return;
+    }
+
+    // 4. No device prop: just wait for the user to enter bootloader manually.
     //    Rare — only happens if the banner case loses the RPI-RP2 mount
     //    between detection and modal open.
     flow = { kind: 'awaitingBootloader' };
@@ -241,7 +272,7 @@
 {/if}
 
 <button class="reflash-trigger" onclick={startReflash} disabled={flow.kind !== 'idle'}>
-  Reflash CircuitPython 7.3.1
+  {triggerLabel}
 </button>
 
 {#if flow.kind !== 'idle'}
@@ -252,7 +283,9 @@
     aria-labelledby="reflash-title"
   >
     <div class="modal">
-      <h3 id="reflash-title">Reflash CircuitPython 7.3.1</h3>
+      <h3 id="reflash-title">
+        {oemV5Port ? 'Migrate to MIDI Captain MAX' : 'Reflash CircuitPython 7.3.1'}
+      </h3>
 
       {#if flow.kind === 'enteringBootloader'}
         <div class="status">
@@ -260,9 +293,9 @@
           Telling the device to reboot into the RP2040 bootloader…
         </div>
         <p class="hint">
-          Sending <code>microcontroller.on_next_reset(RunMode.UF2)</code> over
-          the device's serial REPL. The <code>CIRCUITPY</code> drive will
-          disappear and <code>RPI-RP2</code> should mount within ~3 s.
+          Triggering the reboot over the device's serial port. The
+          <code>CIRCUITPY</code> drive will disappear and
+          <code>RPI-RP2</code> should mount within ~3 s.
         </p>
       {:else if flow.kind === 'awaitingBootloader'}
         <p>Waiting for the device to reboot into <code>RPI-RP2</code> bootloader mode.</p>

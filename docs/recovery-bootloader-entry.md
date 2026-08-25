@@ -75,6 +75,20 @@ fresh CP install. The bundled `.uf2` is the CODE_ONLY variant, so your
 existing config and Max firmware files are preserved across the
 CircuitPython reflash where possible.
 
+## Coming from PaintAudio OEM FW5+?
+
+FW5+ replaced the CircuitPython application with a C firmware (arduino-pico
+core), so there is no REPL and Option A cannot work. Both FW5+ and
+CircuitPython 7.3.1 support the **1200-baud touch** instead: opening the
+device's serial port at 1200 baud and closing it reboots the chip into the
+RP2040 ROM bootloader. The Config Editor detects FW5 pedals and does this for
+you (banner → Migrate). Manual equivalent:
+`stty -f /dev/cu.usbmodemXXXX 1200`, or PaintAudio's own
+`MIDICAPTAINBOOT.HTML` (shipped on the FW5 pedal's drive) in Chrome/Edge.
+No flash erase is needed before reflashing CircuitPython — CP auto-formats
+FW5's leftover filesystem region on first boot (bench-verified). Back up the
+pedal's drive first if you may want to return to OEM firmware.
+
 ## Still stuck?
 
 Open an issue at

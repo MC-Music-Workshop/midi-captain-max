@@ -1,9 +1,12 @@
 //! "Reflash CircuitPython 7.3.1" feature (issue #134).
 //!
 //! Recovery flow for devices on a CircuitPython newer than this firmware
-//! supports (see issue #132 preflight). The user is walked through the
-//! one manual step we can't automate (unplug → hold Switch 1 / KEY0 → replug
-//! to enter the RP2040 ROM bootloader). Once `RPI-RP2` mounts, this module
+//! supports (see issue #132 preflight), and — via 1200-baud-touch bootloader
+//! entry (see `commands`) — the migration path off PaintAudio's OEM FW5+ C
+//! firmware (issue #186; no flash erase needed — CircuitPython auto-formats
+//! an invalid filesystem region on first boot, bench-verified). Note that
+//! Switch 1 / KEY0 does NOT enter the bootloader; it only exposes a running
+//! CP firmware's USB drive. Once `RPI-RP2` mounts, this module
 //! copies the bundled `.uf2` onto it. The bootloader handles the flash + reboot
 //! into the freshly written firmware on its own — we just wait for `CIRCUITPY`
 //! to remount and tell the UI.
@@ -195,9 +198,10 @@ pub async fn reflash_circuitpython(
     tauri::async_runtime::spawn_blocking(move || {
         let bootloader = detect_rpi_rp2().ok_or_else(|| {
             ConfigError::msg(
-                "RPI-RP2 bootloader drive not found. Unplug the device, hold \
-                 Switch 1 / KEY0, then plug USB back in. The RPI-RP2 drive should \
-                 appear within a few seconds — re-try once it does.",
+                "RPI-RP2 bootloader drive not found. Use the editor's automatic \
+                 bootloader entry or see docs/recovery-bootloader-entry.md. \
+                 (Holding Switch 1 / KEY0 does NOT enter the bootloader — it only \
+                 exposes a running CircuitPython firmware's USB drive.)",
             )
         })?;
 

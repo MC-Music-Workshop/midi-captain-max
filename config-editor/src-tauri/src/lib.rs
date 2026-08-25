@@ -5,7 +5,7 @@ mod installer;
 mod reflash;
 mod templates;
 
-use commands::{eject_device, enter_bootloader, read_config, read_config_raw, restart_device, validate_config, write_config, write_config_raw};
+use commands::{detect_oem_v5_port, eject_device, enter_bootloader, enter_bootloader_oem_v5, read_config, read_config_raw, restart_device, validate_config, write_config, write_config_raw};
 use device::{scan_devices, start_device_watcher, stop_device_watcher};
 use installer::{get_firmware_versions, install_firmware};
 use reflash::{reflash_circuitpython, rpi_rp2_mount_path};
@@ -26,6 +26,8 @@ pub fn run() {
             restart_device,
             eject_device,
             enter_bootloader,
+            enter_bootloader_oem_v5,
+            detect_oem_v5_port,
             scan_devices,
             start_device_watcher,
             stop_device_watcher,

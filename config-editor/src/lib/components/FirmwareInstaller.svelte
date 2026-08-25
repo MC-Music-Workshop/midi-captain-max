@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ask, message } from '@tauri-apps/plugin-dialog';
   import { getFirmwareVersions, installFirmware } from '$lib/api';
+  import { config } from '$lib/formStore';
   import ReflashCircuitPython from './ReflashCircuitPython.svelte';
   import type {
     DetectedDevice,
@@ -27,6 +28,12 @@
   // code in ConfigError.details[0], not the human message. Gates the inline
   // "Reflash CircuitPython 7.3.1" CTA so the fix is one click from the refusal.
   let cpMismatch = $state(false);
+  // Backend couldn't detect the model (bare CircuitPython — e.g. right after
+  // an OEM FW5 migration, #186): reveal a model picker and retry with it.
+  let needsDeviceType = $state(false);
+  // Pre-select whatever Device Settings has (falls back to std10, the form
+  // store's default) — still user-changeable in the picker.
+  let deviceTypeOverride = $state($config.device ?? 'std10');
   let versions = $state<FirmwareVersions | null>(null);
 
   // Re-fetch versions whenever the selected device changes or after a fresh
@@ -86,15 +93,29 @@
     cpMismatch = false;
 
     try {
-      report = await installFirmware(device.path, resetConfig, (p) => {
-        progress = p;
-      });
+      report = await installFirmware(
+        device.path,
+        resetConfig,
+        (p) => {
+          progress = p;
+        },
+        needsDeviceType ? deviceTypeOverride : null,
+      );
+      needsDeviceType = false;
       onInstalled?.();
       await refreshVersions(device);
     } catch (e: any) {
       errorMsg = e?.message ?? String(e);
       // Backend stamps this code on the CP-version preflight refusal (#132).
       cpMismatch = Array.isArray(e?.details) && e.details[0] === 'cp_version_unsupported';
+      const typeUnknown = Array.isArray(e?.details) && e.details[0] === 'device_type_unknown';
+      if (typeUnknown) {
+        // Skip the error dialog: the inline picker below IS the remedy.
+        // Sync to the Device Settings selection at reveal time.
+        deviceTypeOverride = $config.device ?? deviceTypeOverride;
+        needsDeviceType = true;
+        return;
+      }
       await message(`Firmware install failed:\n\n${errorMsg}`, { title: 'Install Failed', kind: 'error' });
     } finally {
       installing = false;
@@ -179,6 +200,25 @@
     <div class="result error">
       <strong>Error:</strong> {errorMsg}
     </div>
+    {#if needsDeviceType}
+      <!-- #186: bare-CP device (e.g. fresh OEM FW5 migration) has no
+           config.json to detect the model from — user picks it here. -->
+      <div class="device-type-picker">
+        <label>
+          Pedal model:
+          <select bind:value={deviceTypeOverride}>
+            <option value="std10">STD 10-switch</option>
+            <option value="mini6">Mini 6</option>
+            <option value="nano4">Nano 4</option>
+            <option value="duo2">Duo</option>
+            <option value="one1">One</option>
+          </select>
+        </label>
+        <button onclick={startInstall} disabled={installing}>
+          Install for this model
+        </button>
+      </div>
+    {/if}
     {#if cpMismatch}
       <!-- #132 refusal → reflash CTA, surfaced right at the error so the fix
            is one click away rather than buried in Advanced / Recovery below. -->
@@ -217,6 +257,13 @@
 </section>
 
 <style>
+  .device-type-picker {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin-top: 0.5rem;
+  }
+
   .installer {
     display: flex;
     flex-direction: column;

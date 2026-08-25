@@ -51,6 +51,12 @@ const MAX_SUPPORTED_CP_MAJOR: u8 = 7;
 /// `FirmwareInstaller.svelte`. `details` is otherwise unused by the install path.
 pub const CP_VERSION_UNSUPPORTED_CODE: &str = "cp_version_unsupported";
 
+/// Stamped on the install error when the device has no config.json to detect
+/// the model from (bare CircuitPython — e.g. right after an OEM FW5+
+/// migration, issue #186). The UI reveals a model picker and retries with
+/// `device_type_override`.
+pub const DEVICE_TYPE_UNKNOWN_CODE: &str = "device_type_unknown";
+
 /// Bundled filename of the default config template for this device type.
 fn config_source_name(dt: DeviceType) -> &'static str {
     match dt {
@@ -447,6 +453,7 @@ pub fn install_firmware_from(
     firmware_src: &Path,
     device_path: &Path,
     reset_config: bool,
+    device_type_override: Option<DeviceType>,
     progress: &mut dyn FnMut(InstallProgress),
 ) -> Result<InstallReport, ConfigError> {
     for required in &["boot.py", "code.py"] {
@@ -465,13 +472,16 @@ pub fn install_firmware_from(
     // diagnostic. See issue #132.
     check_cp_version_supported(device_path)?;
 
-    let device_type = detect_device_type(device_path).ok_or_else(|| {
-        ConfigError::msg(
-            "Could not detect device type from config.json on the device. \
-             Ensure the device has a valid config.json declaring a recognized \
-             'device' field (std10, mini6, nano4, duo2, one1).",
-        )
-    })?;
+    // Override wins (bare-CP devices — e.g. fresh OEM FW5+ migrations — have
+    // no config.json to detect from; the user picks the model in the UI).
+    let device_type = device_type_override
+        .or_else(|| detect_device_type(device_path))
+        .ok_or_else(|| ConfigError {
+            message: "Could not detect device type from config.json on the device. \
+                 Select your pedal model to install."
+                .to_string(),
+            details: Some(vec![DEVICE_TYPE_UNKNOWN_CODE.to_string()]),
+        })?;
 
     progress(InstallProgress {
         phase: InstallPhase::Planning,
@@ -663,8 +673,16 @@ pub async fn install_firmware(
     app: AppHandle,
     device_path: String,
     reset_config: bool,
+    device_type_override: Option<String>,
     on_progress: Channel<InstallProgress>,
 ) -> Result<InstallReport, ConfigError> {
+    // Parse the override up front so a bad string errors before any device IO.
+    let override_dt = match &device_type_override {
+        Some(name) => Some(DeviceType::from_name(name).ok_or_else(|| {
+            ConfigError::msg(format!("Unrecognized device type: {name}"))
+        })?),
+        None => None,
+    };
     validate_device_path(&device_path)?;
     let device = PathBuf::from(&device_path);
     verify_device_connected(&device)?;
@@ -691,7 +709,7 @@ pub async fn install_firmware(
         let mut emit = |p: InstallProgress| {
             let _ = on_progress.send(p);
         };
-        let report = install_firmware_from(&firmware_src, &device, reset_config, &mut emit)?;
+        let report = install_firmware_from(&firmware_src, &device, reset_config, override_dt, &mut emit)?;
 
         // Best-effort: a soft-reboot failure here is non-fatal — the firmware
         // is already on disk, user can power-cycle. We swallow the error.
@@ -756,7 +774,7 @@ mod tests {
 
     fn install(bundle: &Path, device: &Path, reset: bool) -> InstallReport {
         let mut sink = |_p: InstallProgress| {};
-        install_firmware_from(bundle, device, reset, &mut sink).unwrap()
+        install_firmware_from(bundle, device, reset, None, &mut sink).unwrap()
     }
 
     #[test]
@@ -923,7 +941,7 @@ mod tests {
         fs::remove_file(bundle.path().join("boot.py")).unwrap();
 
         let mut sink = |_p: InstallProgress| {};
-        let err = install_firmware_from(bundle.path(), device.path(), false, &mut sink).unwrap_err();
+        let err = install_firmware_from(bundle.path(), device.path(), false, None, &mut sink).unwrap_err();
         assert!(err.message.contains("boot.py"), "got: {}", err.message);
         assert!(!device.path().join("code.py").exists());
     }
@@ -936,7 +954,7 @@ mod tests {
         fs::write(device.path().join("config.json"), br#"{"device":"unknown"}"#).unwrap();
 
         let mut sink = |_p: InstallProgress| {};
-        let err = install_firmware_from(bundle.path(), device.path(), false, &mut sink).unwrap_err();
+        let err = install_firmware_from(bundle.path(), device.path(), false, None, &mut sink).unwrap_err();
         assert!(err.message.to_lowercase().contains("device type"));
         assert!(!device.path().join("boot.py").exists());
     }
@@ -1008,7 +1026,7 @@ mod tests {
         let mut events: Vec<InstallProgress> = Vec::new();
         {
             let mut sink = |p: InstallProgress| events.push(p);
-            install_firmware_from(bundle.path(), device.path(), false, &mut sink).unwrap();
+            install_firmware_from(bundle.path(), device.path(), false, None, &mut sink).unwrap();
         }
 
         // For the lib subdir: the Delete event for `lib/adafruit_st7789.py`
@@ -1104,7 +1122,7 @@ mod tests {
         let mut events: Vec<InstallProgress> = Vec::new();
         {
             let mut sink = |p: InstallProgress| events.push(p);
-            install_firmware_from(bundle.path(), device.path(), false, &mut sink).unwrap();
+            install_firmware_from(bundle.path(), device.path(), false, None, &mut sink).unwrap();
         }
 
         assert!(matches!(events.first().unwrap().phase, InstallPhase::Planning));
@@ -1292,7 +1310,7 @@ mod tests {
 
         let mut sink = |_p: InstallProgress| {};
         let err =
-            install_firmware_from(bundle.path(), device.path(), false, &mut sink).unwrap_err();
+            install_firmware_from(bundle.path(), device.path(), false, None, &mut sink).unwrap_err();
         assert!(
             err.message.contains("CircuitPython"),
             "expected CP-version error, got: {}",
@@ -1318,7 +1336,7 @@ mod tests {
 
         let mut sink = |_p: InstallProgress| {};
         let err =
-            install_firmware_from(bundle.path(), device.path(), false, &mut sink).unwrap_err();
+            install_firmware_from(bundle.path(), device.path(), false, None, &mut sink).unwrap_err();
         assert!(err.message.contains("9.2.7"));
         assert!(!device.path().join("boot.py").exists());
     }
@@ -1365,7 +1383,7 @@ mod tests {
 
         let mut sink = |_p: InstallProgress| {};
         let err =
-            install_firmware_from(bundle.path(), device.path(), false, &mut sink).unwrap_err();
+            install_firmware_from(bundle.path(), device.path(), false, None, &mut sink).unwrap_err();
         assert!(
             err.message.contains("CircuitPython"),
             "CP preflight should fire before device_type check; got: {}",

@@ -70,12 +70,14 @@ export async function installFirmware(
   devicePath: string,
   resetConfig: boolean,
   onProgress: (p: InstallProgress) => void,
+  deviceTypeOverride: string | null = null,
 ): Promise<InstallReport> {
   const channel = new Channel<InstallProgress>();
   channel.onmessage = onProgress;
   return invoke('install_firmware', {
     devicePath,
     resetConfig,
+    deviceTypeOverride,
     onProgress: channel,
   });
 }
@@ -104,6 +106,20 @@ export async function reflashCircuitpython(
   const channel = new Channel<ReflashProgress>();
   channel.onmessage = onProgress;
   return invoke('reflash_circuitpython', { onProgress: channel });
+}
+
+/**
+ * Detect a *possible* PaintAudio OEM FW5+ device: a MIDI-Captain-class CDC
+ * port with no device volume mounted. Heuristic — UI must get explicit user
+ * confirmation before acting (could be an unrelated Pico-class board).
+ */
+export async function detectOemV5Port(): Promise<string | null> {
+  return invoke('detect_oem_v5_port');
+}
+
+/** 1200-baud-touch the given CDC port into the RP2040 ROM bootloader. */
+export async function enterBootloaderOemV5(portName: string): Promise<void> {
+  return invoke('enter_bootloader_oem_v5', { portName });
 }
 
 // Event listeners

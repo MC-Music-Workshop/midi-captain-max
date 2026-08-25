@@ -564,12 +564,96 @@ fn enter_bootloader_via_serial(path: &Path) -> Result<(), ConfigError> {
 /// its RP2040 ROM bootloader. Used by the GUI recovery flow so the user
 /// doesn't have to open a serial terminal and type the reset script
 /// themselves.
+/// Strategy order (issue #186): the 1200-baud touch is primary — it's
+/// handled by the USB stack below any application code, so it also works
+/// when `boot.py`/`code.py` crashed before the REPL came up, and it's
+/// bench-confirmed on CircuitPython 7.3.1 (Nano 4, 2026-08-24). The REPL
+/// script path is retained only as a fallback and is considered deprecated.
 #[command]
 pub fn enter_bootloader(path: String) -> Result<(), ConfigError> {
     validate_device_path(&path)?;
     let path_obj = Path::new(&path);
     verify_device_connected(path_obj)?;
+
+    if let Ok(port) = find_device_serial_port(path_obj) {
+        if enter_bootloader_via_1200_touch(&port).is_ok() {
+            return Ok(());
+        }
+    }
+    // Deprecated fallback: drive the CircuitPython REPL.
     enter_bootloader_via_serial(path_obj)
+}
+
+/// Reboot an RP2040 into the ROM bootloader via the 1200-baud touch: open the
+/// CDC port at 1200 baud, hold briefly, close. Handled by the USB stack below
+/// any application code — bench-confirmed working on both CircuitPython 7.3.1
+/// and PaintAudio's OEM FW5+ arduino-pico firmware (it's the same mechanism
+/// PaintAudio's own MIDICAPTAINBOOT.HTML uses). Caller polls for RPI-RP2.
+fn enter_bootloader_via_1200_touch(port_name: &str) -> Result<(), ConfigError> {
+    let port = serialport::new(port_name, 1200)
+        .timeout(Duration::from_millis(500))
+        .open()
+        .map_err(|e| ConfigError {
+            message: format!("Failed to open {} at 1200 baud: {}", port_name, e),
+            details: None,
+        })?;
+    // Match PaintAudio's MIDICAPTAINBOOT.HTML timing (800 ms hold), then
+    // close → bootrom jump. The device may already be resetting on drop;
+    // teardown errors are irrelevant.
+    std::thread::sleep(Duration::from_millis(800));
+    drop(port);
+    Ok(())
+}
+
+/// Tauri command: detect a *possible* PaintAudio OEM FW5+ device.
+///
+/// FW5+ runs a C (arduino-pico) firmware: no CircuitPython drive ever mounts,
+/// so `scan_devices` can't see it — but its CDC serial port can be seen, and
+/// it presents CircuitPython's exact USB identity (bench-confirmed 2026-08-24
+/// on a Nano 4: same 0x239A VID as CP, same "Raspberry Pi"/"Pico" strings),
+/// so USB descriptors cannot distinguish v5 from a CP device. Heuristic:
+/// no device volume mounted + exactly one candidate port → possibly OEM v5.
+/// A CP device with a wedged filesystem looks the same; both want the same
+/// remedy (bootloader → reflash). The UI MUST require explicit user
+/// confirmation before acting — the port could also be an unrelated
+/// Pico-class dev board, and the 1200-baud touch reboots whatever it hits.
+#[command]
+pub fn detect_oem_v5_port() -> Result<Option<String>, ConfigError> {
+    if !crate::device::scan_devices().is_empty() {
+        return Ok(None);
+    }
+    let ports = serialport::available_ports().map_err(|e| ConfigError {
+        message: format!("Failed to enumerate serial ports: {}", e),
+        details: None,
+    })?;
+    // Same VID filter + macOS cu/tty dedupe as find_device_serial_port.
+    let mut names: Vec<String> = ports
+        .iter()
+        .filter(|p| {
+            matches!(
+                &p.port_type,
+                serialport::SerialPortType::UsbPort(info) if info.vid == ADAFRUIT_VID
+            )
+        })
+        .map(|p| p.port_name.clone())
+        .collect();
+    if names.iter().any(|n| n.contains("/cu.")) {
+        names.retain(|n| !n.contains("/tty."));
+    }
+    Ok(match names.len() {
+        1 => Some(names.remove(0)),
+        _ => None, // zero, or ambiguous multiple — don't guess.
+    })
+}
+
+/// Tauri command: put a (confirmed-by-user) OEM FW5+ device into the RP2040
+/// bootloader via the 1200-baud touch. Caller then polls `rpi_rp2_mount_path`.
+/// No flash erase is needed before reflashing CircuitPython: CP auto-formats
+/// an invalid filesystem region on first boot (bench-verified — a direct
+/// FW5.12 → CP 7.3.1 reflash produced a clean CIRCUITPY).
+#[command]
+pub fn enter_bootloader_oem_v5(port_name: String) -> Result<(), ConfigError> {
+    enter_bootloader_via_1200_touch(&port_name)
 }
 
 /// Safely eject/unmount the device volume.

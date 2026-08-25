@@ -415,6 +415,12 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
         onComplete={async () => {
           $devices = await scanDevices();
           oemV5Port = null;
+          // The reflash renames the volume (e.g. MIDICAPTAIN → CIRCUITPY),
+          // so name-based reselection can't match — pick the device up
+          // directly when it's unambiguous.
+          if ($devices.length === 1) {
+            await selectDevice($devices[0]);
+          }
         }}
       />
     </div>

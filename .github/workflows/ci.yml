@@ -32,7 +32,15 @@ jobs:
       - name: Get version info
         id: version
         run: |
-          VERSION=$(git describe --tags --always 2>/dev/null || git rev-parse --short HEAD)
+          # On a tag push, use the tag that triggered the build. git describe would
+          # otherwise prefer an annotated tag over a lightweight one on the same
+          # commit (e.g. v1.13.1-beta.1 winning over v1.13.1), baking the wrong
+          # version into the config editor binary.
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION=$(git describe --tags --always 2>/dev/null || git rev-parse --short HEAD)
+          fi
           # Strip 'v' prefix and commit-distance suffix for semver (e.g. v1.5.0-11-gabc1234 → 1.5.0)
           SEMVER=$(echo "$VERSION" | sed 's/^v//' | sed 's/-[0-9]*-g[a-f0-9]*$//')
           echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT

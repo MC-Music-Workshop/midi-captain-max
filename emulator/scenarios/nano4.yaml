@@ -1,0 +1,38 @@
+version: 1
+name: nano4-hardware-test
+# NANO4 (4-switch) hardware test — DRIVES INPUTS ONLY; test.sh asserts the emitted
+# MIDI by grepping the serial log against scenarios/nano4.expected. See std10.yaml
+# for why (wokwi wait-serial can't reliably catch press-triggered output).
+#
+# Hardware mapping (firmware/dev/devices/nano4.py + emulator/diagram-nano4.json):
+#   switch 1 -> GP1  (btn1) toggle     CC20  (press ON, press OFF)
+#   switch 3 -> GP9  (btn3) momentary  CC22  (press 127, release 0)
+#   switch 4 -> GP10 (btn4) toggle     CC23  (press ON)
+# Switch 2 is on board.LED/GP25 (internal Pico pin absent from Wokwi), omitted.
+# NANO4 has no encoder or expression pedals.
+steps:
+  - wait-serial: "Hardware detected: nano4"
+  - wait-serial: "Running..."
+  - delay: 1000ms
+
+  # Switch 1 (GP1) toggle: press ON, release, press OFF, release
+  - set-control: { part-id: btn1, control: pressed, value: 1 }
+  - delay: 500ms
+  - set-control: { part-id: btn1, control: pressed, value: 0 }
+  - delay: 500ms
+  - set-control: { part-id: btn1, control: pressed, value: 1 }
+  - delay: 500ms
+  - set-control: { part-id: btn1, control: pressed, value: 0 }
+  - delay: 500ms
+
+  # Switch 3 (GP9) momentary: press, release
+  - set-control: { part-id: btn3, control: pressed, value: 1 }
+  - delay: 500ms
+  - set-control: { part-id: btn3, control: pressed, value: 0 }
+  - delay: 500ms
+
+  # Switch 4 (GP10) toggle: press ON, release
+  - set-control: { part-id: btn4, control: pressed, value: 1 }
+  - delay: 500ms
+  - set-control: { part-id: btn4, control: pressed, value: 0 }
+  - delay: 500ms

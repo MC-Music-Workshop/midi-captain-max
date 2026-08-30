@@ -6,10 +6,14 @@ on:
       - "v*"
 
 jobs:
-  smoke-test:
-    name: Smoke Test
+  hardware-test:
+    name: Hardware Test (${{ matrix.device }})
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false  # run every device even if one fails — full picture
+      matrix:
+        device: [std10, mini6, nano4]
     steps:
       - uses: actions/checkout@v6
 
@@ -25,18 +29,35 @@ jobs:
       - name: Install wokwi-cli
         run: curl -L https://wokwi.com/ci/install.sh | sh
 
-      - name: Build firmware bundle
-        run: ./emulator/setup.sh
-
-      - name: Run emulator smoke test
+      # Presses simulated footswitches and asserts the firmware's MIDI output.
+      # test.sh downloads the CP runtime UF2, builds the per-device bundle from
+      # firmware/dev (the same source deploy.sh ships), and runs the scenario.
+      - name: Run ${{ matrix.device }} hardware test
+        id: hwtest
         env:
           WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
-        run: ./emulator/test.sh
+        run: ./emulator/test.sh ${{ matrix.device }}
+        # Non-blocking: a failure is reported (next step) but does NOT stop the
+        # release. To make it a hard gate, delete this line — see emulator/README.md.
+        # With continue-on-error, steps.hwtest.outcome holds the true pass/fail.
         continue-on-error: true
+
+      # Always report the result (pass AND fail) to the run summary + an
+      # annotation, so the non-blocking outcome is visible on every release.
+      - name: Report ${{ matrix.device }} result
+        if: always()
+        run: |
+          if [ "${{ steps.hwtest.outcome }}" = "success" ]; then
+            echo "✅ **${{ matrix.device }}** hardware test passed" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=Hardware test (${{ matrix.device }})::passed"
+          else
+            echo "❌ **${{ matrix.device }}** hardware test FAILED (non-blocking — release not stopped)" >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning title=Hardware test (${{ matrix.device }})::FAILED (non-blocking — see job log)"
+          fi
 
   release:
     name: Create Release
-    needs: smoke-test
+    needs: hardware-test
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

@@ -2,6 +2,7 @@
   "version": 1,
   "author": "MIDI Captain MAX",
   "editor": "wokwi",
+  "comment": "NANO4 (4-switch). Switch 2 (TR) is on board.LED/GP25, an internal Pico pin absent from Wokwi, so it is omitted — only the wirable switches appear. See firmware/dev/devices/nano4.py.",
   "parts": [
     {
       "type": "wokwi-pi-pico",
@@ -10,10 +11,9 @@
       "left": 0,
       "attrs": { "env": "circuitpython-7.3.3" }
     },
-    { "type": "wokwi-pushbutton", "id": "btn_tl", "top": -80, "left": -40, "attrs": { "label": "TL" } },
-    { "type": "wokwi-pushbutton", "id": "btn_tr", "top": -80, "left": 60, "attrs": { "label": "TR" } },
-    { "type": "wokwi-pushbutton", "id": "btn_bl", "top": 200, "left": -40, "attrs": { "label": "BL" } },
-    { "type": "wokwi-pushbutton", "id": "btn_br", "top": 200, "left": 60, "attrs": { "label": "BR" } },
+    { "type": "wokwi-pushbutton", "id": "btn1", "top": -80, "left": -40, "attrs": { "label": "TL" } },
+    { "type": "wokwi-pushbutton", "id": "btn3", "top": 200, "left": -40, "attrs": { "label": "BL" } },
+    { "type": "wokwi-pushbutton", "id": "btn4", "top": 200, "left": 60, "attrs": { "label": "BR" } },
     {
       "type": "wokwi-neopixel",
       "id": "led0",
@@ -23,14 +23,12 @@
     }
   ],
   "connections": [
-    ["pico:GP1", "btn_tl:1.l", "green", []],
-    ["pico:GND.1", "btn_tl:2.l", "black", []],
-    ["pico:GP25", "btn_tr:1.l", "green", []],
-    ["pico:GND.1", "btn_tr:2.l", "black", []],
-    ["pico:GP9", "btn_bl:1.l", "blue", []],
-    ["pico:GND.1", "btn_bl:2.l", "black", []],
-    ["pico:GP10", "btn_br:1.l", "blue", []],
-    ["pico:GND.1", "btn_br:2.l", "black", []],
+    ["pico:GP1", "btn1:1.l", "green", []],
+    ["pico:GND.1", "btn1:2.l", "black", []],
+    ["pico:GP9", "btn3:1.l", "blue", []],
+    ["pico:GND.1", "btn3:2.l", "black", []],
+    ["pico:GP10", "btn4:1.l", "blue", []],
+    ["pico:GND.1", "btn4:2.l", "black", []],
     ["pico:GP7", "led0:DIN", "orange", []],
     ["pico:GND.1", "led0:VSS", "black", []],
     ["pico:VBUS", "led0:VDD", "red", []]

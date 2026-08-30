@@ -1,41 +1,26 @@
 #!/bin/bash
-# Run MIDI Captain firmware interactively in Wokwi emulator.
+# Run a device variant interactively in the Wokwi emulator.
 # Serial output streams to your terminal; Ctrl+C to stop.
 #
-# Prerequisites:
-#   1. Run ./emulator/setup.sh first
-#   2. Set WOKWI_CLI_TOKEN env var (get from https://wokwi.com/dashboard/ci)
-#
-# Usage: ./emulator/run.sh
+# Usage: ./emulator/run.sh [device]   # device: std10 (default) | mini6 | nano4
+# Prerequisites: pip install pyfatfs, wokwi-cli on PATH, WOKWI_CLI_TOKEN set.
 
-set -e
+set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WOKWI_CLI="${WOKWI_CLI:-wokwi-cli}"
+DEVICE="${1:-std10}"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
-# Find wokwi-cli
-if ! command -v "$WOKWI_CLI" &> /dev/null; then
-  if [ -x "$HOME/.wokwi/bin/wokwi-cli" ]; then
-    WOKWI_CLI="$HOME/.wokwi/bin/wokwi-cli"
-  else
-    echo "Error: wokwi-cli not found. Install: curl -L https://wokwi.com/ci/install.sh | sh"
-    exit 1
-  fi
-fi
+validate_device "$DEVICE"
+find_wokwi_cli
+require_token
+ensure_cp_uf2
 
-if [ ! -f "$SCRIPT_DIR/firmware-bundle.uf2" ]; then
-  echo "Error: firmware-bundle.uf2 not found. Run ./emulator/setup.sh first."
-  exit 1
-fi
+echo "Building firmware bundle ($DEVICE)..."
+python3 "$EMULATOR_DIR/build-uf2.py" --config "$EMULATOR_DIR/configs/test-$DEVICE.json" > /dev/null
 
-if [ -z "$WOKWI_CLI_TOKEN" ]; then
-  echo "Error: WOKWI_CLI_TOKEN not set."
-  echo "Get your token at: https://wokwi.com/dashboard/ci"
-  exit 1
-fi
+# wokwi-cli (0.26.1) ignores --diagram-file and only reads <projectdir>/diagram.json,
+# so stage the device's diagram as the active diagram.json (gitignored) before running.
+cp "$EMULATOR_DIR/diagram-$DEVICE.json" "$EMULATOR_DIR/diagram.json"
 
-echo "Starting Wokwi emulator (interactive)..."
-echo "Press Ctrl+C to stop."
-echo ""
-
-"$WOKWI_CLI" --interactive "$SCRIPT_DIR"
+echo "Starting Wokwi emulator ($DEVICE, interactive). Ctrl+C to stop."
+"$WOKWI_CLI" --interactive "$EMULATOR_DIR"

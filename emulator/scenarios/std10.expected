@@ -1,0 +1,9 @@
+# Serial lines that MUST appear after running scenarios/std10.yaml (literal
+# grep -F substrings; test.sh fails if any is missing). Only lines unique to a
+# test action are asserted: toggle presses (toggles are silent at boot) and the
+# momentary PRESS=127 (a momentary button only ever emits =0 at boot, so =127
+# unambiguously proves the press registered).
+CC20=127 (switch 1, toggle)
+CC20=0 (switch 1, toggle)
+CC25=127 (switch 6, momentary)
+CC26=127 (switch 7, toggle)

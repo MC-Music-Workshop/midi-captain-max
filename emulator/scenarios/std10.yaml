@@ -1,0 +1,46 @@
+version: 1
+name: std10-hardware-test
+# STD10 (10-switch) hardware test — DRIVES INPUTS ONLY.
+#
+# Design (see README "Gotchas"): wokwi-cli `wait-serial` only matches serial that
+# arrives AFTER the step starts, so it cannot reliably catch a press-triggered MIDI
+# line (the emit races the step). Boot banners ARE caught (the wait is active from
+# sim start, before they print). So this scenario only:
+#   - asserts boot via wait-serial (reliable), then
+#   - drives footswitch presses with delays.
+# test.sh then asserts the emitted MIDI by grepping the serial log against
+# scenarios/std10.expected — deterministic, no race.
+#
+# Hardware mapping (firmware/dev/devices/std10.py + emulator/diagram-std10.json):
+#   switch 1 -> GP1  (btn1) toggle     CC20  (press ON, press OFF)
+#   switch 6 -> GP9  (btn6) momentary  CC25  (press 127, release 0)
+#   switch 7 -> GP10 (btn7) toggle     CC26  (press ON)
+# Switches 2/3/4 are on GP25/24/23 (internal Pico pins absent from Wokwi), omitted.
+steps:
+  - wait-serial: "Hardware detected: std10"
+  - wait-serial: "Running..."
+  # Settle: let the firmware complete its first switch poll (which establishes the
+  # not-pressed baseline) before any press, so each press registers as an edge.
+  - delay: 1000ms
+
+  # Switch 1 (GP1) toggle: press ON, release, press OFF, release
+  - set-control: { part-id: btn1, control: pressed, value: 1 }
+  - delay: 500ms
+  - set-control: { part-id: btn1, control: pressed, value: 0 }
+  - delay: 500ms
+  - set-control: { part-id: btn1, control: pressed, value: 1 }
+  - delay: 500ms
+  - set-control: { part-id: btn1, control: pressed, value: 0 }
+  - delay: 500ms
+
+  # Switch 6 (GP9) momentary: press, release
+  - set-control: { part-id: btn6, control: pressed, value: 1 }
+  - delay: 500ms
+  - set-control: { part-id: btn6, control: pressed, value: 0 }
+  - delay: 500ms
+
+  # Switch 7 (GP10) toggle: press ON, release
+  - set-control: { part-id: btn7, control: pressed, value: 1 }
+  - delay: 500ms
+  - set-control: { part-id: btn7, control: pressed, value: 0 }
+  - delay: 500ms

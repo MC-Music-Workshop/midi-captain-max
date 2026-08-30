@@ -10,7 +10,7 @@
   "buttons": [
     {"label": "BTN1", "cc": 20, "color": "red"},
     {"label": "BTN2", "cc": 21, "color": "green"},
-    {"label": "BTN3", "cc": 22, "color": "blue"},
+    {"label": "BTN3", "cc": 22, "color": "blue", "mode": "momentary"},
     {"label": "BTN4", "cc": 23, "color": "yellow"}
   ]
 }

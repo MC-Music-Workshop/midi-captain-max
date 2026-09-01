@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Captain Faceplates — snap-on label plates for the Paint Audio MIDI Captain</title>
+  <meta name="description" content="Snap-on 3D-printed faceplates for the Paint Audio MIDI Captain Nano 4, Mini 6, and STD 10. Your switch labels printed into the plate, not stuck on top.">
+  <meta property="og:title" content="Captain Faceplates">
+  <meta property="og:description" content="Snap-on label plates for the Paint Audio MIDI Captain. Your labels, printed into the plate.">
+  <meta property="og:image" content="../img/faceplates/hero-three.webp">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --bg-raise: #12121a;
+      --chassis: #1a1a24;
+      --text: #e8e8f0;
+      --text-dim: #9a9aad;
+      --cyan: #22d3ee;
+      --magenta: #e879f9;
+      --line: #26263a;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    img { max-width: 100%; height: auto; display: block; }
+
+    /* ---------- shared with index.html ---------- */
+    section { padding: 5rem 1.5rem; max-width: 68rem; margin: 0 auto; }
+    h2 {
+      font-size: clamp(1.6rem, 4vw, 2.2rem);
+      margin-bottom: 2.2rem;
+      text-align: center;
+    }
+    .btn {
+      display: inline-block;
+      padding: 0.75rem 1.8rem;
+      border-radius: 0.6rem;
+      font-weight: 600;
+      text-decoration: none;
+      font-size: 1rem;
+      border: 0;
+      cursor: pointer;
+      font-family: inherit;
+      transition: box-shadow 0.25s, transform 0.15s;
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .btn-primary {
+      background: linear-gradient(90deg, var(--cyan), var(--magenta));
+      color: #0a0a0f;
+    }
+    .btn-primary:hover { box-shadow: 0 0 24px rgba(34, 211, 238, 0.4); }
+    .btn-ghost { border: 1px solid var(--line); color: var(--text); background: none; }
+    .btn-ghost:hover { border-color: var(--cyan); box-shadow: 0 0 16px rgba(34, 211, 238, 0.2); }
+    a { color: var(--cyan); }
+    [hidden] { display: none !important; }
+    :focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+
+    /* ---------- top bar ---------- */
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.9rem;
+    }
+    .topbar a { text-decoration: none; }
+    .topbar .home { color: var(--text-dim); }
+    .topbar .home:hover { color: var(--cyan); }
+
+    /* ---------- hero ---------- */
+    .hero {
+      padding: 4rem 1.5rem 2rem;
+      max-width: 68rem;
+      margin: 0 auto;
+      text-align: center;
+      position: relative;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 40% at 30% 20%, rgba(34, 211, 238, 0.10), transparent 70%),
+        radial-gradient(ellipse 50% 40% at 70% 80%, rgba(232, 121, 249, 0.08), transparent 70%);
+      pointer-events: none;
+    }
+    .hero h1 {
+      font-size: clamp(2.1rem, 6vw, 3.6rem);
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      line-height: 1.1;
+      position: relative;
+    }
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(90deg, var(--cyan), var(--magenta));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .hero p {
+      color: var(--text-dim);
+      font-size: clamp(1rem, 2.5vw, 1.2rem);
+      max-width: 34em;
+      margin: 1.2rem auto 0;
+      position: relative;
+    }
+    .shot {
+      border: 1px solid var(--line);
+      border-radius: 1rem;
+      overflow: hidden;
+      background: var(--chassis);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+      margin: 2.5rem auto 0;
+      position: relative;
+    }
+    .hero .shot { max-width: 44rem; }
+    .row .shot { margin-top: 0; }
+    figure figcaption {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      text-align: center;
+      margin-top: 0.8rem;
+    }
+
+    /* ---------- model picker ---------- */
+    .models {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+      gap: 1rem;
+      border: 0;
+      margin-bottom: 2rem;
+    }
+    .models legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .model input { position: absolute; opacity: 0; pointer-events: none; }
+    .model label, .model .card {
+      display: block;
+      height: 100%;
+      background: var(--bg-raise);
+      border: 1px solid var(--line);
+      border-radius: 0.9rem;
+      padding: 1.4rem;
+      cursor: pointer;
+      transition: border-color 0.25s, box-shadow 0.25s;
+    }
+    .model label:hover { border-color: var(--cyan); }
+    .model input:checked + label {
+      border-color: var(--cyan);
+      box-shadow: 0 0 24px rgba(34, 211, 238, 0.15);
+    }
+    .model input:focus-visible + label { outline: 2px solid var(--cyan); outline-offset: 3px; }
+    .model .name, .model .switches, .model .price,
+    .model .list-note, .model .note, .model .soon-link { display: block; }
+    .model .name { font-size: 1.15rem; font-weight: 700; }
+    .model .switches { color: var(--text-dim); font-size: 0.9rem; }
+    .model .price { margin-top: 0.7rem; font-size: 1.3rem; font-weight: 700; }
+    .model .list-note { color: var(--cyan); font-size: 0.8rem; }
+    .model .note { color: var(--text-dim); font-size: 0.82rem; margin-top: 0.4rem; }
+    .model.soon .card {
+      border-style: dashed;
+      background: none;
+      cursor: default;
+      opacity: 0.75;
+    }
+    .model.soon .price { color: var(--text-dim); font-size: 1rem; }
+    .model .soon-link { margin-top: 0.7rem; font-size: 0.85rem; }
+
+    /* ---------- buy panel ---------- */
+    .buy {
+      background: linear-gradient(180deg, var(--chassis), #14141c);
+      border: 1px solid var(--line);
+      border-radius: 1rem;
+      padding: 1.8rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.2rem;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .buy-summary { font-size: 0.95rem; color: var(--text-dim); }
+    .buy-summary strong { color: var(--text); font-size: 1.15rem; display: block; }
+    .fineprint {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      text-align: center;
+      margin-top: 1.2rem;
+    }
+    #launch-line { margin: -1.4rem 0 2rem; }
+    .fineprint strong { color: var(--text); font-weight: 600; letter-spacing: 0.03em; }
+
+    /* ---------- feature rows ---------- */
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2.5rem;
+      align-items: center;
+    }
+    .row + .row { margin-top: 4rem; }
+    .block { max-width: 44rem; }
+    .block + .row, .row + .block { margin-top: 4rem; }
+    .block + .specs { margin-top: 3rem; }
+    .custom-cta { margin-top: 1.4rem; }
+    @media (max-width: 760px) {
+      .row { grid-template-columns: 1fr; gap: 1.6rem; }
+      .row.flip > figure { order: -1; }
+    }
+    .row h3 { font-size: 1.35rem; margin-bottom: 0.7rem; }
+    .row p { color: var(--text-dim); }
+    .row p + p { margin-top: 0.8rem; }
+
+    .specs { list-style: none; display: grid; gap: 0.7rem; }
+    .specs li { display: flex; gap: 0.7rem; color: var(--text-dim); }
+    .specs li::before { content: "—"; color: var(--cyan); flex: none; }
+    .specs strong { color: var(--text); font-weight: 600; }
+
+    /* ---------- footer ---------- */
+    footer {
+      border-top: 1px solid var(--line);
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+    }
+    footer a { text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+    footer p { max-width: 46em; margin: 0.4rem auto; }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      * { transition: none !important; }
+      .btn:hover { transform: none; }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="topbar">
+  <a class="home" href="../">← MIDI Captain MAX</a>
+  <a href="#pick">Faceplates</a>
+</nav>
+
+<header class="hero">
+  <h1>Know what your <em>switches</em> do.</h1>
+  <p>Snap-on faceplates for the Paint Audio MIDI Captain. Your labels are printed into the plate, so they don't peel, smudge, or fall off mid-set.</p>
+  <figure>
+    <div class="shot"><img src="../img/faceplates/hero-three.webp" width="1800" height="1337"
+      alt="Three Paint Audio MIDI Captain pedals with black faceplates fitted. The Mini 6 reads BOOM, THRU MUTE, DIR, REC, PLAY/STOP, ONCE. The STD 10 reads TSC, CHOR, DELAY, REVERB, TREM, WOW, OCT, FREQ, PLATE, ROOM."></div>
+    <figcaption>Mini&nbsp;6, Nano&nbsp;4, and STD&nbsp;10. Every plate is cut for one person's layout — these are three of them.</figcaption>
+  </figure>
+</header>
+
+<section id="pick">
+  <h2>Pick your pedal</h2>
+  <p class="fineprint" id="launch-line"></p>
+
+  <fieldset class="models">
+    <legend>Choose your MIDI Captain model</legend>
+
+    <div class="model">
+      <input type="radio" name="model" id="m-nano4" value="nano4" checked>
+      <label for="m-nano4">
+        <span class="name">Nano 4</span>
+        <span class="switches">4 switches</span>
+        <span class="price" data-price>—</span>
+        <span class="list-note" data-list></span>
+        <span class="note">Single-piece plate</span>
+      </label>
+    </div>
+
+    <div class="model">
+      <input type="radio" name="model" id="m-mini6" value="mini6">
+      <label for="m-mini6">
+        <span class="name">Mini 6</span>
+        <span class="switches">6 switches</span>
+        <span class="price" data-price>—</span>
+        <span class="list-note" data-list></span>
+        <span class="note">Single-piece plate</span>
+      </label>
+    </div>
+
+    <div class="model">
+      <input type="radio" name="model" id="m-std10" value="std10">
+      <label for="m-std10">
+        <span class="name">STD 10</span>
+        <span class="switches">10 switches + encoder</span>
+        <span class="price" data-price>—</span>
+        <span class="list-note" data-list></span>
+        <span class="note">Two-piece, dovetail joint</span>
+      </label>
+    </div>
+
+    <div class="model soon">
+      <div class="card">
+        <span class="name">ONE &amp; DUO</span>
+        <span class="switches">1 and 2 switches</span>
+        <span class="price">Coming soon</span>
+        <a class="soon-link" id="notify-btn" href="#">Tell me you want one →</a>
+      </div>
+    </div>
+  </fieldset>
+
+  <div class="buy">
+    <div class="buy-summary">
+      <strong id="buy-title">—</strong>
+      <span id="buy-detail"></span>
+    </div>
+    <a class="btn btn-primary" id="buy-btn" href="#">Buy</a>
+  </div>
+
+  <p class="fineprint">Card statements show this as <strong id="descriptor"></strong>.</p>
+</section>
+
+<section>
+  <h2>What you get</h2>
+
+  <div class="block">
+    <h3>Labels that don't wear off</h3>
+    <p>Your labels are part of the plate itself, not printed on top of it. Nothing to peel at the corners, smudge under a wet boot, or fade out after a season of gigging.</p>
+    <p>White on matte black is the standard combination — readable under stage wash, and legible at standing height.</p>
+  </div>
+
+  <div class="row flip">
+    <div>
+      <h3>Clips on. Nothing to unscrew.</h3>
+      <p>The plate drops over the switches and grips the side edges of the chassis. No adhesive, no screws, no disassembly — and it comes off just as easily when you want to change your layout.</p>
+      <p>Cutouts clear the screen, the encoder, and every switch collar. The LED rings stay fully visible — nothing on the pedal is covered, dimmed, or harder to reach than it was before.</p>
+    </div>
+    <figure>
+      <div class="shot"><img src="../img/faceplates/nano4.webp" width="1400" height="1098" loading="lazy"
+        alt="A Nano 4 with a black faceplate fitted, showing the screen cutout and switch cutouts, with unfitted plates beside it."></div>
+    </figure>
+  </div>
+
+  <div class="block">
+    <h3>Made to order</h3>
+    <p>Every plate is made to order with your labels — nothing is pulled off a shelf and nothing is pre-printed.</p>
+    <p>Black with white labels is the standard. Custom colours are available on request, so ask before you order and it can usually be matched.</p>
+  </div>
+
+  <ul class="specs">
+    <li><strong>Finish</strong> Matte black with a fine surface texture</li>
+    <li><strong>Labels</strong> White, uppercase, formed into the plate</li>
+    <li><strong>Colours</strong> Black with white labels as standard; others on request</li>
+    <li><strong>Fitting</strong> Snap-on side clips — no tools, no adhesive</li>
+    <li><strong>STD 10</strong> Ships in two halves that join with a dovetail; the pedal is wider than can be made in one piece, and the seam sits between the two right-hand switches</li>
+    <li><strong>In the box</strong> One faceplate. Your pedal, switches, and hardware are untouched</li>
+  </ul>
+</section>
+
+<section id="custom">
+  <h2>Your labels</h2>
+  <div class="row">
+    <div>
+      <p>No two rigs are labelled the same way, so there is no standard set. You say what goes on each switch, and that's the plate you get.</p>
+      <p>Order first, then send your layout — a reply goes out with the order asking for it. Nothing is made until your labels are confirmed, so take your time getting them right.</p>
+      <p class="custom-cta">
+        <a class="btn btn-ghost" id="custom-btn" href="#">Ask a question first</a>
+      </p>
+    </div>
+    <div>
+      <ul class="specs">
+        <li><strong>Nano 4</strong> Up to 4 labels</li>
+        <li><strong>Mini 6</strong> Up to 6 labels</li>
+        <li><strong>STD 10</strong> Up to 10 labels</li>
+        <li><strong>Length</strong> Roughly 10 characters per label before the type gets too small to read on stage — shorter is better</li>
+        <li><strong>Not sure yet</strong> Send your MIDI setup and a layout can be suggested</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="shipping">
+  <h2>Shipping and returns</h2>
+  <ul class="specs">
+    <li><strong>Ships from</strong> United States, USPS</li>
+    <li><strong>Where</strong> <span data-shipping-region>—</span></li>
+    <li><strong>Lead time</strong> <span data-lead-time>—</span> — each plate is printed after you order</li>
+    <li><strong>Shipping cost</strong> Included in the price — no extra added at checkout</li>
+    <li><strong>If it doesn't fit</strong> Send a photo and it gets replaced or refunded. Faceplates are a snug fit by design and hardware revisions vary, so a fit problem is a real possibility and is treated as one</li>
+  </ul>
+</section>
+
+<footer>
+  <p>
+    <a href="../">MIDI Captain MAX</a> ·
+    <a href="https://github.com/MC-Music-Workshop/midi-captain-max">Source</a> ·
+    <a href="#pick">Faceplates</a> ·
+    <a id="footer-mail" href="#">Contact</a>
+  </p>
+  <p>An <a href="https://github.com/MC-Music-Workshop">MC Music Workshop</a> product. Not affiliated with Paint Audio.</p>
+</footer>
+
+<script>
+/* ------------------------------------------------------------------
+   EDIT THIS BLOCK. Everything on the page reads from it.
+
+   Each model needs:
+     price     what you charge right now, in USD
+     list      where the price goes after launch. Set "" to hide the note.
+     stripe    Stripe Payment Link URL. Leave "" until Stripe is live —
+               the page falls back to an email order link on its own.
+
+   TO END THE LAUNCH OFFER: copy each `list` value into `price`, then set
+   every `list` to "". The launch notices disappear on their own and no
+   displayed price ever goes up.
+
+   TODO before launch: LEAD_TIME, and the three Stripe links.
+------------------------------------------------------------------ */
+const EMAIL      = "maxcascone@gmail.com";
+const SHIPPING   = "shipping included";
+const LEAD_TIME  = "3–5 business days";    // TODO confirm against a real print
+const REGION     = "United States only for now";
+const DESCRIPTOR = "MC MUSIC WORKSHOP";   // must match Stripe statement descriptor
+const CUTOFF     = "soon";   // e.g. "after the first 20 orders" / "on 30 September"
+
+const MODELS = {
+  nano4: { name: "Nano 4 faceplate", price: "$24", list: "$30", stripe: "https://buy.stripe.com/5kQ5kx4ys0kg7DHeARejK00" },
+  mini6: { name: "Mini 6 faceplate", price: "$30", list: "$38", stripe: "https://buy.stripe.com/bJecMZc0U3ws8HL8ctejK01" },
+  std10: { name: "STD 10 faceplate", price: "$38", list: "$48", stripe: "https://buy.stripe.com/14A9ANd4Y0kgaPT2S9ejK02" }
+};
+
+/* ---------------------------------------------------------------- */
+
+const mailto = (subject, body) =>
+  "mailto:" + EMAIL + "?subject=" + encodeURIComponent(subject) +
+  "&body=" + encodeURIComponent(body);
+
+const $ = (sel) => document.querySelector(sel);
+
+const anyLaunch = Object.values(MODELS).some((m) => m.list);
+
+document.querySelectorAll('input[name="model"]').forEach((input) => {
+  const m = MODELS[input.value];
+  const card = input.nextElementSibling;
+  card.querySelector("[data-price]").textContent = m.price;
+  card.querySelector("[data-list]").textContent = m.list ? m.list + " after launch" : "";
+  input.addEventListener("change", render);
+});
+
+$("#launch-line").hidden = !anyLaunch;
+$("#launch-line").textContent = "Launch pricing — going up " + CUTOFF + ".";
+
+function render() {
+  const key = document.querySelector('input[name="model"]:checked').value;
+  const m = MODELS[key];
+
+  $("#buy-title").textContent = m.name;
+  $("#buy-detail").textContent = m.price + ", " + SHIPPING + " · ships in " + LEAD_TIME;
+
+  // Falls back to an email order if a stripe link is ever blanked out.
+  const buy = $("#buy-btn");
+  buy.href = m.stripe || mailto(
+    "Faceplate order — " + m.name,
+    "I'd like to order one " + m.name + ".\n\n" +
+    "My labels (top row left to right, then bottom row):\n\n\n" +
+    "Shipping address:\n\n"
+  );
+  buy.textContent = m.stripe ? "Buy — " + m.price : "Order by email";
+}
+
+$("#custom-btn").href = mailto(
+  "Faceplate question",
+  "My pedal:\n\nWhat I'm trying to label:\n\n"
+);
+$("#footer-mail").href = "mailto:" + EMAIL;
+
+document.querySelector("[data-shipping-region]").textContent = REGION;
+$("#descriptor").textContent = DESCRIPTOR;
+$("#notify-btn").href = mailto(
+  "ONE / DUO faceplate interest",
+  "I'd buy a faceplate for the:\n\n(ONE / DUO)\n\nLabels I'd want:\n\n"
+);
+document.querySelector("[data-lead-time]").textContent = LEAD_TIME;
+
+render();
+</script>
+
+</body>
+</html>

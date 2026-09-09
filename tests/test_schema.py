@@ -128,6 +128,19 @@ class TestKeytimesMode:
                            "short": [{"down": [{"type": "hid", "action": "send", "key": "A"}]}]}]}
     assert list(validator.iter_errors(wrap(config))) == []
 
+  def test_message_type_cc_inc_dec_bare(self, validator):
+    """cc_inc/cc_dec entries carry no fields — direction only (#11)."""
+    config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes", "cc": 30, "cc_slots": 4,
+                           "short": [{"down": [{"type": "cc_inc"}]}],
+                           "long": [{"down": [{"type": "cc_dec"}]}]}]}
+    assert list(validator.iter_errors(wrap(config))) == []
+
+  def test_cc_inc_message_rejects_extra_fields(self, validator):
+    """cc/channel live on the button, not the entry."""
+    config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
+                           "short": [{"down": [{"type": "cc_inc", "cc": 30}]}]}]}
+    assert list(validator.iter_errors(wrap(config))) != []
+
   def test_cc_message_missing_value_rejected(self, validator):
     config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
                            "short": [{"down": [{"type": "cc", "cc": 20}]}]}]}
@@ -380,3 +393,35 @@ class TestHidButtonValidation:
       config = {"buttons": [{"label": "K", "color": "red",
                              "type": "hid", "hid_action": action}]}
       assert validator.is_valid(wrap(config)), f"action {action!r} should be valid"
+
+
+class TestCcStepButtons:
+  """Schema acceptance of cc_inc/cc_dec buttons and their fields (#11)."""
+
+  def _cfg(self, **btn):
+    base = {"label": "VOL", "color": "white", "type": "cc_inc", "cc": 30}
+    base.update(btn)
+    return wrap({"buttons": [base]})
+
+  def test_step_mode_accepted(self, validator):
+    cfg = self._cfg(cc_step=5, cc_min=10, cc_max=100, cc_wrap=False, cc_initial=50)
+    assert list(validator.iter_errors(cfg)) == []
+
+  def test_slot_mode_accepted(self, validator):
+    cfg = self._cfg(type="cc_dec", cc_slots=4, cc_slot_colors=["red", "green"],
+                    cc_slot_names=["MARSH", "FENDER"])
+    assert list(validator.iter_errors(cfg)) == []
+
+  def test_cc_step_out_of_range_rejected(self, validator):
+    assert list(validator.iter_errors(self._cfg(cc_step=0))) != []
+    assert list(validator.iter_errors(self._cfg(cc_step=128))) != []
+
+  def test_cc_slots_out_of_range_rejected(self, validator):
+    assert list(validator.iter_errors(self._cfg(cc_slots=1))) != []
+    assert list(validator.iter_errors(self._cfg(cc_slots=17))) != []
+
+  def test_slot_name_too_long_rejected(self, validator):
+    assert list(validator.iter_errors(self._cfg(cc_slots=2, cc_slot_names=["TOOLONG"]))) != []
+
+  def test_slot_color_invalid_rejected(self, validator):
+    assert list(validator.iter_errors(self._cfg(cc_slots=2, cc_slot_colors=["off"]))) != []

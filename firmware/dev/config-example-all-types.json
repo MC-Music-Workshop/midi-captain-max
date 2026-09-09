@@ -44,22 +44,45 @@
           "color": "yellow"
         },
         {
-          "label": "PATCH3",
-          "type": "pc",
-          "program": 2,
-          "color": "magenta"
-        },
-        {
-          "label": "PATCH4",
-          "type": "pc",
-          "program": 3,
+          "label": "AMP",
+          "type": "cc_inc",
+          "cc": 30,
+          "cc_slots": 4,
+          "cc_slot_colors": [
+            "red",
+            "green",
+            "blue",
+            "yellow"
+          ],
+          "cc_slot_names": [
+            "MARSH",
+            "FENDER",
+            "VOX",
+            "MESA"
+          ],
           "color": "white"
         },
         {
-          "label": "PATCH5",
-          "type": "pc",
-          "program": 4,
-          "color": "orange"
+          "label": "VOL UP",
+          "type": "cc_inc",
+          "cc": 7,
+          "cc_step": 5,
+          "cc_min": 0,
+          "cc_max": 127,
+          "cc_wrap": false,
+          "cc_initial": 64,
+          "color": "green"
+        },
+        {
+          "label": "VOL DN",
+          "type": "cc_dec",
+          "cc": 7,
+          "cc_step": 5,
+          "cc_min": 0,
+          "cc_max": 127,
+          "cc_wrap": false,
+          "cc_initial": 64,
+          "color": "red"
         },
         {
           "label": "PC UP",

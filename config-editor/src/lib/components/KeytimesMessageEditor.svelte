@@ -69,6 +69,9 @@
   let isPageType = $derived(
     message.type === 'page_inc' || message.type === 'page_dec' || message.type === 'page_jump'
   );
+  // cc_inc/cc_dec (#11) are direction-only: cc, channel, range and slots are the
+  // button-level "Shared CC" fields, so nothing per-message to edit here.
+  let isCcStep = $derived(message.type === 'cc_inc' || message.type === 'cc_dec');
 
   // page_jump target is a 0-based index; name the page it lands on (mirrors
   // ButtonRow's hint). Null when out of range — the error text owns that case.
@@ -144,6 +147,10 @@
                oninput={(e) => handleIntField('step', e)}
                class:error={!!errFor('step')} />
       </label>
+    {:else if isCcStep}
+      <span class="kt-hint" title="CC number, channel, step/slots, min/max, wrap and slot colors/names are set once on the button (Shared CC settings above) and used by every CC+/CC- entry.">
+        {message.type === 'cc_inc' ? 'steps the shared CC value up' : 'steps the shared CC value down'}
+      </span>
     {:else if message.type === 'page_inc' || message.type === 'page_dec'}
       <label class="inline">
         Step:
@@ -203,7 +210,7 @@
       {/if}
     {/if}
 
-    {#if message.type !== 'hid' && !isPageType}
+    {#if message.type !== 'hid' && !isPageType && !isCcStep}
       <label class="inline">
         Ch:
         <input type="number" min="1" max="16"

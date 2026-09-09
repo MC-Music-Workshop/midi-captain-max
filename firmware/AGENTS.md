@@ -206,6 +206,7 @@ All outgoing MIDI goes through `midi_send(msg)` which writes to both USB and 5-p
 - `"pc"` + pressed only → sends ProgramChange, calls `flash_pc_button`
 - `"pc"` + select → calls `handle_pc_select_press`: sends PC, calls `update_select_group`
 - `"pc_inc"` / `"pc_dec"` + pressed only → increments/decrements `pc_values[channel]`, sends PC, flashes
+- `"cc_inc"` / `"cc_dec"` + pressed only → calls `send_cc_step`: steps the shared `cc_values[(channel, cc)]`, sends CC, refreshes every button on that key (see CC Inc/Dec below)
 - `"page_inc"` / `"page_dec"` / `"page_jump"` + pressed only → sets `pending_page_target` (see Page Switching below)
 - `"hid"` + pressed only → calls `dispatch_hid(...)`, flashes LED
 
@@ -268,6 +269,20 @@ Same-page guard: jumping/stepping to the *current* page skips setting `pending_p
 Loader sanitize (`core/config.py::validate_config`): malformed `channel` **disables the whole block** (fail-closed — coercing to None would widen matching to every channel); a slot's malformed `cc` **drops that slot** (never clamped — a wrong CC number is wrong behavior, not degraded behavior); `value`/`page_step` clamp to range like other MIDI byte fields.
 
 Editor form widget is deferred to P4 (schema + generated types + firmware + validation ship in P3b).
+
+### CC Inc/Dec — shared-value stepper (#11)
+
+`type: "cc_inc"` / `"cc_dec"` step a **shared CC value** instead of sending a fixed `cc_on`/`cc_off`. The value lives in `cc_values`, a dict keyed `(channel, cc)`: every cc_inc/cc_dec button on **any page** with the same channel+cc moves and shows the same value, and `switch_page()` does not reset it (same as `pc_values`). It is seeded lazily by the first button that touches the key (`cc_initial`, else `cc_min`). Pure math lives in `core/cc_step.py` (unit-tested in `tests/test_cc_step.py`); `code.py` owns the dict, MIDI, LEDs and display.
+
+Two value modes, chosen by the button config — exactly one of `cc_step` / `cc_slots` survives `validate_button`, and that's what `cc_step.py` keys off:
+- **STEP** (`cc_slots` absent): `value += cc_step` (1-127, default 1) per press. LED flashes on every press (`flash_ms`, via `flash_pc_button`); at rest it follows `off_mode`. Status line `TX CC7=64`.
+- **SLOT** (`cc_slots` 2-16): `cc_min..cc_max` is split into equal slots; each press moves one slot and sends the value in the **middle** of the destination slot (integer math: `lo + ((2i+1)*span) // (2*slots)`), so the host can't miss the slot's range. LED stays lit at the slot's `cc_slot_colors[i]` (falls back to button color); the box label shows `cc_slot_names[i]` when set. Status line shows the slot name, else `TX <label> n/N`; `update_status(text, number=n)` makes the DUO2/ONE1 segment display show the slot number `n`, not the `N` that `_extract_last_number` would pick.
+
+Boundary rule (both modes): `cc_wrap` (default true) lands **on** the opposite bound (125 + 5 → `cc_min`, not modulo); wrap off clamps at the bound and sends it. `cc_min >= cc_max` is rejected at load (falls back to 0..127 with a `[CONFIG WARN]`).
+
+`mode` is coerced to `"flash"` for cc_inc/cc_dec (toggle/momentary/select don't apply); `keytimes` is the only other family. In **keytimes**, a `{type: "cc_inc"|"cc_dec"}` entry is direction-only — `cc`, `channel`, range, STEP/SLOT and the slot tables are configured once on the button and `_validate_keytimes_button` copies them on when any entry uses cc_inc/cc_dec (`is_cc_step_button()` detects a keytimes button by those fields). In SLOT mode the slot table owns the LED and label for every press length (`_render_keytimes_led` short-circuits to `set_button_state`); in STEP mode the normal keytimes entry colors rule — there is no flash on a keytimes button.
+
+**MIDI RX:** `find_cc_rx_action` returns `("cc_step", i)` for the first cc-step button on `(cc, channel)` — no value gate, and the cc-step check runs before the select/shield logic. `_process_midi_msg` clamps the value into `cc_min..cc_max`, stores it, and only if the value (STEP) or slot (SLOT) actually changed, updates the status line and calls `_refresh_cc_step_buttons(key)`, which repaints every button on the key (STEP flashes, SLOT recolors). LED-and-state-only, no echo. Don't put a plain `cc` button on the same `(cc, channel)` as a cc-step button — the stepper claims it.
 
 ### PC Button LED Modes
 

@@ -222,3 +222,72 @@ describe('addPageFromTemplate (P4d)', () => {
     expect(get(formState).config.pages).toHaveLength(PAGE_CAP);
   });
 });
+
+describe('cc_inc / cc_dec normalization (#11)', () => {
+  function withButton(btn: Record<string, unknown>): MidiCaptainConfig {
+    return {
+      device: 'one1', active_page: 0,
+      pages: [{ buttons: [{ label: 'X', color: 'green', ...btn } as never] }],
+    };
+  }
+
+  it('STEP mode keeps cc/step/range/wrap/initial and flash_ms, drops slot tables', () => {
+    loadConfig(withButton({
+      type: 'cc_inc', cc: 7, cc_step: 5, cc_min: 10, cc_max: 100, cc_wrap: false, cc_initial: 50,
+      flash_ms: 300, cc_slot_colors: ['red'], cc_slot_names: ['A'], cc_on: 127, cc_off: 0,
+    }));
+    const out = normalizeConfig(get(formState).config).pages[0].buttons[0];
+    expect(out).toEqual({
+      label: 'X', color: 'green', type: 'cc_inc', cc: 7, cc_step: 5, cc_min: 10, cc_max: 100,
+      cc_wrap: false, cc_initial: 50, flash_ms: 300,
+    });
+  });
+
+  it('SLOT mode keeps cc_slots + tables and drops cc_step and flash_ms', () => {
+    loadConfig(withButton({
+      type: 'cc_dec', cc: 30, cc_slots: 3, cc_step: 9, flash_ms: 300,
+      cc_slot_colors: ['red', 'green', 'blue'], cc_slot_names: ['A', '', 'C'],
+    }));
+    const out = normalizeConfig(get(formState).config).pages[0].buttons[0];
+    expect(out.cc_slots).toBe(3);
+    expect(out.cc_step).toBeUndefined();
+    expect(out.flash_ms).toBeUndefined();
+    expect(out.cc_slot_colors).toEqual(['red', 'green', 'blue']);
+    expect(out.cc_slot_names).toEqual(['A', '', 'C']);
+  });
+
+  it('drops an all-empty cc_slot_names array', () => {
+    loadConfig(withButton({ type: 'cc_inc', cc: 30, cc_slots: 2, cc_slot_names: ['', ''] }));
+    const out = normalizeConfig(get(formState).config).pages[0].buttons[0];
+    expect(out.cc_slot_names).toBeUndefined();
+  });
+
+  it('keytimes button keeps the shared cc-step fields when an entry fires cc_inc', () => {
+    loadConfig(withButton({
+      mode: 'keytimes', cc: 30, cc_slots: 4, cc_slot_colors: ['red', 'green', 'blue', 'yellow'],
+      short: [{ down: [{ type: 'cc_inc' }] }], long: [{ down: [{ type: 'cc_dec' }] }],
+    }));
+    const out = normalizeConfig(get(formState).config).pages[0].buttons[0];
+    expect(out.cc).toBe(30);
+    expect(out.cc_slots).toBe(4);
+    expect(out.cc_slot_colors).toHaveLength(4);
+    expect(out.short?.[0].down?.[0]).toEqual({ type: 'cc_inc' });
+  });
+
+  it('keytimes button without cc_inc/cc_dec entries strips stale cc-step fields', () => {
+    loadConfig(withButton({
+      mode: 'keytimes', cc: 30, cc_slots: 4, cc_step: 2,
+      short: [{ down: [{ type: 'cc', cc: 20, value: 127 }] }],
+    }));
+    const out = normalizeConfig(get(formState).config).pages[0].buttons[0];
+    expect(out.cc).toBeUndefined();
+    expect(out.cc_slots).toBeUndefined();
+    expect(out.cc_step).toBeUndefined();
+  });
+
+  it('plain cc button strips stale cc-step fields left by a type switch', () => {
+    loadConfig(withButton({ type: 'cc', cc: 20, cc_step: 5, cc_slots: 4, cc_min: 1, cc_wrap: false }));
+    const out = normalizeConfig(get(formState).config).pages[0].buttons[0];
+    expect(out).toEqual({ label: 'X', color: 'green', type: 'cc', cc: 20 });
+  });
+});

@@ -50,6 +50,8 @@ export const MESSAGE_TYPE_LABELS = {
   pc:     'PC Fixed',
   pc_inc: 'PC+',
   pc_dec: 'PC-',
+  cc_inc: 'CC+',
+  cc_dec: 'CC-',
   hid:    'HID',
   page_inc:  'Page+',
   page_dec:  'Page-',

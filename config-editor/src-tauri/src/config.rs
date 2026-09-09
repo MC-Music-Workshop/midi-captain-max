@@ -79,6 +79,10 @@ pub enum MessageType {
     Pc,
     PcInc,
     PcDec,
+    /// Step a shared CC value (keyed by channel + cc) up/down (#11). Fields:
+    /// cc, cc_step | cc_slots, cc_min, cc_max, cc_wrap, cc_initial, cc_slot_*.
+    CcInc,
+    CcDec,
     Hid,
     PageInc,
     PageDec,
@@ -141,6 +145,10 @@ pub enum KeytimesMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         channel: Option<u8>,
     },
+    /// Direction-only (#11): cc/channel/range/slot tables are the button-level
+    /// cc-step fields, shared by every entry on the button.
+    CcInc,
+    CcDec,
     PageInc {
         #[serde(skip_serializing_if = "Option::is_none")]
         page_step: Option<u8>,
@@ -248,6 +256,24 @@ pub struct ButtonConfig {
     // PC inc/dec fields
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pc_step: Option<u8>,
+    // CC inc/dec fields (#11): type="cc_inc"/"cc_dec", or a keytimes button whose
+    // entries fire cc_inc/cc_dec. cc_slots present = SLOT mode (cc_step ignored).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_step: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_slots: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_min: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_max: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_wrap: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_initial: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_slot_colors: Option<Vec<ButtonColor>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_slot_names: Option<Vec<String>>,
     // Page-switch trigger fields (type="page_inc"/"page_dec"/"page_jump")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_step: Option<u8>,
@@ -652,6 +678,47 @@ impl MidiCaptainConfig {
                                 "{}Button {} page {} out of range (0-{})",
                                 pfx, i + 1, pg, self.pages.len().saturating_sub(1)
                             ));
+                        }
+                    }
+                }
+                // cc_inc/cc_dec fields (#11). Type-gated like the page fields: a
+                // plain cc_inc/cc_dec button, or a keytimes button that carries the
+                // cc-step fields because one of its entries fires cc_inc/cc_dec.
+                let is_cc_step = matches!(button.message_type, MessageType::CcInc | MessageType::CcDec)
+                    || (button.mode == ButtonMode::Keytimes
+                        && (button.cc_step.is_some() || button.cc_slots.is_some()));
+                if is_cc_step {
+                    if let Some(step) = button.cc_step {
+                        if !(1..=127).contains(&step) {
+                            errors.push(format!("{}Button {} cc_step {} out of range (1-127)", pfx, i + 1, step));
+                        }
+                    }
+                    if let Some(slots) = button.cc_slots {
+                        if !(2..=16).contains(&slots) {
+                            errors.push(format!("{}Button {} cc_slots {} out of range (2-16)", pfx, i + 1, slots));
+                        }
+                    }
+                    let lo = button.cc_min.unwrap_or(0);
+                    let hi = button.cc_max.unwrap_or(127);
+                    if lo > 127 {
+                        errors.push(format!("{}Button {} cc_min {} exceeds 127", pfx, i + 1, lo));
+                    }
+                    if hi > 127 {
+                        errors.push(format!("{}Button {} cc_max {} exceeds 127", pfx, i + 1, hi));
+                    }
+                    if lo >= hi {
+                        errors.push(format!("{}Button {} cc_min ({}) must be less than cc_max ({})", pfx, i + 1, lo, hi));
+                    }
+                    if let Some(init) = button.cc_initial {
+                        if init < lo || init > hi {
+                            errors.push(format!("{}Button {} cc_initial {} must be within cc_min..cc_max ({}-{})", pfx, i + 1, init, lo, hi));
+                        }
+                    }
+                    if let Some(ref names) = button.cc_slot_names {
+                        for (s, name) in names.iter().enumerate() {
+                            if name.chars().count() > 6 {
+                                errors.push(format!("{}Button {} slot {} name '{}' exceeds 6 chars", pfx, i + 1, s + 1, name));
+                            }
                         }
                     }
                 }
@@ -1338,6 +1405,8 @@ mod tests {
                 channel: None, cc: Some(20 + i as u8), cc_on: None, cc_off: None,
                 note: None, velocity_on: None, velocity_off: None,
                 program: None, pc_step: None, page_step: None, page: None, flash_ms: None,
+                cc_step: None, cc_slots: None, cc_min: None, cc_max: None, cc_wrap: None,
+                cc_initial: None, cc_slot_colors: None, cc_slot_names: None,
                 select_group: None, select_repress: None,
                 keytimes: None, states: None,
                 hid_action: None, hid_key: None, hid_modifier: None, hid_delay_ms: None,
@@ -1673,6 +1742,110 @@ mod tests {
         let json = r#"{
             "device": "one1",
             "pages": [{ "global_channel": 15, "buttons": [{"label": "B0", "cc": 20, "color": "green"}] }]
+        }"#;
+        assert!(parse_migrated(json).validate().is_ok());
+    }
+
+    // --- cc_inc / cc_dec (#11) ---
+
+    #[test]
+    fn test_roundtrip_cc_inc_dec_buttons() {
+        let json = r#"{
+            "buttons": [
+                {"label": "VOL+", "type": "cc_inc", "cc": 7, "cc_step": 5, "cc_min": 10, "cc_max": 100,
+                 "cc_wrap": false, "cc_initial": 50, "flash_ms": 300, "color": "green"},
+                {"label": "AMP", "type": "cc_dec", "cc": 30, "cc_slots": 4,
+                 "cc_slot_colors": ["red", "green"], "cc_slot_names": ["MARSH", "FENDER"], "color": "white"}
+            ]
+        }"#;
+
+        let config = parse_migrated(json);
+        let b0 = &config.pages[0].buttons[0];
+        assert_eq!(b0.message_type, MessageType::CcInc);
+        assert_eq!(b0.cc, Some(7));
+        assert_eq!(b0.cc_step, Some(5));
+        assert_eq!(b0.cc_min, Some(10));
+        assert_eq!(b0.cc_max, Some(100));
+        assert_eq!(b0.cc_wrap, Some(false));
+        assert_eq!(b0.cc_initial, Some(50));
+        let b1 = &config.pages[0].buttons[1];
+        assert_eq!(b1.message_type, MessageType::CcDec);
+        assert_eq!(b1.cc_slots, Some(4));
+        assert_eq!(b1.cc_slot_colors.as_ref().unwrap(), &vec![ButtonColor::Red, ButtonColor::Green]);
+        assert_eq!(b1.cc_slot_names.as_ref().unwrap(), &vec!["MARSH".to_string(), "FENDER".to_string()]);
+
+        let reserialized = serde_json::to_string(&config).unwrap();
+        assert!(reserialized.contains("\"cc_inc\""));
+        let config2: MidiCaptainConfig = serde_json::from_str(&reserialized).unwrap();
+        assert_eq!(config2.pages[0].buttons[0].cc_step, Some(5));
+        assert_eq!(config2.pages[0].buttons[0].cc_wrap, Some(false));
+        assert_eq!(config2.pages[0].buttons[1].cc_slot_names.as_ref().unwrap().len(), 2);
+        assert!(config2.validate().is_ok() || config2.validate().unwrap_err().iter().all(|e| e.contains("expected 10 buttons")));
+    }
+
+    #[test]
+    fn test_deserialize_cc_step_in_keytimes_entries() {
+        // Direction-only entries; cc-step fields ride on the button.
+        let json = r#"{
+            "buttons": [
+                {"label": "AMP", "color": "white", "mode": "keytimes", "cc": 30, "cc_slots": 4,
+                 "short": [{"down": [{"type": "cc_inc"}]}],
+                 "long":  [{"down": [{"type": "cc_dec"}]}]}
+            ]
+        }"#;
+        let config = parse_migrated(json);
+        let btn = &config.pages[0].buttons[0];
+        assert_eq!(btn.cc_slots, Some(4));
+        let short_msg = &btn.short.as_ref().unwrap()[0].down.as_ref().unwrap()[0];
+        let long_msg = &btn.long.as_ref().unwrap()[0].down.as_ref().unwrap()[0];
+        assert!(matches!(short_msg, KeytimesMessage::CcInc));
+        assert!(matches!(long_msg, KeytimesMessage::CcDec));
+        let reserialized = serde_json::to_string(&config).unwrap();
+        assert!(reserialized.contains(r#"{"type":"cc_inc"}"#));
+    }
+
+    #[test]
+    fn test_validate_cc_step_fields_out_of_range() {
+        let json = r#"{
+            "device": "one1",
+            "pages": [{"buttons": [
+                {"label": "X", "color": "green", "type": "cc_inc", "cc_step": 0, "cc_slots": 17,
+                 "cc_min": 100, "cc_max": 50, "cc_initial": 60, "cc_slot_names": ["TOOLONG"]}
+            ]}],
+            "active_page": 0
+        }"#;
+        let errs = parse_migrated(json).validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("cc_step")), "{errs:?}");
+        assert!(errs.iter().any(|e| e.contains("cc_slots")), "{errs:?}");
+        assert!(errs.iter().any(|e| e.contains("cc_min") && e.contains("less than")), "{errs:?}");
+        assert!(errs.iter().any(|e| e.contains("cc_initial")), "{errs:?}");
+        assert!(errs.iter().any(|e| e.contains("exceeds 6 chars")), "{errs:?}");
+    }
+
+    #[test]
+    fn test_validate_cc_step_keytimes_button_gated_on_fields() {
+        // A keytimes button carrying cc-step fields is checked like a cc_inc button.
+        let json = r#"{
+            "device": "one1",
+            "pages": [{"buttons": [
+                {"label": "X", "color": "green", "mode": "keytimes", "cc": 30, "cc_slots": 1,
+                 "short": [{"down": [{"type": "cc_inc"}]}]}
+            ]}],
+            "active_page": 0
+        }"#;
+        let errs = parse_migrated(json).validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("cc_slots")), "{errs:?}");
+    }
+
+    #[test]
+    fn test_validate_ignores_stale_cc_step_fields_on_other_types() {
+        // Type-gated: leftovers from an editor type switch must not block save.
+        let json = r#"{
+            "device": "one1",
+            "pages": [{"buttons": [
+                {"label": "OK", "cc": 20, "color": "green", "cc_step": 0, "cc_slots": 99, "cc_min": 100, "cc_max": 5}
+            ]}],
+            "active_page": 0
         }"#;
         assert!(parse_migrated(json).validate().is_ok());
     }

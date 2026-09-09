@@ -137,9 +137,9 @@
     },
     "MessageType": {
       "type": "string",
-      "enum": ["cc", "note", "pc", "pc_inc", "pc_dec", "hid", "page_inc", "page_dec", "page_jump"],
+      "enum": ["cc", "note", "pc", "pc_inc", "pc_dec", "cc_inc", "cc_dec", "hid", "page_inc", "page_dec", "page_jump"],
       "default": "cc",
-      "description": "MIDI/HID message type, plus page-switch triggers: 'page_inc'/'page_dec' wrap-advance/retreat the active page by page_step; 'page_jump' clamps to absolute page index."
+      "description": "MIDI/HID message type, plus page-switch triggers: 'page_inc'/'page_dec' wrap-advance/retreat the active page by page_step; 'page_jump' clamps to absolute page index. 'cc_inc'/'cc_dec' step a shared CC value (keyed by channel + cc) up/down by cc_step, or through cc_slots equal-size slots; see cc_min/cc_max/cc_wrap."
     },
     "HidAction": {
       "type": "string",
@@ -222,6 +222,14 @@
           },
           "required": ["type"],
           "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "enum": ["cc_inc", "cc_dec"] }
+          },
+          "required": ["type"],
+          "additionalProperties": false,
+          "description": "Step the button's shared CC value up/down. Carries no fields of its own: cc, channel, cc_step/cc_slots, cc_min/cc_max, cc_wrap and the slot color/name tables are configured once on the button (ButtonConfig) and shared by every entry — a keytimes entry only chooses the direction."
         },
         {
           "properties": {
@@ -361,7 +369,49 @@
         },
         "cc": {
           "$ref": "#/definitions/MidiByte",
-          "description": "CC number. Used when type='cc'. Default: 20 + button index."
+          "description": "CC number. Used when type='cc', 'cc_inc' or 'cc_dec' (and by keytimes-mode buttons whose entries fire cc_inc/cc_dec). Default: 20 + button index."
+        },
+        "cc_step": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 127,
+          "default": 1,
+          "description": "STEP mode: how much the shared CC value moves per press. Used when type='cc_inc' or 'cc_dec' and cc_slots is absent. Default: 1."
+        },
+        "cc_slots": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 16,
+          "description": "SLOT mode: divide cc_min..cc_max into this many equal slots; each press moves one slot and sends the value in the middle of the slot. Present = SLOT mode (cc_step is ignored). Absent = STEP mode. Used when type='cc_inc' or 'cc_dec'."
+        },
+        "cc_min": {
+          "$ref": "#/definitions/MidiByte",
+          "default": 0,
+          "description": "Lower bound of the shared CC value range. Used when type='cc_inc' or 'cc_dec'. Default: 0. Must be < cc_max."
+        },
+        "cc_max": {
+          "$ref": "#/definitions/MidiByte",
+          "default": 127,
+          "description": "Upper bound of the shared CC value range. Used when type='cc_inc' or 'cc_dec'. Default: 127. Must be > cc_min."
+        },
+        "cc_wrap": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true (default), stepping past cc_max lands on cc_min and stepping below cc_min lands on cc_max. When false, the value clamps at the bound and that bound is sent. Used when type='cc_inc' or 'cc_dec'."
+        },
+        "cc_initial": {
+          "$ref": "#/definitions/MidiByte",
+          "description": "Starting value of the shared CC value at boot (before any press or incoming CC). Must be within cc_min..cc_max. Default: cc_min. Used when type='cc_inc' or 'cc_dec'."
+        },
+        "cc_slot_colors": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ButtonColor" },
+          "description": "SLOT mode: LED color per slot (index 0 = first slot). Slots without an entry use the button's color. The LED stays lit at the current slot's color."
+        },
+        "cc_slot_names": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 6, "pattern": "^[\\w \\-]*$" },
+          "description": "SLOT mode: display name per slot (index 0 = first slot), max 6 chars. Slots without a name display '<label> n/N' on the status line and keep the button label."
         },
         "cc_on": {
           "$ref": "#/definitions/MidiByte",
@@ -411,7 +461,7 @@
           "minimum": 50,
           "maximum": 5000,
           "default": 200,
-          "description": "LED flash duration in milliseconds. Used when type is PC and mode is 'flash'."
+          "description": "LED flash duration in milliseconds. Used when type is PC and mode is 'flash', and by cc_inc/cc_dec in STEP mode (the LED flashes on every press)."
         },
         "keytimes": {
           "type": "integer",

@@ -1,4 +1,21 @@
-import type { MidiCaptainConfig, Page } from './types';
+import type { MidiCaptainConfig, Page, ButtonConfig } from './types';
+
+// True when any short/long entry on a keytimes button fires cc_inc/cc_dec (#11).
+// Such a button carries the button-level cc-step fields (cc, cc_step | cc_slots,
+// cc_min/cc_max, cc_wrap, cc_initial, slot tables) shared by every entry.
+export function keytimesUsesCcStep(btn: ButtonConfig): boolean {
+  for (const cycle of [btn.short, btn.long]) {
+    for (const entry of cycle ?? []) {
+      for (const msg of [...(entry.down ?? []), ...(entry.up ?? [])]) {
+        if (msg.type === 'cc_inc' || msg.type === 'cc_dec') return true;
+      }
+    }
+  }
+  return false;
+}
+
+export const CC_SLOTS_MIN = 2;
+export const CC_SLOTS_MAX = 16;
 
 export interface ValidationResult {
   isValid: boolean;
@@ -71,6 +88,18 @@ export const validators = {
     return null;
   },
 
+  ccStep: (value: number): string | null => {
+    if (!Number.isInteger(value)) return 'Step must be an integer';
+    if (value < 1 || value > 127) return 'Step must be between 1 and 127';
+    return null;
+  },
+
+  ccSlots: (value: number): string | null => {
+    if (!Number.isInteger(value)) return 'Slots must be an integer';
+    if (value < CC_SLOTS_MIN || value > CC_SLOTS_MAX) return `Slots must be between ${CC_SLOTS_MIN} and ${CC_SLOTS_MAX}`;
+    return null;
+  },
+
   // No upper bound: the schema has none — the firmware wraps at the ends.
   pageStep: (value: number): string | null => {
     if (!Number.isInteger(value)) return 'Step must be an integer';
@@ -103,6 +132,51 @@ export const validators = {
     return null;
   },
 };
+
+// cc_inc/cc_dec (#11) button-level fields. Called for plain cc_inc/cc_dec buttons
+// and for keytimes buttons whose entries fire cc_inc/cc_dec (the fields ride on
+// the button). Mirrors the Rust ranges in config.rs so bad values fail inline.
+function validateCcStep(btn: ButtonConfig, idx: number, errors: Map<string, string>) {
+  const p = `buttons[${idx}]`;
+  if (btn.cc !== undefined) {
+    const e = validators.cc(btn.cc);
+    if (e) errors.set(`${p}.cc`, e);
+  }
+  if (btn.cc_step !== undefined) {
+    const e = validators.ccStep(btn.cc_step);
+    if (e) errors.set(`${p}.cc_step`, e);
+  }
+  if (btn.cc_slots !== undefined) {
+    const e = validators.ccSlots(btn.cc_slots);
+    if (e) errors.set(`${p}.cc_slots`, e);
+  }
+  const lo = btn.cc_min ?? 0;
+  const hi = btn.cc_max ?? 127;
+  if (btn.cc_min !== undefined) {
+    const e = validators.withinRange(btn.cc_min, 0, 127);
+    if (e) errors.set(`${p}.cc_min`, `Min: ${e.toLowerCase()}`);
+  }
+  if (btn.cc_max !== undefined) {
+    const e = validators.withinRange(btn.cc_max, 0, 127);
+    if (e) errors.set(`${p}.cc_max`, `Max: ${e.toLowerCase()}`);
+  }
+  if (lo >= hi) {
+    errors.set(`${p}.cc_max`, 'Max must be greater than min');
+  }
+  if (btn.cc_initial !== undefined) {
+    const e = validators.withinRange(btn.cc_initial, lo, hi);
+    if (e) errors.set(`${p}.cc_initial`, `Initial ${e.toLowerCase()}`);
+  }
+  if (btn.cc_slot_names) {
+    btn.cc_slot_names.forEach((name, si) => {
+      if (name.length > 6) {
+        errors.set(`${p}.cc_slot_names[${si}]`, 'Slot name must be 6 characters or less');
+      } else if (name !== '' && !/^[\w\s-]+$/.test(name)) {
+        errors.set(`${p}.cc_slot_names[${si}]`, 'Slot name contains invalid characters');
+      }
+    });
+  }
+}
 
 // Validate one page's control-surface data against the device. Keys are
 // UNPREFIXED (buttons[i]…, encoder…, expression…) — for the active page they
@@ -206,6 +280,8 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
         const stepError = validators.pcStep(btn.pc_step);
         if (stepError) errors.set(`buttons[${idx}].pc_step`, stepError);
       }
+    } else if ((msgType === 'cc_inc' || msgType === 'cc_dec') && btn.mode !== 'keytimes') {
+      validateCcStep(btn, idx, errors);
     } else if (msgType === 'page_inc' || msgType === 'page_dec') {
       if (btn.page_step !== undefined) {
         const stepError = validators.pageStep(btn.page_step);
@@ -270,6 +346,9 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
       }
     }
     if (btn.mode === 'keytimes') {
+      // cc_inc/cc_dec entries (#11) are direction-only; their cc/range/slot fields
+      // ride on the button and validate like a plain cc_inc button.
+      if (keytimesUsesCcStep(btn)) validateCcStep(btn, idx, errors);
       // Validate Message objects nested inside short[i].down[j] / up[j] and same for long.
       for (const cycle of ['short', 'long'] as const) {
         const entries = btn[cycle];
@@ -308,6 +387,10 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
                   }
                   break;
                 }
+                case 'cc_inc':
+                case 'cc_dec':
+                  // No per-message fields; see validateCcStep on the button above.
+                  break;
                 case 'page_inc':
                 case 'page_dec': {
                   if (msg.page_step !== undefined) {

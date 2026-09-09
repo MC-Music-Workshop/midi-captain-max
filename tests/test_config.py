@@ -1560,3 +1560,119 @@ class TestPageControlSanitize:
         cfg = {"pages": [{"buttons": [{"label": "A", "cc": 20}]}]}
         out = validate_config(cfg, button_count=1)
         assert "page_control" not in out
+
+
+class TestCcStepButtons:
+    """validate_button for cc_inc/cc_dec (#11): defaults, STEP vs SLOT, keytimes carry-over."""
+
+    def test_step_mode_defaults(self):
+        btn = validate_button({"type": "cc_inc"}, index=3)
+        assert btn["type"] == "cc_inc"
+        assert btn["mode"] == "flash"
+        assert btn["cc"] == 23           # 20 + index, same default as type cc
+        assert btn["cc_step"] == 1
+        assert btn["cc_min"] == 0
+        assert btn["cc_max"] == 127
+        assert btn["cc_wrap"] is True
+        assert "cc_slots" not in btn
+        assert "cc_initial" not in btn   # absent -> firmware seeds from cc_min
+        assert "cc_on" not in btn and "cc_off" not in btn
+
+    def test_step_fields_clamped(self):
+        btn = validate_button({"type": "cc_dec", "cc": 40, "cc_step": 300, "cc_min": -5,
+                               "cc_max": 200, "cc_wrap": False, "cc_initial": 64}, index=0)
+        assert btn["cc"] == 40
+        assert btn["cc_step"] == 127
+        assert btn["cc_min"] == 0
+        assert btn["cc_max"] == 127
+        assert btn["cc_wrap"] is False
+        assert btn["cc_initial"] == 64
+
+    def test_non_int_step_and_wrap_fall_back(self):
+        btn = validate_button({"type": "cc_inc", "cc_step": "5", "cc_wrap": "yes"}, index=0)
+        assert btn["cc_step"] == 1
+        assert btn["cc_wrap"] is True
+
+    def test_bool_step_rejected(self):
+        btn = validate_button({"type": "cc_inc", "cc_step": True}, index=0)
+        assert btn["cc_step"] == 1
+
+    def test_min_ge_max_falls_back_to_full_range(self, capsys):
+        btn = validate_button({"type": "cc_inc", "cc_min": 50, "cc_max": 50}, index=0)
+        assert (btn["cc_min"], btn["cc_max"]) == (0, 127)
+        assert "cc_min" in capsys.readouterr().out
+
+    def test_initial_outside_range_dropped(self):
+        btn = validate_button({"type": "cc_inc", "cc_min": 10, "cc_max": 20, "cc_initial": 64}, index=0)
+        assert "cc_initial" not in btn
+
+    def test_slot_mode_drops_step(self):
+        btn = validate_button({"type": "cc_inc", "cc_slots": 4, "cc_step": 9}, index=0)
+        assert btn["cc_slots"] == 4
+        assert "cc_step" not in btn
+
+    def test_slot_tables_sanitized_positionally(self):
+        btn = validate_button({"type": "cc_inc", "cc_slots": 3,
+                               "cc_slot_colors": ["red", "nope", "GREEN", "blue"],
+                               "cc_slot_names": ["MARSHALL", 7, "", "extra"]}, index=0)
+        assert btn["cc_slot_colors"] == ["red", None, "green"]
+        assert btn["cc_slot_names"] == ["MARSHA", "", ""]
+
+    def test_slot_color_off_not_allowed(self):
+        btn = validate_button({"type": "cc_inc", "cc_slots": 2, "cc_slot_colors": ["off", "red"]}, index=0)
+        assert btn["cc_slot_colors"] == [None, "red"]
+
+    def test_slots_out_of_range_means_step_mode(self):
+        for bad in (1, 17, 0, "4", True):
+            btn = validate_button({"type": "cc_inc", "cc_slots": bad}, index=0)
+            assert "cc_slots" not in btn
+            assert btn["cc_step"] == 1
+
+    def test_mode_coerced_to_flash(self):
+        for mode in ("toggle", "momentary", "select", "bogus"):
+            btn = validate_button({"type": "cc_inc", "mode": mode, "select_group": "g"}, index=0)
+            assert btn["mode"] == "flash"
+            assert "select_group" not in btn
+
+    def test_flash_ms_kept(self):
+        btn = validate_button({"type": "cc_dec", "flash_ms": 750}, index=0)
+        assert btn["flash_ms"] == 750
+
+    def test_keytimes_entry_is_direction_only(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [{"type": "cc_inc", "cc": 99, "channel": 5}]}],
+        }, index=0)
+        assert btn["short"][0]["down"][0] == {"type": "cc_inc"}
+
+    def test_keytimes_button_carries_cc_step_fields(self):
+        btn = validate_button({
+            "label": "AMP", "color": "red", "mode": "keytimes", "cc": 30, "channel": 2,
+            "cc_slots": 4, "cc_slot_colors": ["red", "green"],
+            "short": [{"down": [{"type": "cc_inc"}]}],
+            "long": [{"down": [{"type": "cc_dec"}]}],
+        }, index=0)
+        assert btn["mode"] == "keytimes"
+        assert btn["cc"] == 30
+        assert btn["channel"] == 2
+        assert btn["cc_slots"] == 4
+        assert btn["cc_slot_colors"] == ["red", "green"]
+        assert btn["cc_min"] == 0 and btn["cc_max"] == 127
+        assert "cc_step" not in btn
+
+    def test_keytimes_button_step_mode_default_when_only_long_uses_it(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [{"type": "cc", "cc": 20, "value": 127}]}],
+            "long": [{"up": [{"type": "cc_dec"}]}],
+        }, index=4)
+        assert btn["cc"] == 24
+        assert btn["cc_step"] == 1
+
+    def test_keytimes_button_without_cc_step_entries_has_no_cc_fields(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes", "cc": 30, "cc_slots": 4,
+            "short": [{"down": [{"type": "cc", "cc": 20, "value": 127}]}],
+        }, index=0)
+        assert "cc" not in btn
+        assert "cc_slots" not in btn

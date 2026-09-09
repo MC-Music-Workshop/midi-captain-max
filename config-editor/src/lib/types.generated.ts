@@ -4,11 +4,11 @@
  * Run: npm run generate:types
  */
 
+export type ButtonColor = "red" | "green" | "blue" | "yellow" | "cyan" | "magenta" | "orange" | "purple" | "white";
 /**
  * Standard MIDI byte value (0-127).
  */
 export type MidiByte = number;
-export type ButtonColor = "red" | "green" | "blue" | "yellow" | "cyan" | "magenta" | "orange" | "purple" | "white";
 /**
  * 'send' = press+release, 'press' = hold key, 'release' = release key(s), 'delay' = pause execution.
  */
@@ -42,6 +42,9 @@ export type KeytimesMessage =
       type: "pc_inc" | "pc_dec";
       step?: number;
       channel?: MidiChannel;
+    }
+  | {
+      type: "cc_inc" | "cc_dec";
     }
   | {
       type: "page_inc" | "page_dec";
@@ -155,7 +158,18 @@ export interface ButtonConfig {
   /**
    * MIDI message type. Determines which fields apply. Default: 'cc'.
    */
-  type?: "cc" | "note" | "pc" | "pc_inc" | "pc_dec" | "hid" | "page_inc" | "page_dec" | "page_jump";
+  type?:
+    | "cc"
+    | "note"
+    | "pc"
+    | "pc_inc"
+    | "pc_dec"
+    | "cc_inc"
+    | "cc_dec"
+    | "hid"
+    | "page_inc"
+    | "page_dec"
+    | "page_jump";
   /**
    * Button behavior. 'toggle' = latching LED on/off, 'momentary' = LED on while held, 'flash' = brief LED flash on press (PC types only, default for PC types), 'select' = radio-group exclusivity (PC and CC only, requires select_group). Default for CC/Note/HID: 'toggle'.
    */
@@ -177,9 +191,41 @@ export interface ButtonConfig {
    */
   channel?: number;
   /**
-   * CC number. Used when type='cc'. Default: 20 + button index.
+   * CC number. Used when type='cc', 'cc_inc' or 'cc_dec' (and by keytimes-mode buttons whose entries fire cc_inc/cc_dec). Default: 20 + button index.
    */
   cc?: number;
+  /**
+   * STEP mode: how much the shared CC value moves per press. Used when type='cc_inc' or 'cc_dec' and cc_slots is absent. Default: 1.
+   */
+  cc_step?: number;
+  /**
+   * SLOT mode: divide cc_min..cc_max into this many equal slots; each press moves one slot and sends the value in the middle of the slot. Present = SLOT mode (cc_step is ignored). Absent = STEP mode. Used when type='cc_inc' or 'cc_dec'.
+   */
+  cc_slots?: number;
+  /**
+   * Lower bound of the shared CC value range. Used when type='cc_inc' or 'cc_dec'. Default: 0. Must be < cc_max.
+   */
+  cc_min?: number;
+  /**
+   * Upper bound of the shared CC value range. Used when type='cc_inc' or 'cc_dec'. Default: 127. Must be > cc_min.
+   */
+  cc_max?: number;
+  /**
+   * When true (default), stepping past cc_max lands on cc_min and stepping below cc_min lands on cc_max. When false, the value clamps at the bound and that bound is sent. Used when type='cc_inc' or 'cc_dec'.
+   */
+  cc_wrap?: boolean;
+  /**
+   * Starting value of the shared CC value at boot (before any press or incoming CC). Must be within cc_min..cc_max. Default: cc_min. Used when type='cc_inc' or 'cc_dec'.
+   */
+  cc_initial?: number;
+  /**
+   * SLOT mode: LED color per slot (index 0 = first slot). Slots without an entry use the button's color. The LED stays lit at the current slot's color.
+   */
+  cc_slot_colors?: ButtonColor[];
+  /**
+   * SLOT mode: display name per slot (index 0 = first slot), max 6 chars. Slots without a name display '<label> n/N' on the status line and keep the button label.
+   */
+  cc_slot_names?: string[];
   /**
    * CC value sent when button is pressed (ON). Default: 127.
    */
@@ -217,7 +263,7 @@ export interface ButtonConfig {
    */
   page?: number;
   /**
-   * LED flash duration in milliseconds. Used when type is PC and mode is 'flash'.
+   * LED flash duration in milliseconds. Used when type is PC and mode is 'flash', and by cc_inc/cc_dec in STEP mode (the LED flashes on every press).
    */
   flash_ms?: number;
   /**

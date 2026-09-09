@@ -515,6 +515,14 @@ pc_values = [0] * 16                 # Current PC value per MIDI channel (0-15),
 # page with the same key moves and shows the same value. Lazily seeded from the first
 # button that touches a key (cc_initial, else cc_min); NOT reset by switch_page().
 cc_values = {}
+# Deferred status/LED repaints for inc/dec values: (btn_config, value, "TX"|"RX").
+# send_cc_step() and the RX path append here instead of repainting inline, and the
+# main loop drains it via flush_cc_step_updates(). Repainting sets label.text, whose
+# PCF glyph loader is ~6 frames deep; doing that from the bottom of the keytimes
+# dispatch chain (handle_switches -> dispatch_keytimes_events -> lambda ->
+# _dispatch_keytimes_message -> send_cc_step -> refresh -> set_button_state) hit
+# "RuntimeError: pystack exhausted" on the first slot name with uncached glyphs.
+pending_cc_step_updates = []
 pc_flash_timers = [0.0] * BUTTON_COUNT  # Expiry time (monotonic) for PC button flash; 0 = inactive
 hid_flash_timers = [0.0] * BUTTON_COUNT  # Same for HID buttons
 PC_FLASH_DURATION_MS = 200              # Default PC/HID button flash duration in ms
@@ -949,19 +957,31 @@ def _refresh_cc_step_buttons(key):
     """Re-render every button on the active page sharing inc/dec key (channel, cc).
 
     Value changed (local press or RX): STEP buttons flash; SLOT buttons repaint
-    to the new slot color/name. Keytimes buttons in SLOT mode repaint via their
-    own renderer; in STEP mode their entry colors rule (no flash).
+    to the new slot color/name (keytimes buttons too — in SLOT mode the slot
+    table owns their LED/label, see _render_keytimes_led). Keytimes buttons in
+    STEP mode are left to their entry colors (no flash).
+
+    Main-loop only (via flush_cc_step_updates) — see pending_cc_step_updates.
     """
     for i, cfg in enumerate(buttons):
         if not is_cc_step_button(cfg) or cc_step_key(cfg) != key:
             continue
-        if cfg.get("mode") == "keytimes":
-            if cfg.get("cc_slots") and i < len(keytimes_states) and keytimes_states[i] is not None:
-                _render_keytimes_led(i + 1, keytimes_states[i], cfg)
-        elif cfg.get("cc_slots"):
+        if cfg.get("cc_slots"):
             set_button_state(i + 1, True)
-        else:
+        elif cfg.get("mode") != "keytimes":
             flash_pc_button(i + 1, cfg.get("flash_ms", PC_FLASH_DURATION_MS))
+
+
+def flush_cc_step_updates():
+    """Drain pending inc/dec repaints: status line + every button on each key.
+
+    Called once per main-loop iteration so the label.text / glyph-loader call
+    chain starts from a shallow stack (same depth as update_pc_flash_timers).
+    """
+    while pending_cc_step_updates:
+        btn_config, value, prefix = pending_cc_step_updates.pop(0)
+        _show_cc_step(btn_config, value, prefix)
+        _refresh_cc_step_buttons(cc_step_key(btn_config))
 
 
 def send_cc_step(btn_num, btn_config, direction, origin):
@@ -969,6 +989,7 @@ def send_cc_step(btn_num, btn_config, direction, origin):
 
     direction: +1 (cc_inc) or -1 (cc_dec). Uses the button-level cc/channel/range
     fields (shared with a keytimes button's entries — they only pick a direction).
+    MIDI goes out immediately; the LED/display repaint is deferred to the main loop.
     """
     key = cc_step_key(btn_config)
     channel, cc = key
@@ -976,8 +997,7 @@ def send_cc_step(btn_num, btn_config, direction, origin):
     cc_values[key] = new
     midi_send(ControlChange(cc, new), channel=channel)
     print(f"[MIDI TX] Ch{channel+1} CC{cc}={new} (switch {btn_num}, {origin})")
-    _show_cc_step(btn_config, new, "TX")
-    _refresh_cc_step_buttons(key)
+    pending_cc_step_updates.append((btn_config, new, "TX"))
 
 
 def _expire_flash_timers(timers, now):
@@ -1048,8 +1068,7 @@ def _process_midi_msg(msg, source="USB"):
             else:
                 changed = new != old
             if changed:
-                _show_cc_step(btn_config, new, "RX")
-                _refresh_cc_step_buttons(key)
+                pending_cc_step_updates.append((btn_config, new, "RX"))
         elif action == "select":
             update_select_group(i + 1, buttons[i].get("select_group", ""))
             update_status(f"RX CC{cc}={val}")
@@ -1664,6 +1683,7 @@ if DEV_MODE:
 while True:
     handle_midi()
     handle_switches()
+    flush_cc_step_updates()
     update_pc_flash_timers()
     if HAS_ENCODER:
         handle_encoder_button()

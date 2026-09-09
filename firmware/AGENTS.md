@@ -179,6 +179,7 @@ See [docs/midicaptain_reverse_engineering_handoff.md](../docs/midicaptain_revers
 while True:
     handle_midi()       # RX: USB + DIN; thru forwarding; update LED state
     handle_switches()   # TX: scan footswitches, dispatch MIDI on change
+    flush_cc_step_updates()  # deferred LED/status repaints for cc_inc/cc_dec (#11)
     update_pc_flash_timers()
     if HAS_ENCODER:
         handle_encoder_button()
@@ -188,6 +189,8 @@ while True:
 ```
 
 No sleep — runs as fast as possible. Timing-sensitive code must use `time.monotonic()`.
+
+**Keep `label.text =` off deep call chains (pystack).** CircuitPython's Python stack is small, and setting a displayio label's text can descend ~6 more frames into `adafruit_display_text` → `adafruit_bitmap_font/pcf.py::load_glyphs` when the text contains a glyph not yet cached. Doing that from the bottom of the keytimes dispatch chain (`handle_switches` → `dispatch_keytimes_events` → lambda → `_dispatch_keytimes_message` → handler → repaint → `set_button_state`) raised `RuntimeError: pystack exhausted` on a real STD10 — on the *second* press, once a slot name needed a letter the button label hadn't already loaded (#11). Pattern: handlers send MIDI inline but queue display/LED work (`pending_cc_step_updates`, drained by `flush_cc_step_updates()` in the main loop), so the repaint starts from the same shallow depth as `update_pc_flash_timers()`. Same shape as the deferred `pending_page_target` switch.
 
 ### MIDI Output Pattern
 
@@ -282,7 +285,9 @@ Boundary rule (both modes): `cc_wrap` (default true) lands **on** the opposite b
 
 `mode` is coerced to `"flash"` for cc_inc/cc_dec (toggle/momentary/select don't apply); `keytimes` is the only other family. In **keytimes**, a `{type: "cc_inc"|"cc_dec"}` entry is direction-only — `cc`, `channel`, range, STEP/SLOT and the slot tables are configured once on the button and `_validate_keytimes_button` copies them on when any entry uses cc_inc/cc_dec (`is_cc_step_button()` detects a keytimes button by those fields). In SLOT mode the slot table owns the LED and label for every press length (`_render_keytimes_led` short-circuits to `set_button_state`); in STEP mode the normal keytimes entry colors rule — there is no flash on a keytimes button.
 
-**MIDI RX:** `find_cc_rx_action` returns `("cc_step", i)` for the first cc-step button on `(cc, channel)` — no value gate, and the cc-step check runs before the select/shield logic. `_process_midi_msg` clamps the value into `cc_min..cc_max`, stores it, and only if the value (STEP) or slot (SLOT) actually changed, updates the status line and calls `_refresh_cc_step_buttons(key)`, which repaints every button on the key (STEP flashes, SLOT recolors). LED-and-state-only, no echo. Don't put a plain `cc` button on the same `(cc, channel)` as a cc-step button — the stepper claims it.
+**MIDI RX:** `find_cc_rx_action` returns `("cc_step", i)` for the first cc-step button on `(cc, channel)` — no value gate, and the cc-step check runs before the select/shield logic. `_process_midi_msg` clamps the value into `cc_min..cc_max`, stores it, and only if the value (STEP) or slot (SLOT) actually changed, queues a repaint. LED-and-state-only, no echo.
+
+**Repaints are deferred.** Both the press path (`send_cc_step`) and RX append `(btn_config, value, "TX"|"RX")` to `pending_cc_step_updates`; `flush_cc_step_updates()` in the main loop then updates the status line and calls `_refresh_cc_step_buttons(key)`, which repaints every button on the key (STEP flashes, SLOT recolors). MIDI still goes out immediately. This is a pystack constraint, not a style choice — see "Keep `label.text =` off deep call chains" under Main Loop Structure. Don't put a plain `cc` button on the same `(cc, channel)` as a cc-step button — the stepper claims it.
 
 ### PC Button LED Modes
 

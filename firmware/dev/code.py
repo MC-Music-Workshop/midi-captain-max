@@ -933,6 +933,9 @@ def switch_page(n):
             exp2_label.text = exp2_config.get("label", "EXP2") + ": ---"
 
     init_leds()
+    # At boot the seg-display animation that follows wipes this; the startup
+    # block calls it again afterwards. Page switches land here only.
+    show_cc_step_resting_status()
 
 
 def handle_pc_select_press(btn_num, btn_config, channel):
@@ -1002,12 +1005,29 @@ def get_cc_step_value(btn_config):
 
 def _show_cc_step(btn_config, value, prefix):
     """Status line for a cc_inc/cc_dec value: 'TX CC20=64' in STEP mode, the slot
-    name or 'TX AMP 2/4' in SLOT mode (seg display shows the slot number)."""
+    name or 'TX AMP 2/4' in SLOT mode (seg display shows the slot number).
+    prefix may be "" for the resting display (boot / page switch)."""
+    lead = prefix + " " if prefix else ""
     if btn_config.get("cc_slots"):
-        update_status(prefix + " " + cc_slot_text(btn_config, value),
+        update_status(lead + cc_slot_text(btn_config, value),
                       number=cc_slot_index(btn_config, value) + 1)
     else:
-        update_status(prefix + " CC" + str(btn_config.get("cc", 0)) + "=" + str(value))
+        update_status(lead + "CC" + str(btn_config.get("cc", 0)) + "=" + str(value))
+
+
+def show_cc_step_resting_status():
+    """Put the first inc/dec button's current value/slot on the status line.
+
+    Called after boot and after every page switch. On DUO2/ONE1 the segment
+    display is the ONLY place a slot is visible, and nothing else writes it until
+    a press or an incoming CC — so a freshly booted ONE showed a blank display
+    while its LED already had the slot color. First matching button wins when a
+    page has several (DUO2 with two slot buttons shows button 1's).
+    """
+    for cfg in buttons:
+        if is_cc_step_button(cfg):
+            _show_cc_step(cfg, get_cc_step_value(cfg), "")
+            return
 
 
 def _refresh_cc_step_buttons(key):
@@ -1695,6 +1715,7 @@ if HAS_SEG_DISPLAY:
 else:
     time.sleep(0.5)
 init_leds()
+show_cc_step_resting_status()  # the seg animation just blanked the display (#11)
 
 # Show CC mapping info
 if HAS_ENCODER:

@@ -319,6 +319,12 @@ if HAS_TFT:
     from adafruit_st7789 import ST7789
 
 
+# One font object per PCF file. Button/status/expression sizes that share a file
+# (the shipped configs use "medium" for all three) share the object and its glyph
+# cache instead of holding three copies of the same bitmaps.
+_FONT_CACHE = {}
+
+
 def load_font(size_name):
     """Load a font based on size name, with fallback to terminalio.
 
@@ -337,13 +343,63 @@ def load_font(size_name):
     if font_path == "terminalio":
         return terminalio.FONT, height
 
+    if font_path in _FONT_CACHE:
+        return _FONT_CACHE[font_path], height
+
     try:
         loaded_font = bitmap_font.load_font(font_path)
+        _FONT_CACHE[font_path] = loaded_font
         print(f"Loaded font: {font_path} (~{height}px)")
         return loaded_font, height
     except Exception as e:
         print(f"Font load failed for '{font_path}': {e}, falling back to terminalio")
         return terminalio.FONT, 8
+
+
+# Every character update_status() can emit, independent of config: the fixed words
+# in its f-strings (TX/RX CC/PC/Note/NoteOff/HID/PAGE/ENC slot, HID action names,
+# "Ready", the "---" expression placeholder) plus digits and punctuation.
+STATUS_GLYPHS = "0123456789 =/:-TXRCPNoteOnfHIDPAGEslotENCsendpressreleasedelayReady"
+
+
+def _config_glyphs(cfg):
+    """Every character any on-screen label can show for this config, all pages:
+    button labels, cc_inc/cc_dec slot names, keytimes entry labels, expression
+    labels — plus STATUS_GLYPHS. Returned as one deduplicated string."""
+    chars = set(STATUS_GLYPHS)
+    for page in cfg.get("pages", []):
+        for btn in page.get("buttons", []):
+            chars.update(str(btn.get("label", "")))
+            for name in btn.get("cc_slot_names", []) or []:
+                chars.update(str(name))
+            for cycle in ("short", "long"):
+                for entry in btn.get(cycle, []) or []:
+                    chars.update(str(entry.get("label", "")))
+        exp = page.get("expression", {}) or {}
+        for k in ("exp1", "exp2"):
+            chars.update(str((exp.get(k) or {}).get("label", "")))
+    return "".join(sorted(chars))
+
+
+def preload_glyphs(fonts, text):
+    """Load `text`'s glyphs into each PCF font's cache now, at boot.
+
+    Without this, the first time a label shows a new character the label.text
+    setter descends ~6 frames into adafruit_bitmap_font's PCF loader (and reads
+    flash). From a deep call chain that exhausted the pystack (#11), and on any
+    path it is a visible hitch. terminalio.FONT has no load_glyphs — skipped.
+    Best-effort: a failure here must never stop the device from booting.
+    """
+    seen = []
+    for font in fonts:
+        if font in seen or not hasattr(font, "load_glyphs"):
+            continue
+        seen.append(font)
+        try:
+            font.load_glyphs(text)
+        except Exception as e:
+            print(f"Glyph preload failed: {e}")
+    print(f"Preloaded {len(text)} glyphs into {len(seen)} font(s)")
 
 
 if HAS_TFT:
@@ -359,6 +415,7 @@ if HAS_TFT:
     BUTTON_FONT, BUTTON_FONT_HEIGHT = load_font(button_text_size)
     STATUS_FONT, STATUS_FONT_HEIGHT = load_font(status_text_size)
     EXPRESSION_FONT, EXPRESSION_FONT_HEIGHT = load_font(expression_text_size)
+    preload_glyphs((BUTTON_FONT, STATUS_FONT, EXPRESSION_FONT), _config_glyphs(config))
 
 # =============================================================================
 # Hardware Init
@@ -1303,9 +1360,11 @@ def handle_switches():
             events = kt_state.tracker.update(sw.pressed, now)
             if events:
                 default_channel = btn_config.get("channel", 0)
+                # Pass the handler + its extra args rather than a lambda adapter: one
+                # stack frame fewer under every keytimes message (pystack is small).
                 dispatch_keytimes_events(
                     events, kt_state, btn_config,
-                    lambda msg: _dispatch_keytimes_message(msg, default_channel, btn_num)
+                    _dispatch_keytimes_message, (default_channel, btn_num)
                 )
                 _render_keytimes_led(btn_num, kt_state, btn_config)
             continue

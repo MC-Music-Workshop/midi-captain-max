@@ -223,7 +223,7 @@ The `mode: "keytimes"` dispatch path is a parallel branch in `handle_switches()`
 
 Per-loop flow for a keytimes-mode button:
 1. `state.tracker.update(sw.pressed, time.monotonic())` returns timing events (`short_down`/`short_up`/`long_down`/`long_up`)
-2. `dispatch_keytimes_events(events, state, btn_config, callback)` — pure function in `core/button.py`, calls callback for each Message to dispatch, updates state's inherited color/dim/label, advances cycles on press-end
+2. `dispatch_keytimes_events(events, state, btn_config, callback, callback_args)` — pure function in `core/button.py`, calls `callback(msg, *callback_args)` for each Message to dispatch, updates state's inherited color/dim/label, advances cycles on press-end. `code.py` passes `_dispatch_keytimes_message` and `(default_channel, btn_num)` directly — not a lambda adapter — to keep one frame off the pystack (see "Keep `label.text =` off deep call chains")
 3. `_dispatch_keytimes_message(msg, default_channel, btn_num)` routes by `msg["type"]` to ControlChange/ProgramChange/NoteOn/NoteOff/dispatch_hid
 4. `_render_keytimes_led(btn_num, state, btn_config)` resolves both the LED and the label color via `resolve_keytimes_render_color()` (in `core/colors.py`), which wraps `compute_keytimes_led_color()`'s two-layer rule (short.color == "off" kills; else long.color if set; else short.color; else off)
 
@@ -375,6 +375,8 @@ Two separate `if` blocks (not `if/else`) make the ordering constraint explicit �
 | `PTSans-Regular-20.pcf` | 20px | `"medium"` |
 | `PTSans-Bold-60.pcf` | 60px | `"large"` |
 | `PTSans-NarrowBold-54.pcf` | 54px | unused — candidate for future use |
+
+**Glyphs are preloaded at boot.** `preload_glyphs()` in `code.py` calls `font.load_glyphs()` on every PCF font with `_config_glyphs(config)` — every character any label on any page can show (button labels, `cc_slot_names`, keytimes entry labels, expression labels) plus `STATUS_GLYPHS`, the fixed alphabet of `update_status()`'s f-strings. After that, `label.text =` is a cache hit: no flash read on first display of a character (a visible hitch mid-performance) and no 6-frame descent into `pcf.py::load_glyphs` from whatever call depth set the text (the #11 pystack crash). If you add a new word to an `update_status()` string, add its letters to `STATUS_GLYPHS`; a missing glyph still renders, it just falls back to the lazy load. `load_font()` also caches by file path (`_FONT_CACHE`), so button/status/expression sizes that share a PCF share one font object and one glyph cache.
 
 **Font overflow**: The `"large"` font (60px bold) overflows the status line for strings longer than ~5 chars. A dynamic font-switching approach (fall back to medium when text exceeds `DISPLAY_WIDTH - 4`) is the proper fix — pending completion in `set_status_text()`.
 

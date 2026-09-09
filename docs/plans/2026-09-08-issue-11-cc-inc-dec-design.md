@@ -50,6 +50,12 @@ short and long cycles (inc on tap, dec on hold).
 - **RX only reacts on change.** An incoming value in the same slot (SLOT) or equal
   to the current value (STEP) updates nothing — not even the status line.
 - **Incoming values are clamped** into `cc_min..cc_max` before being stored.
+  In STEP mode the value is otherwise taken as-is: the step is a stride from wherever
+  the value sits, not a grid. After the host sends 1 with `cc_step: 2`, presses go 3, 5, 7.
+  Verified on hardware and kept, because the pedal then shows and re-sends exactly what
+  the host had. **Possible future option:** snap incoming STEP values to multiples of
+  `cc_step` from `cc_min` (SLOT mode already snaps to slot midpoints). Would need a
+  per-button opt-in, since it makes the pedal re-send a value the host never sent.
 - **All buttons on the key react** to a change, whether it came from a local press
   or from RX: STEP buttons all flash, SLOT buttons all recolor. One rule, no
   "pressed vs sibling" special case.

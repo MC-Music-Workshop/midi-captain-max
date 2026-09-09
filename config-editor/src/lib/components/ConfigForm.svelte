@@ -1,17 +1,49 @@
 <script lang="ts">
   import { onMount, type Snippet } from 'svelte';
   import { isDirty, canUndo, canRedo, undo, redo, validationErrors, config, normalizeConfig } from '$lib/formStore';
-  
+  import { saveMode, type SaveMode } from '$lib/stores';
+
   interface Props {
-    onSave: () => void;
+    // restart=true: write config.json, then soft-reboot the device so it applies now.
+    onSave: (restart: boolean) => void;
     children: Snippet;
   }
-  
+
   let { onSave, children }: Props = $props();
-  
+
   let hasErrors = $derived($validationErrors.size > 0);
   let showJsonModal = $state(false);
   let jsonText = $state('');
+
+  // Split Save button: the main button runs the sticky $saveMode; the caret opens a
+  // menu that only changes the mode (GitHub merge-button pattern — choosing an
+  // option doesn't fire it, so a mis-click can't restart a live device).
+  let showSaveMenu = $state(false);
+  const SAVE_MODE_LABELS: Record<SaveMode, string> = {
+    save: 'Save to Device',
+    save_restart: 'Save & Restart',
+  };
+  let saveLabel = $derived(
+    hasErrors ? 'Fix errors to save' : SAVE_MODE_LABELS[$saveMode] + ($isDirty ? ' *' : '')
+  );
+
+  function chooseSaveMode(mode: SaveMode) {
+    $saveMode = mode;
+    showSaveMenu = false;
+  }
+
+  function handleSaveMenuClickOutside(event: MouseEvent) {
+    if (!(event.target as HTMLElement).closest('.save-split')) {
+      showSaveMenu = false;
+    }
+  }
+
+  $effect(() => {
+    if (showSaveMenu) {
+      document.addEventListener('click', handleSaveMenuClickOutside);
+      return () => document.removeEventListener('click', handleSaveMenuClickOutside);
+    }
+  });
 
   function handleUndo() {
     undo();
@@ -37,12 +69,18 @@
   }
 
   function handleSave() {
-    onSave();
+    onSave($saveMode === 'save_restart');
   }
 
   // Keyboard shortcuts
   function handleKeydown(event: KeyboardEvent) {
     const isCmd = event.metaKey || event.ctrlKey;
+
+    if (event.key === 'Escape' && showSaveMenu) {
+      event.preventDefault();
+      showSaveMenu = false;
+      return;
+    }
 
     if (event.key === 'Escape' && showJsonModal) {
       event.preventDefault();
@@ -101,14 +139,44 @@
       <button class="toolbar-btn secondary" onclick={handleViewJson}>
         View JSON
       </button>
-      <button
-        class="toolbar-btn primary"
-        disabled={hasErrors}
-        onclick={handleSave}
-        title="Save (⌘S)"
-      >
-        {hasErrors ? 'Fix errors to save' : $isDirty ? 'Save to Device *' : 'Save to Device'}
-      </button>
+      <div class="save-split">
+        <button
+          class="toolbar-btn primary save-main"
+          disabled={hasErrors}
+          onclick={handleSave}
+          title={$saveMode === 'save_restart'
+            ? 'Save and restart the device (⌘S)'
+            : 'Save (⌘S). The device keeps running the old config until you restart it.'}
+        >
+          {saveLabel}
+        </button>
+        <button
+          class="toolbar-btn primary save-caret"
+          onclick={() => (showSaveMenu = !showSaveMenu)}
+          aria-haspopup="menu"
+          aria-expanded={showSaveMenu}
+          aria-label="Choose what the Save button does"
+          title="Choose what the Save button does"
+        >▾</button>
+        {#if showSaveMenu}
+          <div class="save-menu" role="menu" aria-label="Save mode">
+            {#each Object.entries(SAVE_MODE_LABELS) as [mode, label]}
+              <button
+                class="save-menu-item"
+                role="menuitemradio"
+                aria-checked={$saveMode === mode}
+                onclick={() => chooseSaveMode(mode as SaveMode)}
+              >
+                <span class="save-menu-check">{$saveMode === mode ? '✓' : ''}</span>
+                <span>
+                  {label}
+                  <small>{mode === 'save_restart' ? 'Write config, then soft-reboot the device' : 'Write config only; restart later to apply'}</small>
+                </span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
     </div>
   </div>
 
@@ -213,6 +281,68 @@
 
   .toolbar-btn.secondary {
     background-color: transparent;
+  }
+
+  /* Split Save button: main action + caret that opens the mode menu */
+  .save-split {
+    position: relative;
+    display: flex;
+  }
+
+  .save-main {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .save-caret {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left: 1px solid rgba(255, 255, 255, 0.4);
+    padding: 6px 8px;
+  }
+
+  .save-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 260px;
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+  }
+
+  .save-menu-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--color-text);
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .save-menu-item:hover {
+    background-color: var(--color-bg-hover);
+  }
+
+  .save-menu-item small {
+    display: block;
+    font-size: 12px;
+    opacity: 0.7;
+  }
+
+  .save-menu-check {
+    width: 1em;
+    flex-shrink: 0;
   }
 
   /* Form sections */

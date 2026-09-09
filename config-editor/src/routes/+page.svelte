@@ -209,7 +209,7 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
     }
   }
   
-  async function saveToDevice() {
+  async function saveToDevice(restart = false) {
     if (!$selectedDevice) return;
 
     // Field edits commit on blur, and WebKit doesn't blur the focused input
@@ -240,15 +240,15 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
       
       $currentConfigRaw = configJson;
       $hasUnsavedChanges = false;
-      $statusMessage = 'Config saved — restart device to apply';
 
-      const shouldRestart = await ask(
-        'Config saved! Restart device to apply changes?',
-        { title: 'Config Saved', kind: 'info', okLabel: 'Restart', cancelLabel: 'Later' }
-      );
-
-      if (shouldRestart) {
+      // The toolbar's sticky Save mode decides this — no per-save prompt. Plain
+      // save leaves the device running the old config until the user restarts it
+      // (footer says so, and the Restart Device button is right there).
+      if (restart) {
+        $statusMessage = 'Config saved';
         await doRestartDevice();
+      } else {
+        $statusMessage = 'Config saved — restart device to apply';
       }
     } catch (e: any) {
       $statusMessage = `Error saving config: ${e.message || e}`;

@@ -40,7 +40,7 @@ ButtonRow/DeviceSection/etc. → onUpdate(field, value)
       → validate() re-runs client-side validation
       → debounced pushHistory() (500ms) for undo/redo
 
-Save button → saveToDevice()
+Save button / ⌘S → saveToDevice(restart)   ← restart = ($saveMode === 'save_restart')
   → validate()
   → normalizeConfig(get(config))   ← strips type-irrelevant fields
   → JSON.stringify()
@@ -49,7 +49,10 @@ Save button → saveToDevice()
     → serde_json::from_str() → MidiCaptainConfig
     → config.validate()
     → serde_json::to_string_pretty() → fs::write() + sync_all()
+  → if restart: doRestartDevice()   (no per-save "restart?" prompt)
 ```
+
+The Save button is a split button (`ConfigForm.svelte`): the main half runs the sticky `saveMode` store (`stores.ts`, persisted in `localStorage` under `mcm.saveMode`), the caret opens a menu that only *changes* the mode — "Save to Device" (write only; footer says restart to apply) or "Save & Restart" (write, then soft-reboot). Picking a menu item never fires a save, so a mis-click can't restart a live device.
 
 ## Schema-Driven Config Types (CRITICAL)
 

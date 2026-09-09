@@ -326,10 +326,11 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
     }
 
     // mode: "keytimes" validation (#48): short/long entries + per-button threshold.
-    // short[]/long[] are only allowed when mode === 'keytimes'.
-    if (btn.mode !== 'keytimes' && (btn.short || btn.long)) {
-      errors.set(`buttons[${idx}].mode`, `short/long are only valid when mode is "keytimes"`);
-    }
+    // NOTE: stale short[]/long[] on a NON-keytimes button are deliberately not an
+    // error. The form keeps them across a mode flip (like select_group) so switching
+    // back restores the cycle, and normalizeButton strips them at save time. A rule
+    // here used to set a `buttons[i].mode` error that no component rendered, leaving
+    // "Fix errors to save" with nothing visible to fix.
     // Legacy keytimes/states are forbidden on the new mode='keytimes' (use short[]/long[] instead).
     if (btn.mode === 'keytimes') {
       if (btn.keytimes !== undefined) {

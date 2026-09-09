@@ -234,3 +234,16 @@ describe('cc_inc / cc_dec fields (#11)', () => {
     expect(validateConfig(cfg).isValid).toBe(true);
   });
 });
+
+describe('mode flip away from keytimes', () => {
+  it('does not flag stale short/long on a non-keytimes button (normalize strips them on save)', () => {
+    const cfg: MidiCaptainConfig = {
+      device: 'one1', active_page: 0,
+      pages: [{ buttons: [{ label: 'AMP', color: 'green', mode: 'flash', type: 'cc_inc', cc: 20,
+                             short: [{ down: [{ type: 'cc_inc' }] }] } as never] }],
+    };
+    const r = validateConfig(cfg);
+    expect(r.isValid).toBe(true);
+    expect(r.errors.has('buttons[0].mode')).toBe(false);
+  });
+});

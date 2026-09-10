@@ -26,3 +26,32 @@ export const canEdit = derived(
   [selectedDevice, currentConfigRaw],
   ([$device, $configRaw]) => $device !== null && $configRaw !== ''
 );
+
+// What the toolbar Save button does. Sticky across sessions via localStorage
+// ('save' = write config.json only; 'save_restart' = write, then soft-reboot the
+// device so the change applies immediately). The dropdown next to the button
+// changes it; the button (and ⌘S) run whatever is selected.
+export type SaveMode = 'save' | 'save_restart';
+
+const SAVE_MODE_KEY = 'mcm.saveMode';
+
+function loadSaveMode(): SaveMode {
+  // localStorage can be unavailable or throw (private mode, blocked storage);
+  // fall back to the plain save so the toolbar always works.
+  try {
+    const v = globalThis.localStorage?.getItem(SAVE_MODE_KEY);
+    return v === 'save_restart' ? 'save_restart' : 'save';
+  } catch {
+    return 'save';
+  }
+}
+
+export const saveMode = writable<SaveMode>(loadSaveMode());
+
+saveMode.subscribe(mode => {
+  try {
+    globalThis.localStorage?.setItem(SAVE_MODE_KEY, mode);
+  } catch {
+    // Not persistable here — the choice still holds for this session.
+  }
+});

@@ -531,3 +531,21 @@ class TestDispatchIndependentCycleProgression:
             dispatch_keytimes_events(["short_down", "short_up"], self.state, self.cfg, cb)
         assert self.state.long_color == "white"         # unchanged
         assert self.state.long_cycle.index == 1         # unchanged
+
+
+class TestCallbackArgs:
+    def test_extra_args_forwarded_to_callback(self):
+        """code.py passes its handler + (default_channel, btn_num) instead of a lambda."""
+        state = _make_state(1, 0)
+        seen = []
+        cfg = {"mode": "keytimes", "short": [{"down": [CC(20, 127)]}]}
+        dispatch_keytimes_events(["short_down"], state, cfg,
+                                 lambda msg, ch, n: seen.append((msg, ch, n)), (3, 7))
+        assert seen == [(CC(20, 127), 3, 7)]
+
+    def test_callback_args_default_empty(self):
+        state = _make_state(1, 0)
+        cb, captured = _msg_collector()
+        cfg = {"mode": "keytimes", "short": [{"down": [CC(20, 127)]}]}
+        dispatch_keytimes_events(["short_down"], state, cfg, cb)
+        assert captured == [CC(20, 127)]

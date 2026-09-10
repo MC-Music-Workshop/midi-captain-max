@@ -40,7 +40,7 @@ ButtonRow/DeviceSection/etc. → onUpdate(field, value)
       → validate() re-runs client-side validation
       → debounced pushHistory() (500ms) for undo/redo
 
-Save button → saveToDevice()
+Save button / ⌘S → saveToDevice(restart)   ← restart = ($saveMode === 'save_restart')
   → validate()
   → normalizeConfig(get(config))   ← strips type-irrelevant fields
   → JSON.stringify()
@@ -49,7 +49,10 @@ Save button → saveToDevice()
     → serde_json::from_str() → MidiCaptainConfig
     → config.validate()
     → serde_json::to_string_pretty() → fs::write() + sync_all()
+  → if restart: doRestartDevice()   (no per-save "restart?" prompt)
 ```
+
+The Save button is a split button (`ConfigForm.svelte`): the main half runs the sticky `saveMode` store (`stores.ts`, persisted in `localStorage` under `mcm.saveMode`), the caret opens a menu that only *changes* the mode — "Save to Device" (write only; footer says restart to apply) or "Save & Restart" (write, then soft-reboot). Picking a menu item never fires a save, so a mis-click can't restart a live device.
 
 ## Schema-Driven Config Types (CRITICAL)
 
@@ -73,8 +76,13 @@ Save button → saveToDevice()
 - `note`: keeps `note`, `velocity_on`, `velocity_off`
 - `pc`: keeps `program`, `flash_ms` (only when `mode` is `flash` or unset)
 - `pc_inc`/`pc_dec`: keeps `pc_step`, `flash_ms` (only when `mode` is `flash` or unset)
+- `cc_inc`/`cc_dec` (#11): keeps `cc`, `cc_min`, `cc_max`, `cc_wrap`, `cc_initial`; STEP mode (`cc_slots` absent) keeps `cc_step` + `flash_ms`, SLOT mode keeps `cc_slots` + `cc_slot_colors` + `cc_slot_names` (an all-empty names array is dropped). `mode: "keytimes"` buttons keep the same subset **only** when an entry fires `cc_inc`/`cc_dec` (`keytimesUsesCcStep()` in `validation.ts`) — the entries are direction-only.
 
 Also strips `display: {}` if no display fields were set.
+
+## `cc_inc` / `cc_dec` editor (#11)
+
+`CcStepFields.svelte` renders the button-level cc-step fields (CC, Step/Slots radio, step or slot count, min/max, initial, wrap, and in Slots mode a per-slot color + name table). `ButtonRow` mounts it in the type branch for a plain `cc_inc`/`cc_dec` button, and again inside a "Shared CC settings" panel above `KeytimesEditor` when `keytimesUsesCcStep(button)`. Mode dropdown for these types offers only "Single press" (`flash`) and keytimes — the firmware coerces every other mode to `flash`. Slot tables are always kept exactly `cc_slots` long (colors default to the button color, names to `''`) because the schema arrays can't hold gaps; the whole array is rewritten on each edit via `onUpdate` rather than an indexed path. `KeytimesMessageEditor` shows a hint instead of fields for `cc_inc`/`cc_dec` entries and hides the channel input (channel is button-level).
 
 ## `setNestedValue` Path Format
 

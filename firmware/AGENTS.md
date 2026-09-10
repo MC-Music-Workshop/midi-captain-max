@@ -179,6 +179,7 @@ See [docs/midicaptain_reverse_engineering_handoff.md](../docs/midicaptain_revers
 while True:
     handle_midi()       # RX: USB + DIN; thru forwarding; update LED state
     handle_switches()   # TX: scan footswitches, dispatch MIDI on change
+    flush_cc_step_updates()  # deferred LED/status repaints for cc_inc/cc_dec (#11)
     update_pc_flash_timers()
     if HAS_ENCODER:
         handle_encoder_button()
@@ -188,6 +189,8 @@ while True:
 ```
 
 No sleep — runs as fast as possible. Timing-sensitive code must use `time.monotonic()`.
+
+**Keep `label.text =` off deep call chains (pystack).** CircuitPython's Python stack is small, and setting a displayio label's text can descend ~6 more frames into `adafruit_display_text` → `adafruit_bitmap_font/pcf.py::load_glyphs` when the text contains a glyph not yet cached. Doing that from the bottom of the keytimes dispatch chain (`handle_switches` → `dispatch_keytimes_events` → lambda → `_dispatch_keytimes_message` → handler → repaint → `set_button_state`) raised `RuntimeError: pystack exhausted` on a real STD10 — on the *second* press, once a slot name needed a letter the button label hadn't already loaded (#11). Pattern: handlers send MIDI inline but queue display/LED work (`pending_cc_step_updates`, drained by `flush_cc_step_updates()` in the main loop), so the repaint starts from the same shallow depth as `update_pc_flash_timers()`. Same shape as the deferred `pending_page_target` switch.
 
 ### MIDI Output Pattern
 
@@ -206,6 +209,7 @@ All outgoing MIDI goes through `midi_send(msg)` which writes to both USB and 5-p
 - `"pc"` + pressed only → sends ProgramChange, calls `flash_pc_button`
 - `"pc"` + select → calls `handle_pc_select_press`: sends PC, calls `update_select_group`
 - `"pc_inc"` / `"pc_dec"` + pressed only → increments/decrements `pc_values[channel]`, sends PC, flashes
+- `"cc_inc"` / `"cc_dec"` + pressed only → calls `send_cc_step`: steps the shared `cc_values[(channel, cc)]`, sends CC, refreshes every button on that key (see CC Inc/Dec below)
 - `"page_inc"` / `"page_dec"` / `"page_jump"` + pressed only → sets `pending_page_target` (see Page Switching below)
 - `"hid"` + pressed only → calls `dispatch_hid(...)`, flashes LED
 
@@ -219,7 +223,7 @@ The `mode: "keytimes"` dispatch path is a parallel branch in `handle_switches()`
 
 Per-loop flow for a keytimes-mode button:
 1. `state.tracker.update(sw.pressed, time.monotonic())` returns timing events (`short_down`/`short_up`/`long_down`/`long_up`)
-2. `dispatch_keytimes_events(events, state, btn_config, callback)` — pure function in `core/button.py`, calls callback for each Message to dispatch, updates state's inherited color/dim/label, advances cycles on press-end
+2. `dispatch_keytimes_events(events, state, btn_config, callback, callback_args)` — pure function in `core/button.py`, calls `callback(msg, *callback_args)` for each Message to dispatch, updates state's inherited color/dim/label, advances cycles on press-end. `code.py` passes `_dispatch_keytimes_message` and `(default_channel, btn_num)` directly — not a lambda adapter — to keep one frame off the pystack (see "Keep `label.text =` off deep call chains")
 3. `_dispatch_keytimes_message(msg, default_channel, btn_num)` routes by `msg["type"]` to ControlChange/ProgramChange/NoteOn/NoteOff/dispatch_hid
 4. `_render_keytimes_led(btn_num, state, btn_config)` resolves both the LED and the label color via `resolve_keytimes_render_color()` (in `core/colors.py`), which wraps `compute_keytimes_led_color()`'s two-layer rule (short.color == "off" kills; else long.color if set; else short.color; else off)
 
@@ -268,6 +272,22 @@ Same-page guard: jumping/stepping to the *current* page skips setting `pending_p
 Loader sanitize (`core/config.py::validate_config`): malformed `channel` **disables the whole block** (fail-closed — coercing to None would widen matching to every channel); a slot's malformed `cc` **drops that slot** (never clamped — a wrong CC number is wrong behavior, not degraded behavior); `value`/`page_step` clamp to range like other MIDI byte fields.
 
 Editor form widget is deferred to P4 (schema + generated types + firmware + validation ship in P3b).
+
+### CC Inc/Dec — shared-value stepper (#11)
+
+`type: "cc_inc"` / `"cc_dec"` step a **shared CC value** instead of sending a fixed `cc_on`/`cc_off`. The value lives in `cc_values`, a dict keyed `(channel, cc)`: every cc_inc/cc_dec button on **any page** with the same channel+cc moves and shows the same value, and `switch_page()` does not reset it (same as `pc_values`). It is seeded lazily by the first button that touches the key (`cc_initial`, else `cc_min`). Pure math lives in `core/cc_step.py` (unit-tested in `tests/test_cc_step.py`); `code.py` owns the dict, MIDI, LEDs and display.
+
+Two value modes, chosen by the button config — exactly one of `cc_step` / `cc_slots` survives `validate_button`, and that's what `cc_step.py` keys off:
+- **STEP** (`cc_slots` absent): `value += cc_step` (1-127, default 1) per press. LED flashes on every press (`flash_ms`, via `flash_pc_button`); at rest it follows `off_mode`. Status line `TX CC7=64`.
+- **SLOT** (`cc_slots` 2-16): `cc_min..cc_max` is split into equal slots; each press moves one slot and sends the value in the **middle** of the destination slot (integer math: `lo + ((2i+1)*span) // (2*slots)`), so the host can't miss the slot's range. LED stays lit at the slot's `cc_slot_colors[i]` (falls back to button color); the box label shows `cc_slot_names[i]` when set. Status line shows the slot name, else `TX <label> n/N`; `update_status(text, number=n)` makes the DUO2/ONE1 segment display show the slot number `n`, not the `N` that `_extract_last_number` would pick.
+
+Boundary rule (both modes): `cc_wrap` (default true) lands **on** the opposite bound (125 + 5 → `cc_min`, not modulo); wrap off clamps at the bound and sends it. `cc_min >= cc_max` is rejected at load (falls back to 0..127 with a `[CONFIG WARN]`).
+
+`mode` is coerced to `"flash"` for cc_inc/cc_dec (toggle/momentary/select don't apply); `keytimes` is the only other family. In **keytimes**, a `{type: "cc_inc"|"cc_dec"}` entry is direction-only — `cc`, `channel`, range, STEP/SLOT and the slot tables are configured once on the button and `_validate_keytimes_button` copies them on when any entry uses cc_inc/cc_dec (`is_cc_step_button()` detects a keytimes button by those fields). In SLOT mode the slot table owns the LED and label for every press length (`_render_keytimes_led` short-circuits to `set_button_state`); in STEP mode the normal keytimes entry colors rule — there is no flash on a keytimes button.
+
+**MIDI RX:** `find_cc_rx_action` returns `("cc_step", i)` for the first cc-step button on `(cc, channel)` — no value gate, and the cc-step check runs before the select/shield logic. `_process_midi_msg` clamps the value into `cc_min..cc_max`, stores it, and only if the value (STEP) or slot (SLOT) actually changed, queues a repaint. LED-and-state-only, no echo.
+
+**Repaints are deferred.** Both the press path (`send_cc_step`) and RX append `(btn_config, value, "TX"|"RX")` to `pending_cc_step_updates`; `flush_cc_step_updates()` in the main loop then updates the status line and calls `_refresh_cc_step_buttons(key)`, which repaints every button on the key (STEP flashes, SLOT recolors). MIDI still goes out immediately. This is a pystack constraint, not a style choice — see "Keep `label.text =` off deep call chains" under Main Loop Structure. Don't put a plain `cc` button on the same `(cc, channel)` as a cc-step button — the stepper claims it.
 
 ### PC Button LED Modes
 
@@ -355,6 +375,8 @@ Two separate `if` blocks (not `if/else`) make the ordering constraint explicit �
 | `PTSans-Regular-20.pcf` | 20px | `"medium"` |
 | `PTSans-Bold-60.pcf` | 60px | `"large"` |
 | `PTSans-NarrowBold-54.pcf` | 54px | unused — candidate for future use |
+
+**Glyphs are preloaded at boot.** `preload_glyphs()` in `code.py` calls `font.load_glyphs()` on every PCF font with `_config_glyphs(config)` — every character any label on any page can show (button labels, `cc_slot_names`, keytimes entry labels, expression labels) plus `STATUS_GLYPHS`, the fixed alphabet of `update_status()`'s f-strings. After that, `label.text =` is a cache hit: no flash read on first display of a character (a visible hitch mid-performance) and no 6-frame descent into `pcf.py::load_glyphs` from whatever call depth set the text (the #11 pystack crash). If you add a new word to an `update_status()` string, add its letters to `STATUS_GLYPHS`; a missing glyph still renders, it just falls back to the lazy load. `load_font()` also caches by file path (`_FONT_CACHE`), so button/status/expression sizes that share a PCF share one font object and one glyph cache.
 
 **Font overflow**: The `"large"` font (60px bold) overflows the status line for strings longer than ~5 chars. A dynamic font-switching approach (fall back to medium when text exceeds `DISPLAY_WIDTH - 4`) is the proper fix — pending completion in `set_status_text()`.
 

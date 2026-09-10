@@ -71,6 +71,7 @@ New code belongs in `firmware/dev/` or new directories (never in `original_helmu
 | `firmware/dev/core/colors.py` | Color palette and `get_off_color()` |
 | `firmware/dev/core/display_model.py` | Pure TFT screen model: geometry, button/keytimes visuals — shared by `code.py`, the web demo (MicroPython wasm), and tests |
 | `firmware/dev/core/encoder.py` | Pure encoder value/slot logic (`EncoderState.turn()`) — shared by `code.py`, the web demo, and tests |
+| `firmware/dev/core/cc_step.py` | Pure `cc_inc`/`cc_dec` value math (#11): step/wrap/clamp, equal-size slots, slot color/name lookup |
 | `firmware/dev/devices/{device}.py` | Per-device hardware constants |
 | `config.schema.json` | JSON Schema (draft-07) — single source of truth for config format |
 | `tools/deploy.sh` | Dev deploy to device (rsync, VERSION.txt, device detection) |
@@ -133,6 +134,7 @@ Track features and bugs via [GitHub Issues](https://github.com/MC-Music-Workshop
 - [ ] SysEx protocol documentation
 - [x] Keytimes / multi-press cycling, double-press, long-press detection — landed as `mode: "keytimes"` (#48). Legacy `keytimes`/`states` fields on toggle/momentary are deprecated in v2.0 and will be removed in v3.0; the validator prints a boot-time warning.
 - [ ] Pages / banks
+- [ ] `cc_inc`/`cc_dec` STEP mode: optional snap of incoming CC values to the `cc_step` grid from `cc_min` (today the value is taken as-is and the step is a stride; SLOT mode already snaps). Opt-in per button, low priority — tracked in #193.
 - [ ] Firmware press-handler unit tests for select-mode (`handle_pc_select_press`, `handle_cc_select_press`, `update_select_group`, and the RX hooks in `_process_midi_msg`). Validator coverage exists; runtime coverage does not. Mock infrastructure in `tests/mocks/` should support this.
 - [ ] Tighten `pyproject.toml` ruff ignores: `F401` is currently global; should be scoped via `[tool.ruff.lint.per-file-ignores]` so genuinely-unused imports in production code get caught. Test-mock re-exports under `tests/mocks/**` are the legitimate use. Tracked with the wider "which rule families do we adopt" question in #189, which has the measured per-rule counts.
 - [ ] Decide encoder-push `mode: "select"` handling. Auto-generated TS now allows it on `EncoderPush.mode` (shared `ButtonMode` enum), but encoder push has no `select_group` field and the editor doesn't expose it. Options: separate `EncoderButtonMode` enum (without `Select`), explicit validator rejection, or document as silently allowed/no-op.

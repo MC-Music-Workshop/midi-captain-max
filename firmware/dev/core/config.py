@@ -10,7 +10,11 @@ except ImportError:
     # CircuitPython has json built-in, but just in case
     json = None
 
-VALID_TYPES = ("cc", "note", "pc", "pc_inc", "pc_dec", "hid", "page_inc", "page_dec", "page_jump")
+VALID_TYPES = ("cc", "note", "pc", "pc_inc", "pc_dec", "cc_inc", "cc_dec", "hid", "page_inc", "page_dec", "page_jump")
+# cc_inc/cc_dec (#11): step a shared CC value. Value math lives in core/cc_step.py.
+CC_STEP_TYPES = ("cc_inc", "cc_dec")
+CC_SLOTS_MIN = 2
+CC_SLOTS_MAX = 16
 VALID_MODES = ("toggle", "momentary", "flash", "select", "keytimes")
 STATE_OVERRIDE_FIELDS = ("cc", "cc_on", "cc_off", "note", "velocity_on", "velocity_off", "program", "pc_step", "color", "label", "hid_action", "hid_key", "hid_modifier", "hid_delay_ms")
 
@@ -257,6 +261,68 @@ def _clamp_midi_byte(value, default=0):
     return max(0, min(127, value))
 
 
+def _is_int(value):
+    """int but not bool (bool is an int subclass: `True` would pass isinstance(int))."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _validate_cc_step_fields(btn, index, out):
+    """Sanitize the cc_inc/cc_dec (#11) fields onto `out`, filling defaults.
+
+    Shared by the plain cc_inc/cc_dec path and by keytimes-mode buttons whose
+    entries fire cc_inc/cc_dec — the value range, mode (STEP vs SLOT) and slot
+    tables are configured ONCE on the button and shared by every press length.
+
+    SLOT mode is chosen by a valid `cc_slots` (2-16); `cc_step` is then dropped
+    so the two never coexist. Either way exactly one of cc_step / cc_slots is
+    present on the validated button, which is what core/cc_step.py keys off.
+    A min/max pair that leaves fewer than two values falls back to 0..127 with
+    a boot warning — a single-value range can't step anywhere.
+    """
+    out["cc"] = _clamp_midi_byte(btn.get("cc"), default=20 + index)
+    lo = _clamp_midi_byte(btn.get("cc_min"), default=0)
+    hi = _clamp_midi_byte(btn.get("cc_max"), default=127)
+    if hi <= lo:
+        print("[CONFIG WARN] Button " + str(index + 1) + " has cc_min " + str(lo) + " >= cc_max " + str(hi) + "; using 0-127")
+        lo, hi = 0, 127
+    out["cc_min"] = lo
+    out["cc_max"] = hi
+    wrap = btn.get("cc_wrap", True)
+    out["cc_wrap"] = wrap if isinstance(wrap, bool) else True
+    initial = btn.get("cc_initial")
+    if _is_int(initial) and lo <= initial <= hi:
+        out["cc_initial"] = initial
+    slots = btn.get("cc_slots")
+    if _is_int(slots) and CC_SLOTS_MIN <= slots <= CC_SLOTS_MAX:
+        out["cc_slots"] = slots
+        colors = btn.get("cc_slot_colors")
+        if isinstance(colors, list):
+            # Positional: an invalid entry becomes None so later slots keep their index;
+            # cc_slot_color() falls back to the button color for None.
+            out["cc_slot_colors"] = [
+                c.lower() if isinstance(c, str) and c.lower() in _CYCLE_ENTRY_COLORS and c.lower() != "off" else None
+                for c in colors[:slots]
+            ]
+        names = btn.get("cc_slot_names")
+        if isinstance(names, list):
+            out["cc_slot_names"] = [n[:6] if isinstance(n, str) else "" for n in names[:slots]]
+    else:
+        step = btn.get("cc_step", 1)
+        if not _is_int(step):
+            step = 1
+        out["cc_step"] = max(1, min(127, step))
+
+
+def _uses_cc_step(entries):
+    """True if any message in any entry's down/up list is cc_inc/cc_dec."""
+    for entry in entries or []:
+        for slot in ("down", "up"):
+            for msg in entry.get(slot, []) or []:
+                if msg.get("type") in CC_STEP_TYPES:
+                    return True
+    return False
+
+
 def _validate_keytimes_message(msg):
     """Validate a single Message object inside a keytimes-mode entry's down/up array.
 
@@ -269,6 +335,9 @@ def _validate_keytimes_message(msg):
     if mtype not in VALID_TYPES:
         mtype = "cc"
     out = {"type": mtype}
+    if mtype in CC_STEP_TYPES:
+        # Direction only (#11): cc/channel/range/slots come from the button-level fields.
+        return out
     if "channel" in msg and isinstance(msg["channel"], int) and 0 <= msg["channel"] <= 15:
         out["channel"] = msg["channel"]
     if mtype == "cc":
@@ -384,6 +453,11 @@ def _validate_keytimes_button(btn, index, default_channel):
     if long_ is not None:
         validated["long"] = _validate_keytimes_cycle(long_)
 
+    # cc_inc/cc_dec entries (#11) only pick a direction; the CC, range, STEP/SLOT
+    # choice and slot tables are button-level and shared by short and long.
+    if _uses_cc_step(validated.get("short")) or _uses_cc_step(validated.get("long")):
+        _validate_cc_step_fields(btn, index, validated)
+
     return validated
 
 
@@ -404,6 +478,8 @@ def validate_button(btn, index=0, global_channel=None):
         - "pc": Program Change fixed
         - "pc_inc": Program Change increment
         - "pc_dec": Program Change decrement
+        - "cc_inc": step a shared CC value up (see core/cc_step.py, #11)
+        - "cc_dec": step a shared CC value down
         - "hid": USB HID keyboard/mouse event
     """
     if global_channel is not None:
@@ -424,13 +500,18 @@ def validate_button(btn, index=0, global_channel=None):
     if msg_type not in VALID_TYPES:
         msg_type = "cc"
 
-    # PC types default to "flash" (brief LED pulse); CC/Note default to "toggle"
-    default_mode = "flash" if msg_type in ("pc", "pc_inc", "pc_dec") else "toggle"
+    # PC types and cc_inc/cc_dec default to "flash" (brief LED pulse); CC/Note default to "toggle"
+    default_mode = "flash" if msg_type in ("pc", "pc_inc", "pc_dec", "cc_inc", "cc_dec") else "toggle"
     raw_mode = btn.get("mode", default_mode)
 
     # mode: "keytimes" — short-circuit to a dedicated validation path. Other modes follow legacy.
     if raw_mode == "keytimes":
         return _validate_keytimes_button(btn, index, default_channel)
+
+    # cc_inc/cc_dec (#11) have one LED behavior per mode family: STEP flashes on
+    # press, SLOT stays lit at the slot color. toggle/momentary/select don't apply.
+    if msg_type in CC_STEP_TYPES:
+        raw_mode = "flash"
 
     # "select" (radio-group) is valid only on pc and cc, and only with keytimes==1.
     # Other invalid modes (and select on disallowed types) coerce back to default.
@@ -489,6 +570,8 @@ def validate_button(btn, index=0, global_channel=None):
         validated["program"] = btn.get("program", 0)
     elif msg_type in ("pc_inc", "pc_dec"):
         validated["pc_step"] = btn.get("pc_step", 1)
+    elif msg_type in CC_STEP_TYPES:
+        _validate_cc_step_fields(btn, index, validated)
     elif msg_type in ("page_inc", "page_dec"):
         page_step = btn.get("page_step", 1)
         if not isinstance(page_step, int) or isinstance(page_step, bool):
@@ -500,8 +583,9 @@ def validate_button(btn, index=0, global_channel=None):
             page = 0
         validated["page"] = max(0, page)
 
-    # flash_ms stored for all PC types (used by firmware only when mode is flash); clamp to schema range 50-5000
-    if msg_type in ("pc", "pc_inc", "pc_dec"):
+    # flash_ms stored for all PC types and cc_inc/cc_dec (used by firmware only when
+    # flashing); clamp to schema range 50-5000
+    if msg_type in ("pc", "pc_inc", "pc_dec", "cc_inc", "cc_dec"):
         flash_ms = btn.get("flash_ms")
         if isinstance(flash_ms, int):
             validated["flash_ms"] = max(50, min(5000, flash_ms))

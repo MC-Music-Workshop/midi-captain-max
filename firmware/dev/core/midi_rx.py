@@ -6,11 +6,17 @@ code.py owns all side effects (LEDs, display, select-group state); this module
 only decides which button reacts and how.
 """
 
+from core.cc_step import is_cc_step_button
+
 
 def find_cc_rx_action(buttons, cc, val, channel):
     """Decide how an incoming CC message maps onto the button list.
 
     Matching rules (#155 semantics + #163 shielding fix):
+    - A cc_inc/cc_dec button (#11) — or a keytimes button carrying cc-step
+      fields — claims its (cc, channel) outright: ("cc_step", i). The value
+      is not gated; code.py stores it as the new shared value. Configs must
+      not put a plain cc button on the same (cc, channel).
     - Buttons match on type=="cc" (default), cc number, and channel.
     - First matching non-select button gets the "state" action (its
       ButtonState.on_midi_receive decides on/off; see core/button.py — the
@@ -32,6 +38,7 @@ def find_cc_rx_action(buttons, cc, val, channel):
 
     Returns:
         (action, index) tuple:
+        - ("cc_step", i): store val as button i's shared inc/dec value (#11)
         - ("select", i): activate select button i and its group
         - ("state", i): feed val to button i's on_midi_receive
         - ("ignored", None): consumed by a select-claimed CC, no state change
@@ -39,6 +46,10 @@ def find_cc_rx_action(buttons, cc, val, channel):
     """
     select_claimed = False
     for i, btn in enumerate(buttons):
+        if is_cc_step_button(btn):
+            if btn.get("cc") == cc and btn.get("channel", 0) == channel:
+                return ("cc_step", i)
+            continue
         if btn.get("type", "cc") != "cc":
             continue
         if btn.get("cc") != cc or btn.get("channel", 0) != channel:

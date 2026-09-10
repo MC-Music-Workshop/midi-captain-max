@@ -1,9 +1,11 @@
 <script lang="ts">
   import ColorSelect from './ColorSelect.svelte';
   import KeytimesEditor from './KeytimesEditor.svelte';
+  import CcStepFields from './CcStepFields.svelte';
   import type { ButtonConfig, ButtonColor, ButtonMode, OffMode, MessageType } from '$lib/types';
   import { MESSAGE_TYPE_LABELS, BUTTON_MODE_LABELS } from '$lib/types';
   import { validationErrors, syncButtonStates, selectGroupNames, config } from '$lib/formStore';
+  import { keytimesUsesCcStep } from '$lib/validation';
 
   interface Props {
     button: ButtonConfig;
@@ -26,6 +28,10 @@
   let isNote = $derived(msgType === 'note');
   let isPC = $derived(msgType === 'pc');
   let isPCIncDec = $derived(msgType === 'pc_inc' || msgType === 'pc_dec');
+  // cc_inc/cc_dec (#11): shared-value stepper. LED behavior is fixed per value mode
+  // (STEP flashes, SLOT stays lit at the slot color), so the only Mode choice is
+  // single press vs the keytimes gesture path — same shape as the page triggers.
+  let isCCStep = $derived(msgType === 'cc_inc' || msgType === 'cc_dec');
   let isHID = $derived(msgType === 'hid');
   let isPCType = $derived(isPC || isPCIncDec);
   // Page-switch triggers fire once on press; toggle/momentary/flash are no-ops for
@@ -107,6 +113,11 @@
     const isPage = newType === 'page_inc' || newType === 'page_dec' || newType === 'page_jump';
     if (isPage && button.mode && button.mode !== 'toggle' && button.mode !== 'keytimes') {
       onUpdate('mode', 'toggle');
+    }
+    // cc_inc/cc_dec: single press is "flash" in the firmware; keytimes is the only other option.
+    const isCcStepType = newType === 'cc_inc' || newType === 'cc_dec';
+    if (isCcStepType && button.mode && button.mode !== 'flash' && button.mode !== 'keytimes') {
+      onUpdate('mode', 'flash');
     }
   }
 
@@ -381,6 +392,8 @@
         min="1" max="127" />
       {#if pcStepError}<span class="error-text">{pcStepError}</span>{/if}
     </div>
+  {:else if isCCStep}
+    <CcStepFields button={button} index={index} disabled={disabled} onUpdate={onUpdate} />
   {:else if isPageIncDec}
     <div class="field">
       <label class="field-label" for={fieldId('page-step')}>Step:</label>
@@ -496,10 +509,14 @@
 
   <div class="field">
     <label class="field-label" for={fieldId('mode')}>Mode:</label>
-    <select id={fieldId('mode')} class="select" value={button.mode || (isPCType ? 'flash' : 'toggle')} onchange={handleModeChange} disabled={disabled}>
+    <select id={fieldId('mode')} class="select" value={button.mode || (isPCType || isCCStep ? 'flash' : 'toggle')} onchange={handleModeChange} disabled={disabled}>
       {#if isPageType}
         <!-- Page triggers ignore toggle/momentary/flash; offer only single-press vs gesture. -->
         <option value="toggle">Single press</option>
+        <option value="keytimes">{BUTTON_MODE_LABELS.keytimes}</option>
+      {:else if isCCStep}
+        <!-- CC+/CC-: the firmware coerces every non-keytimes mode to flash. -->
+        <option value="flash">Single press</option>
         <option value="keytimes">{BUTTON_MODE_LABELS.keytimes}</option>
       {:else}
         {#if isPCType}
@@ -566,6 +583,14 @@
       <option value="off">Off</option>
     </select>
   </div>
+
+  {#if isKeytimesMode && keytimesUsesCcStep(button)}
+    <!-- CC+/CC- entries are direction-only; these shared fields drive all of them (#11). -->
+    <div class="cc-step-shared">
+      <span class="cc-step-shared-label" title="Used by every CC+/CC- entry in the short and long cycles. In Slots mode the slot color and name own the LED and label for every press length.">Shared CC settings for CC+/CC- entries:</span>
+      <CcStepFields button={button} index={index} disabled={disabled} onUpdate={onUpdate} />
+    </div>
+  {/if}
 
   {#if isKeytimesMode && !disabled}
     <KeytimesEditor button={button} index={index} globalChannel={globalChannel} />
@@ -897,6 +922,26 @@
     font-size: 0.875rem;
     font-weight: 500;
     pointer-events: none;
+  }
+
+  .cc-step-shared {
+    flex-basis: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+    padding: 0.5rem;
+    background: #f8f9fa;
+    border: 1px solid #ccd;
+    border-radius: 4px;
+  }
+
+  .cc-step-shared-label {
+    flex-basis: 100%;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #555;
   }
 
   .deprecation-notice {

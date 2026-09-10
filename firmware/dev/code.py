@@ -61,6 +61,10 @@ from core.button import Switch, ButtonState, KeytimesButtonState, dispatch_keyti
 from core.display_model import build_screen, button_visual, keytimes_visual
 from core.encoder import EncoderState
 from core.midi_rx import find_cc_rx_action
+from core.cc_step import (
+    is_cc_step_button, cc_step_key, cc_step_initial, cc_step_clamp, cc_step_next,
+    cc_slot_index, cc_slot_color, cc_slot_name, cc_slot_text,
+)
 from core.hid import dispatch_hid
 
 # =============================================================================
@@ -315,6 +319,12 @@ if HAS_TFT:
     from adafruit_st7789 import ST7789
 
 
+# One font object per PCF file. Button/status/expression sizes that share a file
+# (the shipped configs use "medium" for all three) share the object and its glyph
+# cache instead of holding three copies of the same bitmaps.
+_FONT_CACHE = {}
+
+
 def load_font(size_name):
     """Load a font based on size name, with fallback to terminalio.
 
@@ -333,13 +343,63 @@ def load_font(size_name):
     if font_path == "terminalio":
         return terminalio.FONT, height
 
+    if font_path in _FONT_CACHE:
+        return _FONT_CACHE[font_path], height
+
     try:
         loaded_font = bitmap_font.load_font(font_path)
+        _FONT_CACHE[font_path] = loaded_font
         print(f"Loaded font: {font_path} (~{height}px)")
         return loaded_font, height
     except Exception as e:
         print(f"Font load failed for '{font_path}': {e}, falling back to terminalio")
         return terminalio.FONT, 8
+
+
+# Every character update_status() can emit, independent of config: the fixed words
+# in its f-strings (TX/RX CC/PC/Note/NoteOff/HID/PAGE/ENC slot, HID action names,
+# "Ready", the "---" expression placeholder) plus digits and punctuation.
+STATUS_GLYPHS = "0123456789 =/:-TXRCPNoteOnfHIDPAGEslotENCsendpressreleasedelayReady"
+
+
+def _config_glyphs(cfg):
+    """Every character any on-screen label can show for this config, all pages:
+    button labels, cc_inc/cc_dec slot names, keytimes entry labels, expression
+    labels — plus STATUS_GLYPHS. Returned as one deduplicated string."""
+    chars = set(STATUS_GLYPHS)
+    for page in cfg.get("pages", []):
+        for btn in page.get("buttons", []):
+            chars.update(str(btn.get("label", "")))
+            for name in btn.get("cc_slot_names", []) or []:
+                chars.update(str(name))
+            for cycle in ("short", "long"):
+                for entry in btn.get(cycle, []) or []:
+                    chars.update(str(entry.get("label", "")))
+        exp = page.get("expression", {}) or {}
+        for k in ("exp1", "exp2"):
+            chars.update(str((exp.get(k) or {}).get("label", "")))
+    return "".join(sorted(chars))
+
+
+def preload_glyphs(fonts, text):
+    """Load `text`'s glyphs into each PCF font's cache now, at boot.
+
+    Without this, the first time a label shows a new character the label.text
+    setter descends ~6 frames into adafruit_bitmap_font's PCF loader (and reads
+    flash). From a deep call chain that exhausted the pystack (#11), and on any
+    path it is a visible hitch. terminalio.FONT has no load_glyphs — skipped.
+    Best-effort: a failure here must never stop the device from booting.
+    """
+    seen = []
+    for font in fonts:
+        if font in seen or not hasattr(font, "load_glyphs"):
+            continue
+        seen.append(font)
+        try:
+            font.load_glyphs(text)
+        except Exception as e:
+            print(f"Glyph preload failed: {e}")
+    print(f"Preloaded {len(text)} glyphs into {len(seen)} font(s)")
 
 
 if HAS_TFT:
@@ -355,6 +415,7 @@ if HAS_TFT:
     BUTTON_FONT, BUTTON_FONT_HEIGHT = load_font(button_text_size)
     STATUS_FONT, STATUS_FONT_HEIGHT = load_font(status_text_size)
     EXPRESSION_FONT, EXPRESSION_FONT_HEIGHT = load_font(expression_text_size)
+    preload_glyphs((BUTTON_FONT, STATUS_FONT, EXPRESSION_FONT), _config_glyphs(config))
 
 # =============================================================================
 # Hardware Init
@@ -507,6 +568,18 @@ button_states = []
 keytimes_states = []
 
 pc_values = [0] * 16                 # Current PC value per MIDI channel (0-15), shared across all pc_inc/pc_dec buttons
+# Shared inc/dec CC values (#11), keyed (channel, cc). Any cc_inc/cc_dec button on any
+# page with the same key moves and shows the same value. Lazily seeded from the first
+# button that touches a key (cc_initial, else cc_min); NOT reset by switch_page().
+cc_values = {}
+# Deferred status/LED repaints for inc/dec values: (btn_config, value, "TX"|"RX").
+# send_cc_step() and the RX path append here instead of repainting inline, and the
+# main loop drains it via flush_cc_step_updates(). Repainting sets label.text, whose
+# PCF glyph loader is ~6 frames deep; doing that from the bottom of the keytimes
+# dispatch chain (handle_switches -> dispatch_keytimes_events -> lambda ->
+# _dispatch_keytimes_message -> send_cc_step -> refresh -> set_button_state) hit
+# "RuntimeError: pystack exhausted" on the first slot name with uncached glyphs.
+pending_cc_step_updates = []
 pc_flash_timers = [0.0] * BUTTON_COUNT  # Expiry time (monotonic) for PC button flash; 0 = inactive
 hid_flash_timers = [0.0] * BUTTON_COUNT  # Same for HID buttons
 PC_FLASH_DURATION_MS = 200              # Default PC/HID button flash duration in ms
@@ -635,9 +708,10 @@ if HAS_SEG_DISPLAY:
 # =============================================================================
 # Status Display Abstraction
 # =============================================================================
-# update_status(text) — single function, defined once per display type.
-# TFT: shows text as-is. Seg display: extracts last number and shows it.
-# No display: no-op. Call sites just pass a string.
+# update_status(text, number=None) — single function, defined once per display type.
+# TFT: shows text as-is. Seg display: shows `number` if given, else the last
+# number in the text. No display: no-op. Call sites just pass a string; pass
+# `number` when the text's last number isn't the one to show (e.g. "AMP 2/4").
 
 def _extract_last_number(text):
     """Extract the last integer from a string. Returns None if not found."""
@@ -657,40 +731,27 @@ def _extract_last_number(text):
 
 if HAS_TFT and HAS_SEG_DISPLAY:
     # Both displays (shouldn't happen in practice, but handle it)
-    def update_status(text):
+    def update_status(text, number=None):
         status_label.text = text
-        n = _extract_last_number(text)
+        n = number if number is not None else _extract_last_number(text)
         if n is not None:
             _seg_display_number(n)
 elif HAS_TFT:
-    def update_status(text):
+    def update_status(text, number=None):
         status_label.text = text
 elif HAS_SEG_DISPLAY:
-    def update_status(text):
-        n = _extract_last_number(text)
+    def update_status(text, number=None):
+        n = number if number is not None else _extract_last_number(text)
         if n is not None:
             _seg_display_number(n)
 else:
-    def update_status(text):
+    def update_status(text, number=None):
         pass
 
 
 # =============================================================================
 # LED & Display Helpers
 # =============================================================================
-
-
-def get_button_color(btn_config, keytime_index):
-    """Get color for button at specific keytime state.
-    
-    Args:
-        btn_config: Button configuration dict
-        keytime_index: Current keytime position (1-indexed)
-        
-    Returns:
-        RGB tuple for the color
-    """
-    return get_color(get_button_state_config(btn_config, keytime_index).get("color", "white"))
 
 
 def set_button_state(switch_idx, on):
@@ -706,7 +767,16 @@ def set_button_state(switch_idx, on):
     btn_config = buttons[idx] if idx < len(buttons) else {"color": "white"}
     
     # Get color for current keytime state
-    color_rgb = get_button_color(btn_config, btn_state.get_keytime())
+    color_name = get_button_state_config(btn_config, btn_state.get_keytime()).get("color", "white")
+    slot_label = None
+    if btn_config.get("cc_slots"):
+        # SLOT mode cc_inc/cc_dec (#11): the LED stays lit at the current slot's
+        # color and the box shows the slot's name (if any). `on` is irrelevant.
+        _v = get_cc_step_value(btn_config)
+        color_name = cc_slot_color(btn_config, _v)
+        slot_label = cc_slot_name(btn_config, _v) or btn_config.get("label", str(idx + 1))
+        on = True
+    color_rgb = get_color(color_name)
     off_mode = btn_config.get("off_mode", "dim")  # "dim" or "off"
 
     # Update LED
@@ -724,8 +794,10 @@ def set_button_state(switch_idx, on):
     # (always-legible dim when off) — the same rule the boot screen used.
     if HAS_TFT and idx < len(button_labels):
         resolved = dict(btn_config)
-        resolved["color"] = get_button_state_config(btn_config, btn_state.get_keytime()).get("color", "white")
+        resolved["color"] = color_name
         visual = button_visual(resolved, on)
+        if slot_label is not None:
+            button_labels[idx].text = slot_label[:6]
         button_labels[idx].color = visual["label_color"]
         if idx < len(button_boxes):
             _, box_palette = button_boxes[idx]
@@ -782,7 +854,8 @@ def switch_page(n):
 
     Device never writes config to disk; this only mutates RAM. Reset-on-entry:
     button/keytimes/encoder state rebuild from config defaults (latches/cycles
-    are NOT preserved across switches). pc_values[] (patch memory) is NOT reset.
+    are NOT preserved across switches). pc_values[] (patch memory) and cc_values
+    (shared inc/dec CC values, #11) are NOT reset.
     """
     global active_page, buttons
     global CC_ENCODER, CC_ENCODER_PUSH, ENC_MIN, ENC_MAX, ENC_INITIAL
@@ -860,6 +933,9 @@ def switch_page(n):
             exp2_label.text = exp2_config.get("label", "EXP2") + ": ---"
 
     init_leds()
+    # At boot the seg-display animation that follows wipes this; the startup
+    # block calls it again afterwards. Page switches land here only.
+    show_cc_step_resting_status()
 
 
 def handle_pc_select_press(btn_num, btn_config, channel):
@@ -919,6 +995,88 @@ def handle_cc_select_press(btn_num, btn_config, channel):
     update_select_group(btn_num, group)
 
 
+def get_cc_step_value(btn_config):
+    """Current shared inc/dec value for a cc_inc/cc_dec button, seeding it on first use."""
+    key = cc_step_key(btn_config)
+    if key not in cc_values:
+        cc_values[key] = cc_step_initial(btn_config)
+    return cc_values[key]
+
+
+def _show_cc_step(btn_config, value, prefix):
+    """Status line for a cc_inc/cc_dec value: 'TX CC20=64' in STEP mode, the slot
+    name or 'TX AMP 2/4' in SLOT mode (seg display shows the slot number).
+    prefix may be "" for the resting display (boot / page switch)."""
+    lead = prefix + " " if prefix else ""
+    if btn_config.get("cc_slots"):
+        update_status(lead + cc_slot_text(btn_config, value),
+                      number=cc_slot_index(btn_config, value) + 1)
+    else:
+        update_status(lead + "CC" + str(btn_config.get("cc", 0)) + "=" + str(value))
+
+
+def show_cc_step_resting_status():
+    """Put the first inc/dec button's current value/slot on the status line.
+
+    Called after boot and after every page switch. On DUO2/ONE1 the segment
+    display is the ONLY place a slot is visible, and nothing else writes it until
+    a press or an incoming CC — so a freshly booted ONE showed a blank display
+    while its LED already had the slot color. First matching button wins when a
+    page has several (DUO2 with two slot buttons shows button 1's).
+    """
+    for cfg in buttons:
+        if is_cc_step_button(cfg):
+            _show_cc_step(cfg, get_cc_step_value(cfg), "")
+            return
+
+
+def _refresh_cc_step_buttons(key):
+    """Re-render every button on the active page sharing inc/dec key (channel, cc).
+
+    Value changed (local press or RX): STEP buttons flash; SLOT buttons repaint
+    to the new slot color/name (keytimes buttons too — in SLOT mode the slot
+    table owns their LED/label, see _render_keytimes_led). Keytimes buttons in
+    STEP mode are left to their entry colors (no flash).
+
+    Main-loop only (via flush_cc_step_updates) — see pending_cc_step_updates.
+    """
+    for i, cfg in enumerate(buttons):
+        if not is_cc_step_button(cfg) or cc_step_key(cfg) != key:
+            continue
+        if cfg.get("cc_slots"):
+            set_button_state(i + 1, True)
+        elif cfg.get("mode") != "keytimes":
+            flash_pc_button(i + 1, cfg.get("flash_ms", PC_FLASH_DURATION_MS))
+
+
+def flush_cc_step_updates():
+    """Drain pending inc/dec repaints: status line + every button on each key.
+
+    Called once per main-loop iteration so the label.text / glyph-loader call
+    chain starts from a shallow stack (same depth as update_pc_flash_timers).
+    """
+    while pending_cc_step_updates:
+        btn_config, value, prefix = pending_cc_step_updates.pop(0)
+        _show_cc_step(btn_config, value, prefix)
+        _refresh_cc_step_buttons(cc_step_key(btn_config))
+
+
+def send_cc_step(btn_num, btn_config, direction, origin):
+    """Step the shared CC value for a cc_inc/cc_dec button (#11) and send it.
+
+    direction: +1 (cc_inc) or -1 (cc_dec). Uses the button-level cc/channel/range
+    fields (shared with a keytimes button's entries — they only pick a direction).
+    MIDI goes out immediately; the LED/display repaint is deferred to the main loop.
+    """
+    key = cc_step_key(btn_config)
+    channel, cc = key
+    new = cc_step_next(btn_config, get_cc_step_value(btn_config), direction)
+    cc_values[key] = new
+    midi_send(ControlChange(cc, new), channel=channel)
+    print(f"[MIDI TX] Ch{channel+1} CC{cc}={new} (switch {btn_num}, {origin})")
+    pending_cc_step_updates.append((btn_config, new, "TX"))
+
+
 def _expire_flash_timers(timers, now):
     """Turn off LEDs for a single flash-timer array whose expiry has passed."""
     for i in range(BUTTON_COUNT):
@@ -973,7 +1131,22 @@ def _process_midi_msg(msg, source="USB"):
         # on RX — it applies only to local presses; RX is idempotent
         # LED-and-state-only.
         action, i = find_cc_rx_action(buttons, cc, val, msg_channel)
-        if action == "select":
+        if action == "cc_step":
+            # Inc/dec button (#11): the host sets the shared value. LED/display
+            # react only when the value (STEP) or the slot (SLOT) actually changes;
+            # LED-and-state-only, no MIDI echo.
+            btn_config = buttons[i]
+            key = cc_step_key(btn_config)
+            old = get_cc_step_value(btn_config)
+            new = cc_step_clamp(btn_config, val)
+            cc_values[key] = new
+            if btn_config.get("cc_slots"):
+                changed = cc_slot_index(btn_config, new) != cc_slot_index(btn_config, old)
+            else:
+                changed = new != old
+            if changed:
+                pending_cc_step_updates.append((btn_config, new, "RX"))
+        elif action == "select":
             update_select_group(i + 1, buttons[i].get("select_group", ""))
             update_status(f"RX CC{cc}={val}")
         elif action == "state":
@@ -1101,6 +1274,9 @@ def _dispatch_keytimes_message(msg, default_channel, btn_num):
         midi_send(ProgramChange(pc_values[channel]), channel=channel)
         print(f"[MIDI TX] Ch{channel+1} PC{pc_values[channel]} (switch {btn_num}, keytimes {mtype})")
         update_status(f"TX PC{pc_values[channel]}")
+    elif mtype in ("cc_inc", "cc_dec"):
+        # Direction only; cc/channel/range/slots are the button-level fields (#11).
+        send_cc_step(btn_num, buttons[btn_num - 1], 1 if mtype == "cc_inc" else -1, "keytimes " + mtype)
     elif mtype in ("page_inc", "page_dec", "page_jump"):
         # Defer the actual switch — set the target; handle_switches() drains it after
         # its scan loop so buttons[]/state arrays aren't swapped mid-iteration.
@@ -1140,6 +1316,12 @@ def _render_keytimes_led(btn_num, state, btn_config):
     """
     idx = btn_num - 1
     if idx < 0 or idx >= BUTTON_COUNT:
+        return
+
+    if btn_config.get("cc_slots"):
+        # SLOT-mode cc_inc/cc_dec entries (#11): the slot table owns LED color and
+        # label for every press length; per-entry color/label do not apply.
+        set_button_state(btn_num, True)
         return
 
     # LED: last_fired gates which layer wins, so a stale long color can't stick (#157),
@@ -1198,9 +1380,11 @@ def handle_switches():
             events = kt_state.tracker.update(sw.pressed, now)
             if events:
                 default_channel = btn_config.get("channel", 0)
+                # Pass the handler + its extra args rather than a lambda adapter: one
+                # stack frame fewer under every keytimes message (pystack is small).
                 dispatch_keytimes_events(
                     events, kt_state, btn_config,
-                    lambda msg: _dispatch_keytimes_message(msg, default_channel, btn_num)
+                    _dispatch_keytimes_message, (default_channel, btn_num)
                 )
                 _render_keytimes_led(btn_num, kt_state, btn_config)
             continue
@@ -1341,6 +1525,12 @@ def handle_switches():
                 elif mode == "momentary":
                     btn_state.state = False
                     set_button_state(btn_num, False)
+
+            elif message_type in ("cc_inc", "cc_dec"):
+                # Shared-value stepper (#11). Mode is always "flash" here (validator);
+                # STEP flashes via _refresh_cc_step_buttons, SLOT repaints the slot color.
+                if pressed:
+                    send_cc_step(btn_num, btn_config, 1 if message_type == "cc_inc" else -1, message_type)
 
             elif message_type in ("page_inc", "page_dec", "page_jump"):
                 if pressed:
@@ -1525,6 +1715,7 @@ if HAS_SEG_DISPLAY:
 else:
     time.sleep(0.5)
 init_leds()
+show_cc_step_resting_status()  # the seg animation just blanked the display (#11)
 
 # Show CC mapping info
 if HAS_ENCODER:
@@ -1572,6 +1763,7 @@ if DEV_MODE:
 while True:
     handle_midi()
     handle_switches()
+    flush_cc_step_updates()
     update_pc_flash_timers()
     if HAS_ENCODER:
         handle_encoder_button()

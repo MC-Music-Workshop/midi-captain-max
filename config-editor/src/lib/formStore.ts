@@ -1,6 +1,6 @@
 import { writable, derived, get } from 'svelte/store';
 import type { MidiCaptainConfig, ButtonConfig, EncoderConfig, DeviceType, KeytimesEntry, KeytimesMessage, MessageType, Page } from './types';
-import { validateConfig } from './validation';
+import { validateConfig, keytimesUsesCcStep } from './validation';
 
 interface FormState {
   config: MidiCaptainConfig;
@@ -299,6 +299,9 @@ function _defaultMessage(type: MessageType): KeytimesMessage {
     case 'pc':     return { type: 'pc', program: 0 };
     case 'pc_inc': return { type: 'pc_inc', step: 1 };
     case 'pc_dec': return { type: 'pc_dec', step: 1 };
+    // Direction-only (#11): cc/range/slots live on the button (see CC_STEP_FIELDS).
+    case 'cc_inc': return { type: 'cc_inc' };
+    case 'cc_dec': return { type: 'cc_dec' };
     case 'hid':    return { type: 'hid', action: 'send' };
     case 'page_inc': return { type: 'page_inc', page_step: 1 };
     case 'page_dec': return { type: 'page_dec', page_step: 1 };
@@ -652,6 +655,26 @@ export function movePage(from: number, to: number) {
   });
 }
 
+// The cc-step field subset of a button, cleaned for save: SLOT mode (cc_slots set)
+// drops cc_step; STEP mode drops cc_slots and the slot tables; an all-empty
+// cc_slot_names array is dropped.
+function ccStepFields(btn: ButtonConfig): Partial<ButtonConfig> {
+  const { cc, cc_step, cc_slots, cc_min, cc_max, cc_wrap, cc_initial, cc_slot_colors, cc_slot_names } = btn;
+  const slotMode = cc_slots !== undefined;
+  const names = cc_slot_names?.some(n => n !== '') ? cc_slot_names : undefined;
+  return {
+    ...(cc !== undefined && { cc }),
+    ...(!slotMode && cc_step !== undefined && { cc_step }),
+    ...(slotMode && { cc_slots }),
+    ...(cc_min !== undefined && { cc_min }),
+    ...(cc_max !== undefined && { cc_max }),
+    ...(cc_wrap !== undefined && { cc_wrap }),
+    ...(cc_initial !== undefined && { cc_initial }),
+    ...(slotMode && cc_slot_colors !== undefined && { cc_slot_colors }),
+    ...(slotMode && names !== undefined && { cc_slot_names: names }),
+  };
+}
+
 // Strip type-specific fields that don't belong to the button's current type.
 // Prevents stale cc/note/program/etc. from accumulating in the saved JSON when
 // the user switches a button's type.
@@ -659,13 +682,16 @@ function normalizeButton(btn: ButtonConfig): ButtonConfig {
   // mode: "keytimes" carries its message data inside short[]/long[] entries,
   // not at the top of the button. Strip all legacy per-type fields here so
   // serialized JSON stays clean if the user toggled the button through other
-  // modes before settling on keytimes.
+  // modes before settling on keytimes. Exception (#11): cc_inc/cc_dec entries
+  // are direction-only, so their cc-step fields stay on the button.
   if (btn.mode === 'keytimes') {
     const { cc, cc_on, cc_off, note, velocity_on, velocity_off, program, pc_step, flash_ms,
+            cc_step, cc_slots, cc_min, cc_max, cc_wrap, cc_initial, cc_slot_colors, cc_slot_names,
             hid_action, hid_key, hid_modifier, hid_delay_ms,
             select_group, select_repress, keytimes, states, type, ...common } = btn;
     return {
       ...common,
+      ...(keytimesUsesCcStep(btn) && ccStepFields(btn)),
       ...(btn.short !== undefined && { short: btn.short }),
       ...(btn.long !== undefined && { long: btn.long }),
       ...(btn.long_press_threshold_ms !== undefined && { long_press_threshold_ms: btn.long_press_threshold_ms }),
@@ -677,6 +703,7 @@ function normalizeButton(btn: ButtonConfig): ButtonConfig {
   const { short: _short, long: _long, long_press_threshold_ms: _lpt, ...btnWithoutKeytimesFields } = btn;
   const type = btnWithoutKeytimesFields.type ?? 'cc';
   const { cc, cc_on, cc_off, note, velocity_on, velocity_off, program, pc_step, flash_ms,
+          cc_step, cc_slots, cc_min, cc_max, cc_wrap, cc_initial, cc_slot_colors, cc_slot_names,
           hid_action, hid_key, hid_modifier, hid_delay_ms,
           select_group, select_repress, ...common } = btnWithoutKeytimesFields;
 
@@ -723,6 +750,14 @@ function normalizeButton(btn: ButtonConfig): ButtonConfig {
         ...(pcFlashMode && flash_ms !== undefined && { flash_ms }),
       };
     }
+    case 'cc_inc':
+    case 'cc_dec':
+      // flash_ms only matters in STEP mode (the LED flashes per press); SLOT mode stays lit.
+      return {
+        ...common,
+        ...ccStepFields(btn),
+        ...(cc_slots === undefined && flash_ms !== undefined && { flash_ms }),
+      };
     case 'hid':
       return {
         ...common,

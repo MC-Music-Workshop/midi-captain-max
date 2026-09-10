@@ -89,3 +89,53 @@ class TestStateRouting:
         """Buttons without an explicit type are treated as cc (legacy configs)."""
         buttons = [{"mode": "toggle", "cc": 20, "channel": 0}]
         assert find_cc_rx_action(buttons, 20, 64, 0) == ("state", 0)
+
+
+def cc_step_btn(cc, channel=0, **over):
+    btn = {"type": "cc_inc", "cc": cc, "channel": channel, "cc_step": 1,
+           "cc_min": 0, "cc_max": 127, "cc_wrap": True}
+    btn.update(over)
+    return btn
+
+
+class TestCcStepRouting:
+    """cc_inc/cc_dec buttons (#11) claim their (cc, channel) for the shared value."""
+
+    def test_cc_step_button_claims_cc(self):
+        buttons = [cc_step_btn(30)]
+        assert find_cc_rx_action(buttons, 30, 64, 0) == ("cc_step", 0)
+
+    def test_any_value_matches_no_gate(self):
+        buttons = [cc_step_btn(30)]
+        for val in (0, 1, 63, 64, 127):
+            assert find_cc_rx_action(buttons, 30, val, 0) == ("cc_step", 0)
+
+    def test_cc_dec_matches_too(self):
+        buttons = [cc_step_btn(30, type="cc_dec")]
+        assert find_cc_rx_action(buttons, 30, 5, 0) == ("cc_step", 0)
+
+    def test_first_button_on_key_wins(self):
+        """inc + dec on one key: the first one is returned; code.py refreshes both."""
+        buttons = [toggle_btn(20), cc_step_btn(30), cc_step_btn(30, type="cc_dec")]
+        assert find_cc_rx_action(buttons, 30, 5, 0) == ("cc_step", 1)
+
+    def test_channel_mismatch_skips(self):
+        buttons = [cc_step_btn(30, channel=3), toggle_btn(30)]
+        assert find_cc_rx_action(buttons, 30, 64, 0) == ("state", 1)
+
+    def test_keytimes_button_with_cc_step_fields_matches(self):
+        """A keytimes button whose entries fire cc_inc carries the cc-step fields
+        (validator) and must claim its CC like a plain cc_inc button."""
+        buttons = [{"mode": "keytimes", "type": "cc", "cc": 30, "channel": 0,
+                    "cc_slots": 4, "cc_min": 0, "cc_max": 127, "cc_wrap": True,
+                    "short": [{"down": [{"type": "cc_inc"}]}]}]
+        assert find_cc_rx_action(buttons, 30, 64, 0) == ("cc_step", 0)
+
+    def test_plain_keytimes_button_still_ignored(self):
+        buttons = [{"mode": "keytimes", "type": "cc", "channel": 0,
+                    "short": [{"down": [{"type": "cc", "cc": 30, "value": 127}]}]}]
+        assert find_cc_rx_action(buttons, 30, 64, 0) == (None, None)
+
+    def test_cc_step_does_not_shield_other_ccs(self):
+        buttons = [cc_step_btn(30), toggle_btn(31)]
+        assert find_cc_rx_action(buttons, 31, 64, 0) == ("state", 1)

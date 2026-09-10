@@ -170,3 +170,80 @@ describe('per-page global_channel (P4d)', () => {
     expect(lines.some(l => l.includes('Page 2 (Bad)') && l.includes('global_channel'))).toBe(true);
   });
 });
+
+describe('cc_inc / cc_dec fields (#11)', () => {
+  function ccStepConfig(btn: Record<string, unknown>): MidiCaptainConfig {
+    return {
+      device: 'one1', active_page: 0,
+      pages: [{ buttons: [{ label: 'VOL', color: 'green', type: 'cc_inc', cc: 7, ...btn } as never] }],
+    };
+  }
+
+  it('accepts a full STEP-mode button', () => {
+    const r = validateConfig(ccStepConfig({ cc_step: 5, cc_min: 10, cc_max: 100, cc_wrap: false, cc_initial: 50 }));
+    expect(r.isValid).toBe(true);
+  });
+
+  it('accepts a full SLOT-mode button', () => {
+    const r = validateConfig(ccStepConfig({ cc_slots: 4, cc_slot_colors: ['red', 'green', 'blue', 'yellow'],
+                                             cc_slot_names: ['MARSH', 'FENDER', '', 'MESA'] }));
+    expect(r.isValid).toBe(true);
+  });
+
+  it('rejects cc_step outside 1-127', () => {
+    expect(validateConfig(ccStepConfig({ cc_step: 0 })).errors.get('buttons[0].cc_step')).toContain('between 1 and 127');
+    expect(validateConfig(ccStepConfig({ cc_step: 128 })).errors.get('buttons[0].cc_step')).toContain('between 1 and 127');
+  });
+
+  it('rejects cc_slots outside 2-16', () => {
+    expect(validateConfig(ccStepConfig({ cc_slots: 1 })).errors.get('buttons[0].cc_slots')).toContain('between 2 and 16');
+    expect(validateConfig(ccStepConfig({ cc_slots: 17 })).errors.get('buttons[0].cc_slots')).toContain('between 2 and 16');
+  });
+
+  it('rejects min >= max on cc_max', () => {
+    expect(validateConfig(ccStepConfig({ cc_min: 50, cc_max: 50 })).errors.get('buttons[0].cc_max')).toContain('greater than min');
+  });
+
+  it('rejects cc_initial outside min..max', () => {
+    expect(validateConfig(ccStepConfig({ cc_min: 10, cc_max: 20, cc_initial: 64 })).errors.get('buttons[0].cc_initial')).toContain('between 10 and 20');
+  });
+
+  it('rejects a slot name over 6 chars or with bad characters, keyed per slot', () => {
+    const r = validateConfig(ccStepConfig({ cc_slots: 2, cc_slot_names: ['TOOLONG', 'a+b'] }));
+    expect(r.errors.get('buttons[0].cc_slot_names[0]')).toContain('6 characters');
+    expect(r.errors.get('buttons[0].cc_slot_names[1]')).toContain('invalid characters');
+  });
+
+  it('validates the shared fields on a keytimes button with cc_inc entries', () => {
+    const cfg: MidiCaptainConfig = {
+      device: 'one1', active_page: 0,
+      pages: [{ buttons: [{ label: 'AMP', color: 'green', mode: 'keytimes', cc: 30, cc_slots: 1,
+                             short: [{ down: [{ type: 'cc_inc' }] }] } as never] }],
+    };
+    const r = validateConfig(cfg);
+    expect(r.errors.get('buttons[0].cc_slots')).toContain('between 2 and 16');
+    // The direction-only entry itself has nothing to flag.
+    expect([...r.errors.keys()].some(k => k.includes('short[0]'))).toBe(false);
+  });
+
+  it('ignores stale cc-step fields on a plain cc button (type-gated)', () => {
+    const cfg: MidiCaptainConfig = {
+      device: 'one1', active_page: 0,
+      pages: [{ buttons: [{ label: 'OK', cc: 20, color: 'green', cc_step: 0, cc_slots: 99, cc_min: 100, cc_max: 5 } as never] }],
+    };
+    expect(validateConfig(cfg).isValid).toBe(true);
+  });
+});
+
+describe('mode flip away from keytimes', () => {
+  it('does not flag stale short/long on a non-keytimes button (normalize strips them on save)', () => {
+    const cfg: MidiCaptainConfig = {
+      device: 'one1', active_page: 0,
+      pages: [{ buttons: [{ label: 'AMP', color: 'green', mode: 'flash', type: 'cc_inc', cc: 20,
+                             short: [{ down: [{ type: 'cc_inc' }] }] } as never] }],
+    };
+    const r = validateConfig(cfg);
+    expect(r.isValid).toBe(true);
+    expect(r.errors.has('buttons[0].mode')).toBe(false);
+  });
+});

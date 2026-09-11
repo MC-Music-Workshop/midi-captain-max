@@ -1203,16 +1203,22 @@ def handle_midi():
     usb_msg = midi.receive()
     if usb_msg:
         _process_midi_msg(usb_msg, source="USB")
+        # Thru must carry the source channel through explicitly: adafruit_midi's
+        # send() falls back to out_channel (0) when channel is None, which would
+        # rewrite every forwarded message onto channel 1. Read it before the
+        # first send -- send() assigns msg.channel on the message object.
+        # System messages (SysEx, clock) have no channel; None is right there.
+        usb_ch = getattr(usb_msg, "channel", None)
         # USB -> DIN (cross)
         if MIDI_THRU_USB_TO_DIN and midi_serial is not None:
             try:
-                midi_serial.send(usb_msg)
+                midi_serial.send(usb_msg, channel=usb_ch)
             except Exception:
                 pass
         # USB -> USB (loopback to host; opt-in)
         if MIDI_THRU_USB_TO_USB:
             try:
-                midi.send(usb_msg)
+                midi.send(usb_msg, channel=usb_ch)
             except Exception:
                 pass
 
@@ -1221,16 +1227,17 @@ def handle_midi():
         din_msg = midi_serial.receive()
         if din_msg:
             _process_midi_msg(din_msg, source="DIN")
+            din_ch = getattr(din_msg, "channel", None)
             # DIN -> USB (cross)
             if MIDI_THRU_DIN_TO_USB:
                 try:
-                    midi.send(din_msg)
+                    midi.send(din_msg, channel=din_ch)
                 except Exception:
                     pass
             # DIN -> DIN (classic MIDI THRU pass-through)
             if MIDI_THRU_DIN_TO_DIN:
                 try:
-                    midi_serial.send(din_msg)
+                    midi_serial.send(din_msg, channel=din_ch)
                 except Exception:
                     pass
 

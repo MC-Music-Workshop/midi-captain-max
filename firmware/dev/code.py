@@ -55,6 +55,10 @@ from core.config import (
     get_midi_thru_din_to_usb,
     get_midi_thru_din_to_din,
     get_midi_thru_usb_to_usb,
+    get_midi_local_to_usb,
+    get_midi_local_to_din,
+    get_midi_usb_to_local,
+    get_midi_din_to_local,
     get_dev_mode,
 )
 from core.button import Switch, ButtonState, KeytimesButtonState, dispatch_keytimes_events
@@ -306,6 +310,14 @@ MIDI_THRU_DIN_TO_DIN = get_midi_thru_din_to_din(config)
 MIDI_THRU_USB_TO_USB = get_midi_thru_usb_to_usb(config)
 print(f"MIDI thru: USB->DIN={MIDI_THRU_USB_TO_DIN}, DIN->USB={MIDI_THRU_DIN_TO_USB}, DIN->DIN={MIDI_THRU_DIN_TO_DIN}, USB->USB={MIDI_THRU_USB_TO_USB}")
 
+# Local routing: where this pedal's own messages go, and which inputs it acts on.
+# All default True (every port live), matching pre-matrix behaviour.
+MIDI_LOCAL_TO_USB = get_midi_local_to_usb(config)
+MIDI_LOCAL_TO_DIN = get_midi_local_to_din(config)
+MIDI_USB_TO_LOCAL = get_midi_usb_to_local(config)
+MIDI_DIN_TO_LOCAL = get_midi_din_to_local(config)
+print(f"MIDI local: ->USB={MIDI_LOCAL_TO_USB}, ->DIN={MIDI_LOCAL_TO_DIN}, USB->local={MIDI_USB_TO_LOCAL}, DIN->local={MIDI_DIN_TO_LOCAL}")
+
 # =============================================================================
 # Fonts
 # =============================================================================
@@ -502,9 +514,14 @@ except Exception as e:
 
 
 def midi_send(msg, channel=None):
-    """Send a MIDI message on both USB and 5-pin DIN simultaneously."""
-    midi.send(msg, channel=channel)
-    if midi_serial is not None:
+    """Send a MIDI message on this pedal's enabled outputs (USB and/or DIN).
+
+    Both default on. MIDI_LOCAL_TO_DIN is the one to turn off on a device that
+    closes a MIDI ring, so its own messages never enter the ring and come back
+    around to its own input."""
+    if MIDI_LOCAL_TO_USB:
+        midi.send(msg, channel=channel)
+    if MIDI_LOCAL_TO_DIN and midi_serial is not None:
         midi_serial.send(msg, channel=channel)
 
 # =============================================================================
@@ -1198,11 +1215,12 @@ def _process_midi_msg(msg, source="USB"):
 
 
 def handle_midi():
-    """Handle incoming MIDI messages and MIDI thru (4-route matrix)."""
+    """Handle incoming MIDI: local dispatch (gated per input) and MIDI thru."""
     # --- USB MIDI in ---
     usb_msg = midi.receive()
     if usb_msg:
-        _process_midi_msg(usb_msg, source="USB")
+        if MIDI_USB_TO_LOCAL:
+            _process_midi_msg(usb_msg, source="USB")
         # Thru must carry the source channel through explicitly: adafruit_midi's
         # send() falls back to out_channel (0) when channel is None, which would
         # rewrite every forwarded message onto channel 1. Read it before the
@@ -1226,7 +1244,8 @@ def handle_midi():
     if midi_serial is not None:
         din_msg = midi_serial.receive()
         if din_msg:
-            _process_midi_msg(din_msg, source="DIN")
+            if MIDI_DIN_TO_LOCAL:
+                _process_midi_msg(din_msg, source="DIN")
             din_ch = getattr(din_msg, "channel", None)
             # DIN -> USB (cross)
             if MIDI_THRU_DIN_TO_USB:

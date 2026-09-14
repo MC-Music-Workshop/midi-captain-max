@@ -869,6 +869,33 @@ def get_midi_thru_usb_to_usb(cfg):
     return bool(cfg.get("midi_thru_usb_to_usb", False))
 
 
+def get_midi_local_to_usb(cfg):
+    """This pedal's own messages -> USB output. Default True."""
+    return bool(cfg.get("midi_local_to_usb", True))
+
+
+def get_midi_local_to_din(cfg):
+    """This pedal's own messages -> 5-pin DIN output. Default True.
+
+    Turn off on the device that closes a MIDI ring (its DIN out feeds a chain
+    that loops back to its own DIN in): otherwise its own messages travel the
+    ring and are forwarded to the host a second time by DIN->USB thru."""
+    return bool(cfg.get("midi_local_to_din", True))
+
+
+def get_midi_usb_to_local(cfg):
+    """USB input -> this pedal (button matching, select-group tracking).
+    Default True; False makes the USB input forward-only."""
+    return bool(cfg.get("midi_usb_to_local", True))
+
+
+def get_midi_din_to_local(cfg):
+    """5-pin DIN input -> this pedal (button matching, select-group tracking).
+    Default True; False makes the DIN input forward-only, which stops the
+    ring-closing device acting twice on a message the host sent it directly."""
+    return bool(cfg.get("midi_din_to_local", True))
+
+
 def get_dev_mode(cfg):
     """Extract development mode setting from config.
 

@@ -532,6 +532,23 @@ pub struct MidiCaptainConfig {
     /// MIDI echo enabled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub midi_thru_usb_to_usb: Option<bool>,
+    /// MIDI routing: this pedal's own messages -> USB output. Default: true.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub midi_local_to_usb: Option<bool>,
+    /// MIDI routing: this pedal's own messages -> 5-pin DIN output. Default:
+    /// true. Turn off on the device that closes a MIDI ring, so its own
+    /// messages don't travel the ring and reach the host twice.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub midi_local_to_din: Option<bool>,
+    /// MIDI routing: act on messages received on USB (button matching,
+    /// select-group tracking). Default: true; false = forward-only input.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub midi_usb_to_local: Option<bool>,
+    /// MIDI routing: act on messages received on the 5-pin DIN input. Default:
+    /// true; false = forward-only input, which stops the ring-closing device
+    /// acting twice on a message the host already sent it over USB.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub midi_din_to_local: Option<bool>,
     /// Pages (banks). Each page is a full control-surface snapshot. Required;
     /// the migration converter guarantees at least one page for legacy configs.
     pub pages: Vec<Page>,
@@ -1209,6 +1226,50 @@ mod tests {
         assert_eq!(config2.midi_thru_usb_to_usb, Some(true));
     }
 
+    #[test]
+    fn test_roundtrip_midi_local_to_usb() {
+        let json = r#"{ "buttons": [], "midi_local_to_usb": false }"#;
+        let config = parse_migrated(json);
+        assert_eq!(config.midi_local_to_usb, Some(false));
+
+        let reserialized = serde_json::to_string(&config).unwrap();
+        let config2: MidiCaptainConfig = serde_json::from_str(&reserialized).unwrap();
+        assert_eq!(config2.midi_local_to_usb, Some(false));
+    }
+
+    #[test]
+    fn test_roundtrip_midi_local_to_din() {
+        let json = r#"{ "buttons": [], "midi_local_to_din": false }"#;
+        let config = parse_migrated(json);
+        assert_eq!(config.midi_local_to_din, Some(false));
+
+        let reserialized = serde_json::to_string(&config).unwrap();
+        let config2: MidiCaptainConfig = serde_json::from_str(&reserialized).unwrap();
+        assert_eq!(config2.midi_local_to_din, Some(false));
+    }
+
+    #[test]
+    fn test_roundtrip_midi_usb_to_local() {
+        let json = r#"{ "buttons": [], "midi_usb_to_local": false }"#;
+        let config = parse_migrated(json);
+        assert_eq!(config.midi_usb_to_local, Some(false));
+
+        let reserialized = serde_json::to_string(&config).unwrap();
+        let config2: MidiCaptainConfig = serde_json::from_str(&reserialized).unwrap();
+        assert_eq!(config2.midi_usb_to_local, Some(false));
+    }
+
+    #[test]
+    fn test_roundtrip_midi_din_to_local() {
+        let json = r#"{ "buttons": [], "midi_din_to_local": false }"#;
+        let config = parse_migrated(json);
+        assert_eq!(config.midi_din_to_local, Some(false));
+
+        let reserialized = serde_json::to_string(&config).unwrap();
+        let config2: MidiCaptainConfig = serde_json::from_str(&reserialized).unwrap();
+        assert_eq!(config2.midi_din_to_local, Some(false));
+    }
+
     // --- Pages migration / shape tests (#15) ---
 
     #[test]
@@ -1422,6 +1483,8 @@ mod tests {
             device: DeviceType::Std10, global_channel: None, usb_drive_name: None,
             dev_mode: None, midi_thru_usb_to_din: None, midi_thru_din_to_usb: None,
             midi_thru_din_to_din: None, midi_thru_usb_to_usb: None,
+            midi_local_to_usb: None, midi_local_to_din: None,
+            midi_usb_to_local: None, midi_din_to_local: None,
             pages: vec![Page {
                 name: None,
                 buttons: _mk_buttons(10),

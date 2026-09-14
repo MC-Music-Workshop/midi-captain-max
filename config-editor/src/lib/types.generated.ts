@@ -124,6 +124,22 @@ export interface MIDICaptainConfig {
    * MIDI Thru: echo messages received on USB MIDI back to the USB output (host loopback). Default false; enabling can cause duplicate notes or feedback when the DAW has MIDI echo enabled.
    */
   midi_thru_usb_to_usb?: boolean;
+  /**
+   * MIDI routing: send this pedal's own button/encoder/expression messages to the USB MIDI output. Default true.
+   */
+  midi_local_to_usb?: boolean;
+  /**
+   * MIDI routing: send this pedal's own button/encoder/expression messages to the 5-pin DIN output. Default true. Turn off on the device that closes a MIDI ring, so its own messages don't travel the ring and arrive back at its own input as duplicates.
+   */
+  midi_local_to_din?: boolean;
+  /**
+   * MIDI routing: act on messages received on USB MIDI (button matching, select-group tracking). Default true; turning it off makes the USB input forward-only.
+   */
+  midi_usb_to_local?: boolean;
+  /**
+   * MIDI routing: act on messages received on the 5-pin DIN input (button matching, select-group tracking). Default true; turning it off makes the DIN input forward-only, which prevents double-processing on the device that closes a MIDI ring.
+   */
+  midi_din_to_local?: boolean;
   page_control?: PageControl;
 }
 /**

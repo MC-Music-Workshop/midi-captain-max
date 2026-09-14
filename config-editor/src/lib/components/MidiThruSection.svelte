@@ -8,26 +8,38 @@
   let dinToDin = $derived($config.midi_thru_din_to_din ?? true);
   let usbToUsb = $derived($config.midi_thru_usb_to_usb ?? false);
 
+  // Local routes: where this pedal's own messages go, and which inputs it acts
+  // on. All default on -- every port live, as before the matrix grew.
+  let localToUsb = $derived($config.midi_local_to_usb ?? true);
+  let localToDin = $derived($config.midi_local_to_din ?? true);
+  let usbToLocal = $derived($config.midi_usb_to_local ?? true);
+  let dinToLocal = $derived($config.midi_din_to_local ?? true);
+
+  let sendsNothing = $derived(!localToUsb && !localToDin);
+  let hearsNothing = $derived(!usbToLocal && !dinToLocal);
+
   function onChange(field: string, e: Event) {
     const target = e.target as HTMLInputElement;
     updateField(field, target.checked);
   }
 </script>
 
-<Accordion title="MIDI Thru">
+<Accordion title="MIDI Routing">
   <div class="midi-thru-section">
     <p class="section-help">
-      Route incoming MIDI between USB and 5-pin DIN ports. Each cell of the matrix
-      controls one path from an input (row) to an output (column). Cross-thru and
-      DIN&nbsp;→&nbsp;DIN (classic MIDI THRU pass-through) are on by default.
+      Route MIDI between the USB port, the 5-pin DIN port, and this pedal itself.
+      Each cell controls one path from a source (row) to a destination (column).
+      Cross-thru, DIN&nbsp;→&nbsp;DIN (classic MIDI THRU) and every path to and
+      from this pedal are on by default.
     </p>
 
-    <table class="thru-matrix" aria-label="MIDI Thru routing matrix">
+    <table class="thru-matrix" aria-label="MIDI routing matrix">
       <thead>
         <tr>
           <th scope="col" class="corner">From&nbsp;\&nbsp;To</th>
           <th scope="col">USB</th>
           <th scope="col">5-pin DIN</th>
+          <th scope="col">This pedal</th>
         </tr>
       </thead>
       <tbody>
@@ -53,6 +65,16 @@
               <span>USB → DIN</span>
             </label>
           </td>
+          <td>
+            <label class="cell">
+              <input
+                type="checkbox"
+                checked={usbToLocal}
+                onchange={(e) => onChange('midi_usb_to_local', e)}
+              />
+              <span>USB → pedal</span>
+            </label>
+          </td>
         </tr>
         <tr>
           <th scope="row">5-pin DIN</th>
@@ -76,6 +98,41 @@
               <span>DIN → DIN</span>
             </label>
           </td>
+          <td>
+            <label class="cell">
+              <input
+                type="checkbox"
+                checked={dinToLocal}
+                onchange={(e) => onChange('midi_din_to_local', e)}
+              />
+              <span>DIN → pedal</span>
+            </label>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">This pedal</th>
+          <td>
+            <label class="cell">
+              <input
+                type="checkbox"
+                checked={localToUsb}
+                onchange={(e) => onChange('midi_local_to_usb', e)}
+              />
+              <span>pedal → USB</span>
+            </label>
+          </td>
+          <td>
+            <label class="cell">
+              <input
+                type="checkbox"
+                checked={localToDin}
+                onchange={(e) => onChange('midi_local_to_din', e)}
+              />
+              <span>pedal → DIN</span>
+            </label>
+          </td>
+          <!-- A pedal "routing to itself" is just the button doing its job. -->
+          <td class="na" aria-label="not applicable">—</td>
         </tr>
       </tbody>
     </table>
@@ -89,6 +146,23 @@
       </div>
     {/if}
 
+    {#if sendsNothing}
+      <div class="warning" role="alert">
+        <strong>⚠ This pedal's switches send nothing.</strong>
+        Both of its outputs are off, so button, encoder and expression messages
+        go nowhere. Turn on at least one of <em>pedal&nbsp;→&nbsp;USB</em> or
+        <em>pedal&nbsp;→&nbsp;DIN</em>.
+      </div>
+    {/if}
+
+    {#if hearsNothing}
+      <div class="warning" role="alert">
+        <strong>⚠ This pedal ignores all incoming MIDI.</strong>
+        Both inputs are forward-only, so nothing will match buttons, update LEDs
+        or track select groups. Thru still passes messages along.
+      </div>
+    {/if}
+
     <details class="routing-help">
       <summary>What does each route do?</summary>
       <ul>
@@ -96,7 +170,17 @@
         <li><strong>DIN → USB:</strong> forward MIDI from a 5-pin source (e.g. another foot controller) to the computer.</li>
         <li><strong>DIN → DIN:</strong> classic MIDI THRU. Forward incoming 5-pin MIDI to the 5-pin output for daisy-chaining controllers downstream.</li>
         <li><strong>USB → USB:</strong> echo USB MIDI back to the host. Niche; off by default to avoid feedback with DAW MIDI echo.</li>
+        <li><strong>USB / DIN → pedal:</strong> act on messages arriving on that port — match buttons, drive LEDs, track select groups. Turn off to make the port forward-only.</li>
+        <li><strong>pedal → USB / DIN:</strong> send this pedal's own button, encoder and expression messages out that port.</li>
       </ul>
+      <p class="ring-note">
+        <strong>MIDI ring setups:</strong> if this pedal's DIN output feeds a chain
+        that loops back into its own DIN input, turn off <em>DIN&nbsp;→&nbsp;DIN</em>
+        (so messages don't circulate forever), <em>pedal&nbsp;→&nbsp;DIN</em> (so its
+        own messages don't lap the ring and reach the host twice) and
+        <em>DIN&nbsp;→&nbsp;pedal</em> (so it doesn't act twice on what the host
+        already sent it over USB).
+      </p>
     </details>
   </div>
 </Accordion>
@@ -144,6 +228,12 @@
     color: var(--text-secondary, #888);
   }
 
+  .thru-matrix .na {
+    background: var(--surface-muted, #f8f8f8);
+    color: var(--text-secondary, #aaa);
+    text-align: center;
+  }
+
   .cell {
     display: inline-flex;
     align-items: center;
@@ -184,5 +274,10 @@
 
   .routing-help li {
     margin-bottom: 0.25rem;
+  }
+
+  .ring-note {
+    margin: 0.75rem 0 0 0;
+    line-height: 1.5;
   }
 </style>

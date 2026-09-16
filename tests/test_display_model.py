@@ -62,6 +62,19 @@ class TestButtonVisual:
         v = button_visual({}, on=True)
         assert v["label_color"] == 0xFFFFFF
 
+    def test_off_color_renders_full_brightness(self):
+        # green on / blue off: the off state is its own color, not a dim green
+        v = button_visual({"color": "green", "off_color": "blue"}, on=False)
+        assert v == {"label_color": 0x0000FF, "box_color": 0x0000FF}
+
+    def test_off_color_overrides_off_mode(self):
+        v = button_visual({"color": "green", "off_color": "blue", "off_mode": "off"}, on=False)
+        assert v["box_color"] == 0x0000FF
+
+    def test_off_color_ignored_when_on(self):
+        v = button_visual({"color": "green", "off_color": "blue"}, on=True)
+        assert v["box_color"] == 0x00FF00
+
 
 def _kt_state(**kw):
     st = KeytimesButtonState(threshold_ms=500, short_length=2, long_length=2)

@@ -234,6 +234,9 @@ pub struct ButtonConfig {
     pub mode: ButtonMode,
     #[serde(default, skip_serializing_if = "is_default_off_mode")]
     pub off_mode: OffMode,
+    /// Distinct off-state color. When set it overrides `off_mode`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub off_color: Option<ButtonColor>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel: Option<u8>,
     // CC fields
@@ -1462,7 +1465,7 @@ mod tests {
                 color: ButtonColor::Red,
                 message_type: MessageType::Cc,
                 mode: ButtonMode::Toggle,
-                off_mode: OffMode::Dim,
+                off_mode: OffMode::Dim, off_color: None,
                 channel: None, cc: Some(20 + i as u8), cc_on: None, cc_off: None,
                 note: None, velocity_on: None, velocity_off: None,
                 program: None, pc_step: None, page_step: None, page: None, flash_ms: None,

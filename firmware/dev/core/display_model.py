@@ -63,14 +63,20 @@ def compute_layout(button_count, button_font_height):
 def button_visual(btn_config, on):
     """Label + box colors for a plain (non-keytimes) button's display state.
 
-    Off state always renders the dimmed color (never fully off) so labels
-    stay legible — mirrors get_off_color_for_display's contract.
+    Off state renders off_color at full brightness when set (it overrides
+    off_mode), else the dimmed on-color (never fully off) so labels stay
+    legible — mirrors get_off_color_for_display's contract.
 
     Returns {"label_color": 0xRRGGBB, "box_color": 0xRRGGBB}.
     """
     color_rgb = get_color(btn_config.get("color", "white"))
-    off_mode = btn_config.get("off_mode", "dim")
-    rgb = color_rgb if on else get_off_color_for_display(color_rgb, off_mode)
+    off_color = btn_config.get("off_color")
+    if on:
+        rgb = color_rgb
+    elif off_color:
+        rgb = get_color(off_color)
+    else:
+        rgb = get_off_color_for_display(color_rgb, btn_config.get("off_mode", "dim"))
     hex_color = rgb_to_hex(rgb)
     return {"label_color": hex_color, "box_color": hex_color}
 

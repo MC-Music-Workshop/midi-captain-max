@@ -235,6 +235,23 @@ class TestValidateButton:
         assert btn["cc_on"] == 127
         assert btn["cc_off"] == 0
     
+    def test_off_color_absent_by_default(self):
+        """No off_color means the off state keeps following off_mode."""
+        assert "off_color" not in validate_button({}, index=0)
+
+    def test_off_color_preserved_and_lowercased(self):
+        btn = validate_button({"color": "green", "off_color": "BLUE"}, index=0)
+        assert btn["off_color"] == "blue"
+
+    def test_off_color_invalid_value_dropped(self):
+        """An unknown color is dropped, not defaulted — get_color() would render
+        it white, which reads as 'on'. Falling back to off_mode is safer."""
+        assert "off_color" not in validate_button({"off_color": "chartreuse"}, index=0)
+
+    def test_off_color_off_rejected(self):
+        """'off' isn't an off_color — off_mode already extinguishes the LED."""
+        assert "off_color" not in validate_button({"off_color": "off"}, index=0)
+
     def test_preserves_existing_fields(self):
         """Keeps existing values."""
         btn = validate_button({"label": "MUTE", "cc": 99, "color": "red"}, index=5)

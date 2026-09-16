@@ -795,11 +795,19 @@ def set_button_state(switch_idx, on):
         on = True
     color_rgb = get_color(color_name)
     off_mode = btn_config.get("off_mode", "dim")  # "dim" or "off"
+    # A configured off_color owns the off state outright (full brightness),
+    # overriding off_mode — that's what makes green-on/blue-off possible.
+    off_color = btn_config.get("off_color")
 
     # Update LED
     led_idx = switch_to_led(switch_idx)
     if led_idx is not None:
-        rgb = color_rgb if on else get_off_color(color_rgb, off_mode)
+        if on:
+            rgb = color_rgb
+        elif off_color:
+            rgb = get_color(off_color)
+        else:
+            rgb = get_off_color(color_rgb, off_mode)
         base = led_idx * 3
         for j in range(3):
             if base + j < LED_COUNT:

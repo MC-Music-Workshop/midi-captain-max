@@ -290,7 +290,7 @@ _KEYTIMES_EVENT_MAP = {
 }
 
 
-def dispatch_keytimes_events(events, state, btn_config, message_callback):
+def dispatch_keytimes_events(events, state, btn_config, message_callback, callback_args=()):
     """Dispatch a sequence of timing events through a keytimes-mode button's config.
 
     Pure logic — no hardware, no time, no I/O. Tests inject a callback to capture
@@ -301,7 +301,11 @@ def dispatch_keytimes_events(events, state, btn_config, message_callback):
         events: list of event names from PressTracker.update()
         state: KeytimesButtonState for this button
         btn_config: validated button config dict (must have mode == "keytimes")
-        message_callback: fn(message_dict) called for each Message to dispatch
+        message_callback: fn(message_dict, *callback_args) called for each Message to dispatch
+        callback_args: extra positional args forwarded to message_callback. Lets
+            code.py pass its handler directly instead of wrapping it in a lambda —
+            one stack frame fewer on a CircuitPython pystack that is small enough
+            for label.text glyph loads at the bottom of this chain to exhaust it.
 
     Side effects:
         - Calls message_callback for each Message in the entries' down/up arrays
@@ -330,7 +334,7 @@ def dispatch_keytimes_events(events, state, btn_config, message_callback):
                 entry = entries[idx]
                 slot_messages = entry.get(slot, []) or []
                 for msg in slot_messages:
-                    message_callback(msg)
+                    message_callback(msg, *callback_args)
                 # MIDI dispatch, render-state updates, AND cycle advancement all
                 # piggyback on the slot's content: an event whose slot has no messages
                 # does nothing on any axis. The slot the user populates is the slot

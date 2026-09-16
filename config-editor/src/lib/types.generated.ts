@@ -203,6 +203,10 @@ export interface ButtonConfig {
    */
   off_mode?: "dim" | "off";
   /**
+   * Distinct LED color for the off state (e.g. green when on, blue when off). Overrides off_mode: when set, the off state renders this color at full brightness instead of a dimmed/extinguished 'color'. Omit for the off_mode behavior. Ignored on mode='keytimes' buttons — their cycle entries own the LED.
+   */
+  off_color?: "red" | "green" | "blue" | "yellow" | "cyan" | "magenta" | "orange" | "purple" | "white";
+  /**
    * Per-button MIDI channel override. Inherits global_channel if omitted.
    */
   channel?: number;

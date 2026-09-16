@@ -540,6 +540,16 @@ def validate_button(btn, index=0, global_channel=None):
         "keytimes": keytimes,
     }
 
+    # off_color (optional): a distinct full-brightness color for the off state,
+    # overriding off_mode. Absent = the off_mode dim/extinguish behavior, so an
+    # unrecognized value is dropped rather than defaulted (get_color would
+    # render it white, which reads as "on"). "off" is excluded — off_mode
+    # already covers an extinguished LED.
+    raw_off_color = btn.get("off_color")
+    if (isinstance(raw_off_color, str) and raw_off_color.lower() in _CYCLE_ENTRY_COLORS
+            and raw_off_color.lower() != "off"):
+        validated["off_color"] = raw_off_color.lower()
+
     # Select-mode fields, only persisted when mode is "select".
     if raw_mode == "select":
         validated["select_group"] = btn.get("select_group", "").strip()

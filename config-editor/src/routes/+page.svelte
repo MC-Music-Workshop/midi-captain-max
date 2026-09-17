@@ -42,7 +42,6 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
   // Event listener cleanup functions
   let unlistenConnect: (() => void) | undefined;
   let unlistenDisconnect: (() => void) | undefined;
-  let keydownHandler: ((e: KeyboardEvent) => void) | undefined;
   
   onMount(async () => {
     try {
@@ -121,17 +120,6 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
       if ($devices.length === 1) {
         await selectDevice($devices[0]);
       }
-      
-      // Add keyboard shortcut handler (⌘S to save). Cleanup runs in onDestroy.
-      keydownHandler = async (e: KeyboardEvent) => {
-        if (e.metaKey && e.key === 's') {
-          e.preventDefault();
-          if ($selectedDevice && $hasUnsavedChanges) {
-            await saveToDevice();
-          }
-        }
-      };
-      document.addEventListener('keydown', keydownHandler);
 
       // Poll for RPI-RP2 bootloader presence at 2s. Cheap call (one filesystem
       // read_dir on /Volumes); UI affordance only renders when detected.
@@ -159,9 +147,6 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
     // Clean up event listeners to prevent memory leaks
     unlistenConnect?.();
     unlistenDisconnect?.();
-    if (keydownHandler) {
-      document.removeEventListener('keydown', keydownHandler);
-    }
     if (rpiRp2PollTimer !== null) {
       clearInterval(rpiRp2PollTimer);
       rpiRp2PollTimer = null;

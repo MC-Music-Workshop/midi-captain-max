@@ -2,7 +2,7 @@
 
 use crate::config::{migrate_to_pages, MidiCaptainConfig};
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tauri::command;
@@ -469,17 +469,91 @@ pub(crate) fn halt_and_disable_autoreload(path: &Path) -> Result<(), ConfigError
     Ok(())
 }
 
+/// Read until one of `markers` shows up in the incoming text, or `timeout`
+/// elapses. Returns whether a marker was seen. Read errors other than a
+/// timeout or an interrupt end the wait — the device is gone or the port
+/// died, and the caller's next write will surface that.
+fn read_until<R: Read + ?Sized>(src: &mut R, markers: &[&str], timeout: Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    let mut seen = String::new();
+    let mut buf = [0u8; 256];
+
+    while std::time::Instant::now() < deadline {
+        match src.read(&mut buf) {
+            Ok(0) => std::thread::sleep(Duration::from_millis(10)),
+            Ok(n) => {
+                seen.push_str(&String::from_utf8_lossy(&buf[..n]));
+                if markers.iter().any(|m| seen.contains(m)) {
+                    return true;
+                }
+                // code.py can print a lot (tracebacks, MIDI logging). Keep only
+                // a tail; markers are short, and dropping from the front can't
+                // split one that is still arriving.
+                if seen.len() > 4096 {
+                    // `seen` holds decoded text, not bytes: boot output
+                    // includes button labels, and a read that splits a
+                    // multi-byte sequence leaves a 3-byte U+FFFD. Draining
+                    // on a non-boundary index panics, so walk forward to
+                    // the next one.
+                    let mut cut = seen.len() - 1024;
+                    while !seen.is_char_boundary(cut) {
+                        cut += 1;
+                    }
+                    seen.drain(..cut);
+                }
+            }
+            // An interrupted read is spurious and resumable; treating it
+            // as fatal would drop the port with the Ctrl-D still unread —
+            // the exact halt this wait exists to prevent.
+            Err(e)
+                if e.kind() == std::io::ErrorKind::TimedOut
+                    || e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(_) => return false,
+        }
+    }
+    false
+}
+
 /// Soft-reboot a CircuitPython device by sending Ctrl-C + Ctrl-D over serial.
 /// Ctrl-D resets supervisor state, including re-enabling autoreload.
+///
+/// CRITICAL: this must not return (and so drop the port) until CircuitPython
+/// has actually acted on the Ctrl-D. CircuitPython only drains its console
+/// FIFO while the USB CDC line is connected — on the host side, while this
+/// port is open. Closing it with the Ctrl-D still unread leaves the device
+/// halted at "Press any key to enter the REPL" with the reload byte sitting
+/// in the buffer, and nothing brings it back until something reopens the
+/// port. That was the "Save & Restart stops the device but never restarts
+/// it" bug: a host write to CIRCUITPY slows code.py's shutdown past the
+/// fixed 500 ms wait this used to use, so the Ctrl-D routinely arrived too
+/// early and the 100 ms hold expired before it was read.
+///
+/// So both waits are for what the device prints, not fixed sleeps:
+///   1. Ctrl-C, then wait for code.py to report that it stopped.
+///   2. Ctrl-D, then wait for CircuitPython to report the reload.
+///
+/// Each falls through on timeout — a device that answers nothing still gets
+/// the bytes, and the port is held open far longer than the old sleeps.
 pub(crate) fn soft_reboot_via_serial(path: &Path) -> Result<(), ConfigError> {
     let mut port = open_device_serial(path)?;
+    // Poll in short reads so the waits below track the device instead of
+    // blocking for the port's whole 2 s read timeout.
+    let _ = port.set_timeout(Duration::from_millis(100));
 
-    // Ctrl-C: interrupt running program, drop to REPL
+    // Ctrl-C: interrupt running program, drop to the "press any key" prompt.
     port.write_all(&[0x03]).map_err(|e| ConfigError {
         message: format!("Failed to send interrupt: {}", e),
         details: None,
     })?;
-    std::thread::sleep(Duration::from_millis(500));
+
+    // Wait for code.py to stop. ">>>" covers a device that was already halted:
+    // there the Ctrl-C is consumed as the "press any key" keypress and drops
+    // it into the REPL, which Ctrl-D reboots just the same.
+    read_until(
+        &mut *port,
+        &["Press any key", "Code done running", ">>>"],
+        Duration::from_secs(5),
+    );
 
     // Ctrl-D: soft reload — restarts code.py with new config
     port.write_all(&[0x04]).map_err(|e| ConfigError {
@@ -491,7 +565,13 @@ pub(crate) fn soft_reboot_via_serial(path: &Path) -> Result<(), ConfigError> {
         message: format!("Failed to flush serial port: {}", e),
         details: None,
     })?;
-    std::thread::sleep(Duration::from_millis(100));
+
+    // Hold the port open until CircuitPython says the reload is under way.
+    read_until(
+        &mut *port,
+        &["soft reboot", "code.py output:"],
+        Duration::from_secs(5),
+    );
 
     Ok(())
 }
@@ -809,5 +889,116 @@ mod tests {
         // Mount point itself is not a base — its children are not volumes
         assert!(!is_media_base(Path::new("/run/media/alice/MIDICAPTAIN")));
         assert!(!is_media_base(Path::new("/media/alice/MIDICAPTAIN")));
+    }
+
+    /// Reader that hands out a chunk per read, then reports timeouts forever —
+    /// a serial port that has gone quiet.
+    struct ChunkedReader {
+        chunks: Vec<&'static str>,
+    }
+
+    impl Read for ChunkedReader {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            if self.chunks.is_empty() {
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "quiet"));
+            }
+            let chunk = self.chunks.remove(0).as_bytes();
+            buf[..chunk.len()].copy_from_slice(chunk);
+            Ok(chunk.len())
+        }
+    }
+
+    #[test]
+    fn read_until_finds_marker_split_across_reads() {
+        let mut r = ChunkedReader {
+            chunks: vec!["Code done running.\r\n", "\r\nPress any ", "key to enter the REPL.\r\n"],
+        };
+        assert!(read_until(&mut r, &["Press any key"], Duration::from_secs(2)));
+    }
+
+    #[test]
+    fn read_until_gives_up_when_marker_never_arrives() {
+        let mut r = ChunkedReader { chunks: vec!["[EXP1] Ch1 CC12=23\r\n"] };
+        assert!(!read_until(&mut r, &["soft reboot"], Duration::from_millis(200)));
+    }
+
+    // A halted device answers Ctrl-C with the REPL prompt, not "Code done
+    // running" — the reboot path has to accept that as "code.py has stopped".
+    #[test]
+    fn read_until_accepts_repl_prompt() {
+        let mut r = ChunkedReader {
+            chunks: vec!["Adafruit CircuitPython 7.3.1 on 2022-06-22\r\n>>> "],
+        };
+        assert!(read_until(
+            &mut r,
+            &["Press any key", "Code done running", ">>>"],
+            Duration::from_secs(2)
+        ));
+    }
+
+    /// Emits `reps` copies of a multi-byte line, then the marker — a device
+    /// logging labelled button presses while we wait for it to reboot.
+    struct NoisyReader {
+        line: String,
+        reps: usize,
+        tail: &'static str,
+        sent_tail: bool,
+    }
+
+    impl Read for NoisyReader {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let chunk = if self.reps > 0 {
+                self.reps -= 1;
+                self.line.clone()
+            } else if !self.sent_tail {
+                self.sent_tail = true;
+                self.tail.to_string()
+            } else {
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "quiet"));
+            };
+            buf[..chunk.len()].copy_from_slice(chunk.as_bytes());
+            Ok(chunk.len())
+        }
+    }
+
+    // The tail-trim cuts by byte index, and console output carries button
+    // labels — so the cut can land inside a multi-byte character. Draining
+    // there panics, taking the whole Save & Restart command down with it.
+    #[test]
+    fn read_until_trims_without_splitting_a_character() {
+        let mut r = NoisyReader {
+            // 84 three-byte chars = 252 bytes per read. The trim fires on the
+            // 17th (4284 bytes seen) and cuts at byte 3260 — mid-character.
+            line: "\u{25b2}".repeat(84),
+            reps: 17,
+            tail: "\r\nsoft reboot\r\n",
+            sent_tail: false,
+        };
+        assert!(read_until(&mut r, &["soft reboot"], Duration::from_secs(2)));
+    }
+
+    /// Reports one interrupted read, then the marker.
+    struct InterruptingReader {
+        interrupted: bool,
+    }
+
+    impl Read for InterruptingReader {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            if !self.interrupted {
+                self.interrupted = true;
+                return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "signal"));
+            }
+            let chunk = b"\r\nsoft reboot\r\n";
+            buf[..chunk.len()].copy_from_slice(chunk);
+            Ok(chunk.len())
+        }
+    }
+
+    // EINTR is spurious and resumable. Bailing on it would drop the port with
+    // the Ctrl-D unread, leaving the device halted.
+    #[test]
+    fn read_until_resumes_after_interrupted_read() {
+        let mut r = InterruptingReader { interrupted: false };
+        assert!(read_until(&mut r, &["soft reboot"], Duration::from_secs(2)));
     }
 }

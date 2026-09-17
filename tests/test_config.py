@@ -235,6 +235,62 @@ class TestValidateButton:
         assert btn["cc_on"] == 127
         assert btn["cc_off"] == 0
     
+    def test_cc_receive_absent_by_default(self):
+        """No cc_receive means the button listens on the CC it sends."""
+        assert "cc_receive" not in validate_button({}, index=0)
+
+    def test_cc_receive_preserved(self):
+        btn = validate_button({"cc": 7, "cc_receive": 20}, index=0)
+        assert btn["cc"] == 7
+        assert btn["cc_receive"] == 20
+
+    def test_cc_receive_equal_to_cc_dropped(self):
+        """Listening on the CC you send is the default — don't store a field
+        that says nothing, so host_led isn't switched on by a no-op value."""
+        assert "cc_receive" not in validate_button({"cc": 7, "cc_receive": 7}, index=0)
+
+    def test_cc_receive_clamped_to_midi_range(self):
+        assert validate_button({"cc": 7, "cc_receive": 999}, index=0)["cc_receive"] == 127
+        assert validate_button({"cc": 7, "cc_receive": -5}, index=0)["cc_receive"] == 0
+
+    def test_cc_receive_non_int_dropped(self):
+        assert "cc_receive" not in validate_button({"cc": 7, "cc_receive": "20"}, index=0)
+        assert "cc_receive" not in validate_button({"cc": 7, "cc_receive": True}, index=0)
+
+    def test_cc_receive_ignored_on_non_cc_type(self):
+        """cc_inc/cc_dec key their shared value by cc; a note button has no CC
+        to listen on. Neither validation path persists cc_receive."""
+        assert "cc_receive" not in validate_button(
+            {"type": "cc_inc", "cc": 7, "cc_receive": 20}, index=0)
+        assert "cc_receive" not in validate_button(
+            {"type": "note", "note": 60, "cc_receive": 20}, index=0)
+
+    def test_cc_receive_ignored_on_keytimes(self):
+        """Keytimes buttons take a separate validation path and their cycle
+        entries own the LED — RX has nothing to repaint."""
+        btn = validate_button(
+            {"mode": "keytimes", "cc_receive": 20,
+             "short": [{"down": [{"type": "cc", "cc": 7, "value": 127}]}]}, index=0)
+        assert btn["mode"] == "keytimes"
+        assert "cc_receive" not in btn
+
+    def test_off_color_absent_by_default(self):
+        """No off_color means the off state keeps following off_mode."""
+        assert "off_color" not in validate_button({}, index=0)
+
+    def test_off_color_preserved_and_lowercased(self):
+        btn = validate_button({"color": "green", "off_color": "BLUE"}, index=0)
+        assert btn["off_color"] == "blue"
+
+    def test_off_color_invalid_value_dropped(self):
+        """An unknown color is dropped, not defaulted — get_color() would render
+        it white, which reads as 'on'. Falling back to off_mode is safer."""
+        assert "off_color" not in validate_button({"off_color": "chartreuse"}, index=0)
+
+    def test_off_color_off_rejected(self):
+        """'off' isn't an off_color — off_mode already extinguishes the LED."""
+        assert "off_color" not in validate_button({"off_color": "off"}, index=0)
+
     def test_preserves_existing_fields(self):
         """Keeps existing values."""
         btn = validate_button({"label": "MUTE", "cc": 99, "color": "red"}, index=5)

@@ -124,6 +124,22 @@ export interface MIDICaptainConfig {
    * MIDI Thru: echo messages received on USB MIDI back to the USB output (host loopback). Default false; enabling can cause duplicate notes or feedback when the DAW has MIDI echo enabled.
    */
   midi_thru_usb_to_usb?: boolean;
+  /**
+   * MIDI routing: send this pedal's own button/encoder/expression messages to the USB MIDI output. Default true.
+   */
+  midi_local_to_usb?: boolean;
+  /**
+   * MIDI routing: send this pedal's own button/encoder/expression messages to the 5-pin DIN output. Default true. Turn off on the device that closes a MIDI ring, so its own messages don't travel the ring and arrive back at its own input as duplicates.
+   */
+  midi_local_to_din?: boolean;
+  /**
+   * MIDI routing: act on messages received on USB MIDI (button matching, select-group tracking). Default true; turning it off makes the USB input forward-only.
+   */
+  midi_usb_to_local?: boolean;
+  /**
+   * MIDI routing: act on messages received on the 5-pin DIN input (button matching, select-group tracking). Default true; turning it off makes the DIN input forward-only, which prevents double-processing on the device that closes a MIDI ring.
+   */
+  midi_din_to_local?: boolean;
   page_control?: PageControl;
 }
 /**
@@ -187,6 +203,10 @@ export interface ButtonConfig {
    */
   off_mode?: "dim" | "off";
   /**
+   * Distinct LED color for the off state (e.g. green when on, blue when off). Overrides off_mode: when set, the off state renders this color at full brightness instead of a dimmed/extinguished 'color'. Omit for the off_mode behavior. Ignored on mode='keytimes' buttons — their cycle entries own the LED.
+   */
+  off_color?: "red" | "green" | "blue" | "yellow" | "cyan" | "magenta" | "orange" | "purple" | "white";
+  /**
    * Per-button MIDI channel override. Inherits global_channel if omitted.
    */
   channel?: number;
@@ -234,6 +254,10 @@ export interface ButtonConfig {
    * CC value sent when button is released (OFF). Default: 0.
    */
   cc_off?: number;
+  /**
+   * CC number this button LISTENS on, when it differs from the one it sends. Use when the host exposes a command input and a separate state output (e.g. a looper's play/stop trigger vs. its is-playing indicator): the button sends on 'cc' and takes its LED/state from this CC instead. Setting it makes the LED host-owned — local presses still send MIDI but no longer repaint the LED, so foot and host can't fight over it. Matched on the button's 'channel', against the same cc_on/cc_off values. type='cc' only; not available on cc_inc/cc_dec (their shared value is keyed by 'cc') or mode='keytimes'.
+   */
+  cc_receive?: number;
   /**
    * MIDI note number. Used when type='note'. Default: 60 (Middle C).
    */

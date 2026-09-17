@@ -52,6 +52,8 @@ Save button / ⌘S → saveToDevice(restart)   ← restart = ($saveMode === 'sav
   → if restart: doRestartDevice()   (no per-save "restart?" prompt)
 ```
 
+`ConfigForm.svelte` owns the ⌘S shortcut. `+page.svelte` used to register a second `keydown` listener for it, so one ⌘S fired two concurrent `saveToDevice` calls and the extra one ignored the chosen Save mode — don't reintroduce it.
+
 The Save button is a split button (`ConfigForm.svelte`): the main half runs the sticky `saveMode` store (`stores.ts`, persisted in `localStorage` under `mcm.saveMode`), the caret opens a menu that only *changes* the mode — "Save to Device" (write only; footer says restart to apply) or "Save & Restart" (write, then soft-reboot). Picking a menu item never fires a save, so a mis-click can't restart a live device.
 
 ## Schema-Driven Config Types (CRITICAL)
@@ -173,6 +175,14 @@ Mirrors `deploy.sh`'s copy order. Key rules:
 
 - **Never gate a user-initiated read on `snapshot.has_config`.** It turned the Reload button into a silent no-op (no error, no status change). Attempt the read and let a missing file error into the footer. `selectDevice` still gates on it (lower risk: its snapshot is usually fresh from a click, and it reports "No config.json found").
 - **The post-install auto-reload races the device reboot.** The install command initiates the soft reboot *before* returning, so `onInstalled → reloadFromDevice` can read during the remount window; a lost race leaves stale form state with only a footer status message. When the GUI contradicts the device, read `/Volumes/MIDICAPTAIN/config.json` directly to see which side is wrong.
+
+## Soft Reboot Over Serial (`commands::soft_reboot_via_serial`)
+
+Ctrl-C + Ctrl-D on the CDC console. Both the Restart Device button and Save & Restart go through it, and so does the end of an install.
+
+- **Hold the port open until the device acknowledges the reload.** CircuitPython only drains its console FIFO while the USB CDC line is connected — on the host side, while the port is open. Close it with the Ctrl-D still unread and the device stays halted at `Press any key to enter the REPL` with the reload byte stuck in the buffer, indefinitely. Nothing on the device recovers it; the next thing to *open* the port does, which makes the bug invisible to any test harness that reconnects to watch the console. Bench-measured on a ONE1: the old fixed `500 ms` / `100 ms` sleeps parked the device 5/5 times when a config write preceded the restart, 0/8 once both waits keyed off the device's own output (`Code done running` / `Press any key` / `>>>`, then `soft reboot` / `code.py output:`).
+- **A host write to CIRCUITPY slows the shutdown.** `write_config_raw` + `sync_all` takes ~3.6 s on a USB MSC volume, and code.py's unwind right after it runs well past a fixed half-second wait. That is why Save & Restart exposed this and the standalone Restart button mostly didn't.
+- **`Ctrl-C` on an already-halted device lands in the REPL, not the prompt.** The waiting supervisor consumes it as the "press any key" keypress, so the reboot path must accept `>>>` as "code.py has stopped". Ctrl-D reboots from there just the same.
 
 ## Reflash CircuitPython / Bootloader Entry (`enter_bootloader`, `ReflashCircuitPython.svelte`)
 

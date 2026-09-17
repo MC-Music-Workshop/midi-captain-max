@@ -3,7 +3,7 @@
   import KeytimesEditor from './KeytimesEditor.svelte';
   import CcStepFields from './CcStepFields.svelte';
   import type { ButtonConfig, ButtonColor, ButtonMode, OffMode, MessageType } from '$lib/types';
-  import { MESSAGE_TYPE_LABELS, BUTTON_MODE_LABELS } from '$lib/types';
+  import { MESSAGE_TYPE_LABELS, BUTTON_MODE_LABELS, BUTTON_COLORS } from '$lib/types';
   import { validationErrors, syncButtonStates, selectGroupNames, config } from '$lib/formStore';
   import { keytimesUsesCcStep } from '$lib/validation';
 
@@ -17,6 +17,12 @@
   }
 
   let { button, index, displayName, disabled = false, globalChannel = 0, onUpdate }: Props = $props();
+
+  // Off-state palette: the button colors. "off" isn't offered — LED Off Mode
+  // already covers an extinguished LED, and off_color overrides it when set.
+  const OFF_COLORS: ButtonColor[] = [
+    'red', 'green', 'blue', 'yellow', 'cyan', 'magenta', 'orange', 'purple', 'white',
+  ];
 
   let basePath = $derived(`buttons[${index}]`);
   let idPrefix = $derived(`btn-${index}`);
@@ -81,6 +87,12 @@
     onUpdate('off_mode', target.value as OffMode);
   }
 
+  function handleOffColorChange(e: Event) {
+    const target = e.target as HTMLSelectElement;
+    // Empty = unset, which hands the off state back to LED Off Mode.
+    onUpdate('off_color', target.value === '' ? undefined : (target.value as ButtonColor));
+  }
+
   function handleChannelChange(e: Event) {
     const target = e.target as HTMLInputElement;
     if (target.value === '') {
@@ -102,6 +114,12 @@
     const target = e.target as HTMLInputElement;
     const value = target.value === '' ? undefined : parseInt(target.value);
     onUpdate('cc_off', value);
+  }
+
+  function handleCCReceiveChange(e: Event) {
+    const target = e.target as HTMLInputElement;
+    const value = target.value === '' ? undefined : parseInt(target.value);
+    onUpdate('cc_receive', value);
   }
 
   function handleTypeChange(e: Event) {
@@ -253,6 +271,7 @@
   let channelError = $derived($validationErrors.get(`${basePath}.channel`));
   let ccOnError = $derived($validationErrors.get(`${basePath}.cc_on`));
   let ccOffError = $derived($validationErrors.get(`${basePath}.cc_off`));
+  let ccReceiveError = $derived($validationErrors.get(`${basePath}.cc_receive`));
   let noteError = $derived($validationErrors.get(`${basePath}.note`));
   let velocityOnError = $derived($validationErrors.get(`${basePath}.velocity_on`));
   let velocityOffError = $derived($validationErrors.get(`${basePath}.velocity_off`));
@@ -353,6 +372,17 @@
         value={button.cc_off !== undefined ? button.cc_off : ''} onblur={handleCCOffChange}
         disabled={disabled} min="0" max="127" placeholder="0" />
       {#if ccOffError}<span class="error-text">{ccOffError}</span>{/if}
+    </div>
+    <div class="field">
+      <label class="field-label" for={fieldId('cc-receive')}>Listen CC:</label>
+      <input id={fieldId('cc-receive')} type="number" class="input-cc" class:error={!!ccReceiveError}
+        value={button.cc_receive !== undefined ? button.cc_receive : ''} onblur={handleCCReceiveChange}
+        disabled={disabled} min="0" max="127" placeholder="(same)"
+        title="Listen for state on a different CC than the one this button sends — for hosts with a separate state output (e.g. a looper's is-playing indicator). Setting it hands the LED to the host: presses still send, but only incoming MIDI repaints." />
+      {#if ccReceiveError}<span class="error-text">{ccReceiveError}</span>{/if}
+      {#if button.cc_receive !== undefined && !ccReceiveError}
+        <span class="hint-text">LED follows the host, not the press.</span>
+      {/if}
     </div>
   {:else if isNote}
     <div class="field">
@@ -583,6 +613,22 @@
       <option value="off">Off</option>
     </select>
   </div>
+
+  {#if !isKeytimesMode}
+    <div class="field">
+      <label class="field-label" for={fieldId('off-color')}>LED Off Color:</label>
+      <select id={fieldId('off-color')} class="select" value={button.off_color ?? ''} onchange={handleOffColorChange} disabled={disabled}
+              title="A distinct color for the off state (e.g. green when playing, blue when stopped). Overrides LED Off Mode when set.">
+        <option value="">(use Off Mode)</option>
+        {#each OFF_COLORS as c}
+          <option value={c}>{c}</option>
+        {/each}
+      </select>
+      {#if button.off_color}
+        <span class="color-swatch" style="background: {BUTTON_COLORS[button.off_color]}"></span>
+      {/if}
+    </div>
+  {/if}
 
   {#if isKeytimesMode && keytimesUsesCcStep(button)}
     <!-- CC+/CC- entries are direction-only; these shared fields drive all of them (#11). -->
@@ -871,6 +917,15 @@
     color: #888;
     font-style: italic;
     margin-top: 2px;
+  }
+
+  .color-swatch {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px solid #666;
+    vertical-align: middle;
   }
 
   .states-section {

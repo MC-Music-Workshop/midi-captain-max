@@ -139,3 +139,50 @@ class TestCcStepRouting:
     def test_cc_step_does_not_shield_other_ccs(self):
         buttons = [cc_step_btn(30), toggle_btn(31)]
         assert find_cc_rx_action(buttons, 31, 64, 0) == ("state", 1)
+
+
+class TestCcReceive:
+    """cc_receive: listen on a different CC than the one sent.
+
+    Motivating case: a looper plugin exposing a momentary play/stop *command*
+    input and a separate read-only is-playing *state* output. The button sends
+    the command on cc and takes its LED from the state CC.
+    """
+
+    def test_listens_on_cc_receive_not_cc(self):
+        btn = toggle_btn(7)
+        btn["cc_receive"] = 20
+        assert find_cc_rx_action([btn], 20, 127, 0) == ("state", 0)
+
+    def test_sent_cc_no_longer_matches(self):
+        """The command CC comes back from a synced host widget carrying press
+        noise, not playback state — it must not drive the LED."""
+        btn = toggle_btn(7)
+        btn["cc_receive"] = 20
+        assert find_cc_rx_action([btn], 7, 127, 0) == (None, None)
+
+    def test_channel_still_applies(self):
+        btn = toggle_btn(7, channel=1)
+        btn["cc_receive"] = 20
+        assert find_cc_rx_action([btn], 20, 127, 0) == (None, None)
+        assert find_cc_rx_action([btn], 20, 127, 1) == ("state", 0)
+
+    def test_absent_cc_receive_keeps_bidirectional_default(self):
+        assert find_cc_rx_action([toggle_btn(7)], 7, 127, 0) == ("state", 0)
+
+    def test_shielding_follows_the_listened_on_cc(self):
+        """A select button claiming CC 20 shields a listener on CC 20, even
+        though that listener sends on 7."""
+        listener = toggle_btn(7)
+        listener["cc_receive"] = 20
+        buttons = [select_btn(20, cc_on=1), listener]
+        assert find_cc_rx_action(buttons, 20, 99, 0) == ("ignored", None)
+        assert find_cc_rx_action(buttons, 20, 1, 0) == ("select", 0)
+
+    def test_two_buttons_can_send_same_cc_and_listen_apart(self):
+        a = toggle_btn(7)
+        a["cc_receive"] = 20
+        b = toggle_btn(7)
+        b["cc_receive"] = 21
+        assert find_cc_rx_action([a, b], 20, 127, 0) == ("state", 0)
+        assert find_cc_rx_action([a, b], 21, 127, 0) == ("state", 1)

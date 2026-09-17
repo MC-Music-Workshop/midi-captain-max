@@ -540,6 +540,16 @@ def validate_button(btn, index=0, global_channel=None):
         "keytimes": keytimes,
     }
 
+    # off_color (optional): a distinct full-brightness color for the off state,
+    # overriding off_mode. Absent = the off_mode dim/extinguish behavior, so an
+    # unrecognized value is dropped rather than defaulted (get_color would
+    # render it white, which reads as "on"). "off" is excluded — off_mode
+    # already covers an extinguished LED.
+    raw_off_color = btn.get("off_color")
+    if (isinstance(raw_off_color, str) and raw_off_color.lower() in _CYCLE_ENTRY_COLORS
+            and raw_off_color.lower() != "off"):
+        validated["off_color"] = raw_off_color.lower()
+
     # Select-mode fields, only persisted when mode is "select".
     if raw_mode == "select":
         validated["select_group"] = btn.get("select_group", "").strip()
@@ -562,6 +572,15 @@ def validate_button(btn, index=0, global_channel=None):
                 "[CONFIG WARN] Button " + str(index + 1) + " has cc_on == cc_off (" + str(validated["cc_on"]) + "); "
                 "incoming MIDI can never turn this button off — cc_on wins the match."
             )
+        # cc_receive: listen on a different CC than the one sent, for hosts that
+        # split "command in" from "state out". Persisted only when it actually
+        # differs — same-CC is the default behavior and needs no field. Setting
+        # it hands the LED to the host (see handle_switches in code.py).
+        raw_rx_cc = btn.get("cc_receive")
+        if isinstance(raw_rx_cc, int) and not isinstance(raw_rx_cc, bool):
+            raw_rx_cc = max(0, min(127, raw_rx_cc))
+            if raw_rx_cc != validated["cc"]:
+                validated["cc_receive"] = raw_rx_cc
     elif msg_type == "note":
         validated["note"] = btn.get("note", 60)
         validated["velocity_on"] = btn.get("velocity_on", 127)
@@ -867,6 +886,33 @@ def get_midi_thru_usb_to_usb(cfg):
     back to the host can cause duplicate notes or feedback when the DAW also
     has MIDI echo enabled. Opt-in for niche routing setups."""
     return bool(cfg.get("midi_thru_usb_to_usb", False))
+
+
+def get_midi_local_to_usb(cfg):
+    """This pedal's own messages -> USB output. Default True."""
+    return bool(cfg.get("midi_local_to_usb", True))
+
+
+def get_midi_local_to_din(cfg):
+    """This pedal's own messages -> 5-pin DIN output. Default True.
+
+    Turn off on the device that closes a MIDI ring (its DIN out feeds a chain
+    that loops back to its own DIN in): otherwise its own messages travel the
+    ring and are forwarded to the host a second time by DIN->USB thru."""
+    return bool(cfg.get("midi_local_to_din", True))
+
+
+def get_midi_usb_to_local(cfg):
+    """USB input -> this pedal (button matching, select-group tracking).
+    Default True; False makes the USB input forward-only."""
+    return bool(cfg.get("midi_usb_to_local", True))
+
+
+def get_midi_din_to_local(cfg):
+    """5-pin DIN input -> this pedal (button matching, select-group tracking).
+    Default True; False makes the DIN input forward-only, which stops the
+    ring-closing device acting twice on a message the host sent it directly."""
+    return bool(cfg.get("midi_din_to_local", True))
 
 
 def get_dev_mode(cfg):

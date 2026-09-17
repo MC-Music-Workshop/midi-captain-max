@@ -16,6 +16,10 @@ from core.config import (
     get_midi_thru_din_to_usb,
     get_midi_thru_din_to_din,
     get_midi_thru_usb_to_usb,
+    get_midi_local_to_usb,
+    get_midi_local_to_din,
+    get_midi_usb_to_local,
+    get_midi_din_to_local,
 )
 
 
@@ -195,3 +199,63 @@ def test_midi_thru_routes_independent():
     assert get_midi_thru_din_to_usb(cfg) is True
     assert get_midi_thru_din_to_din(cfg) is True
 
+
+# ── local routing tests ───────────────────────────────────────────────────────
+# Where this pedal's own messages go (local->USB/DIN) and which inputs it acts
+# on (USB/DIN->local). All default True: every port live, as before the flags.
+
+
+def test_get_midi_local_to_usb_default_true():
+    assert get_midi_local_to_usb({}) is True
+
+
+def test_get_midi_local_to_usb_explicit_false():
+    assert get_midi_local_to_usb({"midi_local_to_usb": False}) is False
+
+
+def test_get_midi_local_to_usb_coercion():
+    assert get_midi_local_to_usb({"midi_local_to_usb": 1}) is True
+    assert get_midi_local_to_usb({"midi_local_to_usb": 0}) is False
+    assert get_midi_local_to_usb({"midi_local_to_usb": None}) is False
+
+
+def test_get_midi_local_to_din_default_true():
+    assert get_midi_local_to_din({}) is True
+
+
+def test_get_midi_local_to_din_explicit_false():
+    assert get_midi_local_to_din({"midi_local_to_din": False}) is False
+
+
+def test_get_midi_local_to_din_coercion():
+    assert get_midi_local_to_din({"midi_local_to_din": 1}) is True
+    assert get_midi_local_to_din({"midi_local_to_din": 0}) is False
+    assert get_midi_local_to_din({"midi_local_to_din": None}) is False
+
+
+def test_get_midi_usb_to_local_default_true():
+    assert get_midi_usb_to_local({}) is True
+
+
+def test_get_midi_usb_to_local_explicit_false():
+    assert get_midi_usb_to_local({"midi_usb_to_local": False}) is False
+
+
+def test_get_midi_usb_to_local_coercion():
+    assert get_midi_usb_to_local({"midi_usb_to_local": 1}) is True
+    assert get_midi_usb_to_local({"midi_usb_to_local": 0}) is False
+    assert get_midi_usb_to_local({"midi_usb_to_local": None}) is False
+
+
+def test_get_midi_din_to_local_default_true():
+    assert get_midi_din_to_local({}) is True
+
+
+def test_get_midi_din_to_local_explicit_false():
+    assert get_midi_din_to_local({"midi_din_to_local": False}) is False
+
+
+def test_get_midi_din_to_local_coercion():
+    assert get_midi_din_to_local({"midi_din_to_local": 1}) is True
+    assert get_midi_din_to_local({"midi_din_to_local": 0}) is False
+    assert get_midi_din_to_local({"midi_din_to_local": None}) is False

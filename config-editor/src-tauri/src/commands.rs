@@ -471,8 +471,8 @@ pub(crate) fn halt_and_disable_autoreload(path: &Path) -> Result<(), ConfigError
 
 /// Read until one of `markers` shows up in the incoming text, or `timeout`
 /// elapses. Returns whether a marker was seen. Read errors other than a
-/// timeout end the wait — the device is gone or the port died, and the
-/// caller's next write will surface that.
+/// timeout or an interrupt end the wait — the device is gone or the port
+/// died, and the caller's next write will surface that.
 fn read_until<R: Read + ?Sized>(src: &mut R, markers: &[&str], timeout: Duration) -> bool {
     let deadline = std::time::Instant::now() + timeout;
     let mut seen = String::new();
@@ -490,10 +490,24 @@ fn read_until<R: Read + ?Sized>(src: &mut R, markers: &[&str], timeout: Duration
                 // a tail; markers are short, and dropping from the front can't
                 // split one that is still arriving.
                 if seen.len() > 4096 {
-                    seen.drain(..seen.len() - 1024);
+                    // `seen` holds decoded text, not bytes: boot output
+                    // includes button labels, and a read that splits a
+                    // multi-byte sequence leaves a 3-byte U+FFFD. Draining
+                    // on a non-boundary index panics, so walk forward to
+                    // the next one.
+                    let mut cut = seen.len() - 1024;
+                    while !seen.is_char_boundary(cut) {
+                        cut += 1;
+                    }
+                    seen.drain(..cut);
                 }
             }
-            Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {}
+            // An interrupted read is spurious and resumable; treating it
+            // as fatal would drop the port with the Ctrl-D still unread —
+            // the exact halt this wait exists to prevent.
+            Err(e)
+                if e.kind() == std::io::ErrorKind::TimedOut
+                    || e.kind() == std::io::ErrorKind::Interrupted => {}
             Err(_) => return false,
         }
     }
@@ -920,5 +934,71 @@ mod tests {
             &["Press any key", "Code done running", ">>>"],
             Duration::from_secs(2)
         ));
+    }
+
+    /// Emits `reps` copies of a multi-byte line, then the marker — a device
+    /// logging labelled button presses while we wait for it to reboot.
+    struct NoisyReader {
+        line: String,
+        reps: usize,
+        tail: &'static str,
+        sent_tail: bool,
+    }
+
+    impl Read for NoisyReader {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let chunk = if self.reps > 0 {
+                self.reps -= 1;
+                self.line.clone()
+            } else if !self.sent_tail {
+                self.sent_tail = true;
+                self.tail.to_string()
+            } else {
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "quiet"));
+            };
+            buf[..chunk.len()].copy_from_slice(chunk.as_bytes());
+            Ok(chunk.len())
+        }
+    }
+
+    // The tail-trim cuts by byte index, and console output carries button
+    // labels — so the cut can land inside a multi-byte character. Draining
+    // there panics, taking the whole Save & Restart command down with it.
+    #[test]
+    fn read_until_trims_without_splitting_a_character() {
+        let mut r = NoisyReader {
+            // 84 three-byte chars = 252 bytes per read. The trim fires on the
+            // 17th (4284 bytes seen) and cuts at byte 3260 — mid-character.
+            line: "\u{25b2}".repeat(84),
+            reps: 17,
+            tail: "\r\nsoft reboot\r\n",
+            sent_tail: false,
+        };
+        assert!(read_until(&mut r, &["soft reboot"], Duration::from_secs(2)));
+    }
+
+    /// Reports one interrupted read, then the marker.
+    struct InterruptingReader {
+        interrupted: bool,
+    }
+
+    impl Read for InterruptingReader {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            if !self.interrupted {
+                self.interrupted = true;
+                return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "signal"));
+            }
+            let chunk = b"\r\nsoft reboot\r\n";
+            buf[..chunk.len()].copy_from_slice(chunk);
+            Ok(chunk.len())
+        }
+    }
+
+    // EINTR is spurious and resumable. Bailing on it would drop the port with
+    // the Ctrl-D unread, leaving the device halted.
+    #[test]
+    fn read_until_resumes_after_interrupted_read() {
+        let mut r = InterruptingReader { interrupted: false };
+        assert!(read_until(&mut r, &["soft reboot"], Duration::from_secs(2)));
     }
 }

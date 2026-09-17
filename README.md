@@ -121,7 +121,7 @@ Example — a reverb button that cycles 50% → 75% → 100% wet on each tap:
 
 Each state can specify `down` and/or `up` message lists (any message type: `cc`, `pc`, `note`, HID, etc.) and a `color`. Add a `long` array to give long holds their own separate cycle; the tap/hold boundary is set by the top-level `long_press_threshold_ms` (default 500).
 
-See [`firmware/dev/config-example-keytimes.json`](firmware/dev/config-example-keytimes.json) and [`config-example-keytimes-mode.json`](firmware/dev/config-example-keytimes-mode.json) for full working examples, and the [design doc](docs/plans/2026-05-13-issue-48-press-timings.md) for details.
+Full walkthrough — press events, when cycles advance, LED/label rules, `long_overlay`, and page behavior — in the **[Keytimes Guide](https://mc-music-workshop.github.io/midi-captain-max/docs/keytimes)**. Working configs: [`config-example-keytimes.json`](firmware/dev/config-example-keytimes.json) and [`config-example-keytimes-mode.json`](firmware/dev/config-example-keytimes-mode.json).
 
 ## License
 

@@ -257,6 +257,10 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
         const ccError = validators.cc(btn.cc);
         if (ccError) errors.set(`buttons[${idx}].cc`, ccError);
       }
+      if (btn.cc_receive !== undefined) {
+        const e = validators.cc(btn.cc_receive);
+        if (e) errors.set(`buttons[${idx}].cc_receive`, e);
+      }
     } else if (msgType === 'note') {
       if (btn.note !== undefined) {
         const noteError = validators.note(btn.note);

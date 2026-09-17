@@ -572,6 +572,15 @@ def validate_button(btn, index=0, global_channel=None):
                 "[CONFIG WARN] Button " + str(index + 1) + " has cc_on == cc_off (" + str(validated["cc_on"]) + "); "
                 "incoming MIDI can never turn this button off — cc_on wins the match."
             )
+        # cc_receive: listen on a different CC than the one sent, for hosts that
+        # split "command in" from "state out". Persisted only when it actually
+        # differs — same-CC is the default behavior and needs no field. Setting
+        # it hands the LED to the host (see handle_switches in code.py).
+        raw_rx_cc = btn.get("cc_receive")
+        if isinstance(raw_rx_cc, int) and not isinstance(raw_rx_cc, bool):
+            raw_rx_cc = max(0, min(127, raw_rx_cc))
+            if raw_rx_cc != validated["cc"]:
+                validated["cc_receive"] = raw_rx_cc
     elif msg_type == "note":
         validated["note"] = btn.get("note", 60)
         validated["velocity_on"] = btn.get("velocity_on", 127)

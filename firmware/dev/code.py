@@ -1444,17 +1444,26 @@ def handle_switches():
                 cc = state_cfg.get("cc", 20 + idx)
                 cc_on = state_cfg.get("cc_on", 127)
                 cc_off = state_cfg.get("cc_off", 0)
+                # cc_receive hands the LED to the host: the press still sends, but
+                # only the incoming state CC repaints. Without this the foot and the
+                # host fight — momentary would darken the LED on every release even
+                # while the host reports the state still on.
+                host_led = "cc_receive" in btn_config
                 if mode == "momentary":
                     val = cc_on if pressed else cc_off
-                    set_button_state(btn_num, pressed)
+                    if not host_led:
+                        set_button_state(btn_num, pressed)
                     midi_send(ControlChange(cc, val), channel=channel)
                     print(f"[MIDI TX] Ch{channel+1} CC{cc}={val} (switch {btn_num}, momentary)")
                     update_status(f"TX CC{cc}={val}")
                 elif pressed:
-                    # Keytimes cycling always stays on; standard toggle flips on/off
+                    # Keytimes cycling always stays on; standard toggle flips on/off.
+                    # The flip still runs under host_led — RX writes the same state,
+                    # so the next press sends the opposite of what the host last reported.
                     new_state = True if btn_state.keytimes > 1 else not btn_state.state
                     btn_state.state = new_state
-                    set_button_state(btn_num, new_state)
+                    if not host_led:
+                        set_button_state(btn_num, new_state)
                     val = cc_on if new_state else cc_off
                     midi_send(ControlChange(cc, val), channel=channel)
                     print(f"[MIDI TX] Ch{channel+1} CC{cc}={val} (switch {btn_num}, toggle)")

@@ -17,7 +17,12 @@ def find_cc_rx_action(buttons, cc, val, channel):
       fields — claims its (cc, channel) outright: ("cc_step", i). The value
       is not gated; code.py stores it as the new shared value. Configs must
       not put a plain cc button on the same (cc, channel).
-    - Buttons match on type=="cc" (default), cc number, and channel.
+    - Buttons match on type=="cc" (default), cc number, and channel. A button
+      with cc_receive listens on THAT number instead of the one it sends, so a
+      host that exposes a command input and a separate state output can drive
+      the LED from the state output. Everything below — select matching,
+      shielding — is in terms of the listened-on number, so two buttons
+      "share a CC" when they listen on the same one.
     - First matching non-select button gets the "state" action (its
       ButtonState.on_midi_receive decides on/off; see core/button.py — the
       exact cc_on/cc_off match there is the non-select twin of the select
@@ -52,7 +57,10 @@ def find_cc_rx_action(buttons, cc, val, channel):
             continue
         if btn.get("type", "cc") != "cc":
             continue
-        if btn.get("cc") != cc or btn.get("channel", 0) != channel:
+        # cc_receive decouples listening from sending; absent, the button
+        # listens on the CC it sends (the original bidirectional behavior).
+        rx_cc = btn["cc_receive"] if "cc_receive" in btn else btn.get("cc")
+        if rx_cc != cc or btn.get("channel", 0) != channel:
             continue
         if btn.get("mode") == "select":
             if val == btn.get("cc_on", 127):

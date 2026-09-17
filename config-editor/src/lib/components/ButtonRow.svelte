@@ -116,6 +116,12 @@
     onUpdate('cc_off', value);
   }
 
+  function handleCCReceiveChange(e: Event) {
+    const target = e.target as HTMLInputElement;
+    const value = target.value === '' ? undefined : parseInt(target.value);
+    onUpdate('cc_receive', value);
+  }
+
   function handleTypeChange(e: Event) {
     const target = e.target as HTMLSelectElement;
     const newType = target.value as MessageType;
@@ -265,6 +271,7 @@
   let channelError = $derived($validationErrors.get(`${basePath}.channel`));
   let ccOnError = $derived($validationErrors.get(`${basePath}.cc_on`));
   let ccOffError = $derived($validationErrors.get(`${basePath}.cc_off`));
+  let ccReceiveError = $derived($validationErrors.get(`${basePath}.cc_receive`));
   let noteError = $derived($validationErrors.get(`${basePath}.note`));
   let velocityOnError = $derived($validationErrors.get(`${basePath}.velocity_on`));
   let velocityOffError = $derived($validationErrors.get(`${basePath}.velocity_off`));
@@ -366,6 +373,19 @@
         disabled={disabled} min="0" max="127" placeholder="0" />
       {#if ccOffError}<span class="error-text">{ccOffError}</span>{/if}
     </div>
+    {#if !isKeytimesMode}
+      <div class="field">
+        <label class="field-label" for={fieldId('cc-receive')}>Listen CC:</label>
+        <input id={fieldId('cc-receive')} type="number" class="input-cc" class:error={!!ccReceiveError}
+          value={button.cc_receive !== undefined ? button.cc_receive : ''} onblur={handleCCReceiveChange}
+          disabled={disabled} min="0" max="127" placeholder="(same)"
+          title="Listen for state on a different CC than the one this button sends — for hosts with a separate state output (e.g. a looper's is-playing indicator). Setting it hands the LED to the host: presses still send, but only incoming MIDI repaints." />
+        {#if ccReceiveError}<span class="error-text">{ccReceiveError}</span>{/if}
+        {#if button.cc_receive !== undefined && !ccReceiveError}
+          <span class="hint-text">LED follows the host, not the press.</span>
+        {/if}
+      </div>
+    {/if}
   {:else if isNote}
     <div class="field">
       <label class="field-label" for={fieldId('note')}>Note:</label>

@@ -255,6 +255,10 @@ export interface ButtonConfig {
    */
   cc_off?: number;
   /**
+   * CC number this button LISTENS on, when it differs from the one it sends. Use when the host exposes a command input and a separate state output (e.g. a looper's play/stop trigger vs. its is-playing indicator): the button sends on 'cc' and takes its LED/state from this CC instead. Setting it makes the LED host-owned — local presses still send MIDI but no longer repaint the LED, so foot and host can't fight over it. Matched on the button's 'channel', against the same cc_on/cc_off values. type='cc' only; not available on cc_inc/cc_dec (their shared value is keyed by 'cc') or mode='keytimes'.
+   */
+  cc_receive?: number;
+  /**
    * MIDI note number. Used when type='note'. Default: 60 (Middle C).
    */
   note?: number;

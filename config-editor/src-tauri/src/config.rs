@@ -246,6 +246,9 @@ pub struct ButtonConfig {
     pub cc_on: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cc_off: Option<u8>,
+    /// CC this button listens on, when it differs from the one it sends.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_receive: Option<u8>,
     // Note fields
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<u8>,
@@ -1466,7 +1469,7 @@ mod tests {
                 message_type: MessageType::Cc,
                 mode: ButtonMode::Toggle,
                 off_mode: OffMode::Dim, off_color: None,
-                channel: None, cc: Some(20 + i as u8), cc_on: None, cc_off: None,
+                channel: None, cc: Some(20 + i as u8), cc_on: None, cc_off: None, cc_receive: None,
                 note: None, velocity_on: None, velocity_off: None,
                 program: None, pc_step: None, page_step: None, page: None, flash_ms: None,
                 cc_step: None, cc_slots: None, cc_min: None, cc_max: None, cc_wrap: None,

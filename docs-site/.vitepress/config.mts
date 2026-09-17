@@ -42,6 +42,7 @@ export default defineConfig({
       {
         text: 'Guides',
         items: [
+          { text: 'Installation', link: '/installation' },
           { text: 'Inbound MIDI', link: '/inbound-midi' },
           { text: 'Page Control (MIDI-IN)', link: '/page-control' },
           { text: 'MIDI Thru Matrix', link: '/midi-thru' },

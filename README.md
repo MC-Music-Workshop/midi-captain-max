@@ -44,72 +44,17 @@ See the [open issues](https://github.com/MC-Music-Workshop/midi-captain-max/issu
 
 ## Installation
 
-### Step 1: Back Up Your Device
+Full walkthrough: **[Installation Guide](https://mc-music-workshop.github.io/midi-captain-max/docs/installation)** — first install on OEM firmware, updating, CircuitPython version errors, the deploy script, and recovery.
 
-Before installing anything, back up your existing firmware and config so you can recover or revert to the OEM firmware later:
+The short version:
 
-1. Connect the device via USB. If no drive appears, hold **Switch 1 / KEY0** while plugging in — a `MIDICAPTAIN` (or `CIRCUITPY`) drive should mount.
-2. Copy the entire contents of the drive to a safe place on your computer.
+1. **Back up your device.** Connect via USB (hold **Switch 1 / KEY0** while plugging in if no drive appears) and copy the entire drive somewhere safe.
+2. **Download the Config Editor** for your OS from the [latest release](https://github.com/MC-Music-Workshop/midi-captain-max/releases/latest) — `.dmg` (macOS), `.exe` / `.msi` (Windows), `.AppImage` / `.deb` (Linux). It bundles the firmware, so there's no separate firmware download.
+3. **Install the firmware:** open the editor, scroll to **Firmware Installation** at the bottom of the window, and click **Install Firmware**. Your `config.json` is preserved unless you enable **Reset config.json to bundled defaults**.
 
-### Step 2: Download the Config Editor
-
-Grab the installer for your OS from the [latest release](https://github.com/MC-Music-Workshop/midi-captain-max/releases/latest):
-
-| OS | File |
-|----|------|
-| macOS | `MIDI-Captain-MAX-Config-Editor-<version>.dmg` |
-| Windows | `...-setup.exe` or `.msi` |
-| Linux | `.AppImage` or `.deb` |
-
-The Config Editor bundles the firmware — no separate firmware download is needed.
+Devices still running the factory Paint Audio firmware need a one-time device-type step first, and 2026-batch devices (CircuitPython 9.2.7) need a **Reflash CircuitPython 7.3.1** first — both are covered in the guide.
 
 > **Prefer the command line, or on an unsupported OS?** Download `MIDI-Captain-MAX-<version>-complete.zip` instead. It contains the firmware plus `deploy.sh` / `deploy.ps1` install scripts — see the bundled [`INSTALL.md`](firmware/dev/INSTALL.md) for usage.
-
-### Step 3: Install the Firmware
-
-**If your device already runs MIDI Captain MAX** (or you're updating):
-
-1. Connect the device via USB and power it on. It mounts as `CIRCUITPY` or `MIDICAPTAIN`; if no drive appears, hold **Switch 1 / KEY0** while plugging in.
-2. Open the Config Editor.
-3. Scroll to the **Firmware Installation** section at the bottom of the window. It shows the installed firmware version and the bundled version available.
-4. Click **Install Firmware**.
-
-The editor copies the firmware and reloads the device in place. Your existing `config.json` is preserved by default; enable **Reset config.json to bundled defaults** only if you want to start over from the default template.
-
-**If your device still runs the factory Paint Audio firmware**, the Config Editor shows `OEM (no VERSION.txt file)` and a one-time bootstrap is needed, because the OEM firmware has no `config.json` for device-type detection:
-
-1. Hold **Switch 1 / KEY0** while plugging in USB. A `MIDICAPTAIN` drive appears.
-2. Download and extract `MIDI-Captain-MAX-<version>-complete.zip` from the [latest release](https://github.com/MC-Music-Workshop/midi-captain-max/releases/latest).
-3. Run the deploy script once with your device type (pick **one** — e.g. for a Nano 4, use `nano4`):
-
-   - macOS / Linux: `./deploy.sh --device nano4`
-   - Windows PowerShell: `.\deploy.ps1 -Device nano4`
-   - Windows cmd (if PowerShell blocks unsigned scripts): `deploy.bat -Device nano4` — runs `deploy.ps1` with a per-process `ExecutionPolicy Bypass`; no system policy is changed.
-
-   Valid device types: `std10`, `mini6`, `nano4`, `duo2`, `one1`.
-
-4. Reconnect the device and open the Config Editor.
-5. From then on, use the **Firmware Installation** section in the app for updates — the script is never needed again.
-
-## Troubleshooting and Recovery
-
-### CircuitPython version mismatch
-
-If the Config Editor refuses to install with a CircuitPython version error, your device is running a newer CircuitPython than this firmware supports (typical for 2026-batch Captains, which ship with CP 9.2.7). MIDI Captain MAX currently targets **CP 7.3.1** — see [#2](https://github.com/MC-Music-Workshop/midi-captain-max/issues/2) for the planned CP 9/10 migration and [#132](https://github.com/MC-Music-Workshop/midi-captain-max/issues/132) for background.
-
-**Easiest fix:** in the Config Editor's **Firmware Installation** section, expand **Advanced / Recovery** and click **Reflash CircuitPython 7.3.1**. The editor drives the device into the RP2040 bootloader, copies the bundled `.uf2`, and waits for the drive to remount — no terminal work required. Then click **Install Firmware**.
-
-**Manual fallback** (only if the GUI's automatic bootloader entry fails): follow [`docs/recovery-bootloader-entry.md`](docs/recovery-bootloader-entry.md) to reach the `RPI-RP2` bootloader drive, then copy the CP 7.3.1 `.uf2` from the `-complete.zip` release asset onto it. The device reboots into `CIRCUITPY` automatically.
-
-> ⚠️ **Switch 1 / KEY0 does not enter the RP2040 bootloader.** It only makes the running firmware expose the USB drive. To reach `RPI-RP2`, use the Config Editor's reflash button or the recovery guide above.
-
-### Bad state / starting over
-
-Everything is recoverable:
-
-1. Mount the device (hold **Switch 1 / KEY0** while plugging in if needed).
-2. Delete the drive's contents.
-3. Restore your backup, or redo the install steps above.
 
 ## Configuration
 

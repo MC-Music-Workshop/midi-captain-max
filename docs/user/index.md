@@ -4,6 +4,7 @@ User guides for **MIDI Captain MAX (MCM)** — open-source firmware and a deskto
 
 ## Guides
 
+- [Installation](./installation.md) — install or update the firmware, first install on OEM devices, recovery
 - [Inbound MIDI](./inbound-midi.md) — host-to-device button sync: state mode and select mode
 - [Page Control (MIDI-IN)](./page-control.md) — let an inbound CC jump or step through pages
 - [MIDI Thru Matrix](./midi-thru.md) — routing MIDI between USB and 5-pin DIN

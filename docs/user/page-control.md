@@ -70,7 +70,7 @@ Practical implication: pick CC numbers for `jump`/`inc`/`dec` that don't collide
 
 Two details worth knowing:
 
-- **MIDI THRU still forwards it.** The short-circuit only applies to MCM's own button/page logic. The message is still relayed downstream per your [THRU matrix](./midi-thru.md) settings — Page Control never blocks forwarding.
+- **MIDI THRU still forwards it.** The short-circuit only applies to MCM's own button/page logic. The message is still relayed downstream per your [routing matrix](./midi-thru.md) settings — Page Control never blocks forwarding.
 - **Same-page requests are absorbed, not passed through.** If the resolved target equals the current page (e.g. `jump` to the page you're already on, or `inc` on a single-page config), nothing visibly happens — no page rebuild, no status line update. But the CC still counts as handled and does *not* fall through to button processing.
 
 ## Worked example: DAW transport-linked pages

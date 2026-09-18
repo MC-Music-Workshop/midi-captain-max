@@ -11,13 +11,16 @@ MCM listens on both inputs simultaneously:
 - **USB MIDI** — messages from the connected host
 - **5-pin DIN MIDI IN** — messages from other hardware
 
-Both feed the same processing. A message matches a button when the message type, number, and channel all line up with that button's config:
+Both feed the same processing, unless you've turned an input's route to the pedal off in the [routing matrix](./midi-thru.md) — that makes the port forward-only and nothing on it matches buttons. A message matches a button when the message type, number, and channel all line up with that button's config:
 
 | Button type | Matches on |
 |---|---|
-| `cc` | CC number + channel |
+| `cc` | CC number + channel (or `cc_receive`, see below) |
 | `note` | Note number + channel |
 | `pc` | Program number + channel (select mode only) |
+| `cc_inc` / `cc_dec` | CC number + channel, any value (see Mode 3 below) |
+
+Keytimes buttons don't match inbound MIDI, unless they carry CC+/CC- fields.
 
 Channels are matched exactly. A button configured for channel 1 ignores the same CC on channel 2. (Config files use 0-indexed channels; the editor displays 1–16.)
 
@@ -45,6 +48,21 @@ If several non-select buttons share the same CC and channel, the **first matchin
 
 - **NoteOn** with velocity > 0 → button on
 - **NoteOn** with velocity 0, or **NoteOff** → button off
+
+### Listening on a different CC: `cc_receive`
+
+Some hosts take commands on one CC and report state on another — a looper's play/stop trigger vs. its is-playing indicator. Set `cc_receive` and the button **sends** on `cc` but **listens** on `cc_receive`:
+
+```jsonc
+{ "type": "cc", "cc": 20, "cc_receive": 21, "label": "LOOP" }
+```
+
+Presses send CC 20; the LED follows CC 21. Two things to know:
+
+- **The LED becomes host-owned.** A press still sends MIDI, but no longer lights the button — only the host's reply does. Foot and host can't disagree.
+- **Shared-CC rules use the listened-on number.** Select matching, shielding and scan order all treat two buttons as "sharing a CC" when they *listen* on the same one.
+
+CC only — note buttons have no equivalent.
 
 ### Example: Ableton track-arm feedback
 
@@ -118,16 +136,28 @@ Select buttons of type `pc` activate on an exact **program number** match on the
 
 The `select_repress` setting (`resend` / `nothing` / `deselect`) applies **only to physical presses**. Inbound activation is idempotent: receiving the same message twice just confirms the LED state, sends nothing, and deselects nothing.
 
+## Mode 3: CC+ / CC- buttons
+
+A `cc_inc` / `cc_dec` button (and a keytimes button carrying CC+/CC- fields) owns its CC number outright: the incoming value simply **becomes** the shared value, clamped to the button's range.
+
+```jsonc
+{ "type": "cc_inc", "cc": 30, "label": "GAIN" }
+```
+
+Press it and the value steps up; send CC 30 = 64 from the host and the value jumps to 64. No `cc_on`/`cc_off` check, no >63 fallback, no select shielding — any value is accepted. The LED and label repaint only when the value actually changes (or in SLOT mode, when the slot changes).
+
+Don't put a plain `cc` button on the same CC and channel — the CC+/CC- button claims it first.
+
 ## Status line
 
 Every handled inbound message briefly shows on the LCD status line (e.g. `RX CC69=2`), which makes wiring up host feedback easy to verify without a MIDI monitor.
 
 ## Quick reference
 
-| | State sync | Select sync |
-|---|---|---|
-| Applies to | `cc` (non-select), `note` | `cc` / `pc` with `mode: "select"` |
-| Match rule | exact `cc_on`/`cc_off`, else >63 fallback | exact `cc_on` (CC) or program (PC) only |
-| Non-matching values | flip via >63 fallback | ignored (shielded) |
-| Effect | that button on/off | activate button, dim group siblings |
-| Sends MIDI back? | never | never |
+| | State sync | Select sync | CC+ / CC- |
+|---|---|---|---|
+| Applies to | `cc` (non-select), `note` | `cc` / `pc` with `mode: "select"` | `cc_inc`, `cc_dec` |
+| Match rule | exact `cc_on`/`cc_off`, else >63 fallback | exact `cc_on` (CC) or program (PC) only | any value on its CC |
+| Non-matching values | flip via >63 fallback | ignored (shielded) | n/a — all values accepted |
+| Effect | that button on/off | activate button, dim group siblings | value becomes the new shared value |
+| Sends MIDI back? | never | never | never |

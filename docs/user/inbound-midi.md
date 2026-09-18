@@ -2,162 +2,93 @@
 
 The stock MIDI Captain firmware is send-only: the pedal talks, nothing talks back. MCM is bidirectional. Your host — Helix, Ableton, MainStage, a lighting rig, anything that can send MIDI — can drive the pedal's LEDs and button state, so what you see on the floor always matches what's actually happening in the rig.
 
-This document covers the two per-button receive modes: **state sync** and **select sync**. Two related inbound features — [MIDI-IN page switching](./page-control.md) and the [MIDI routing matrix](./midi-thru.md) — are documented separately.
+This page covers the three ways a button reacts to incoming MIDI. Two related features, [MIDI-IN page switching](./page-control.md) and the [MIDI routing matrix](./midi-thru.md), are documented separately.
 
-## How messages arrive
+## The basics
 
-MCM listens on both inputs simultaneously:
+- MCM listens on **USB** and **5-pin DIN** at the same time. (Unless you've made an input forward-only in the [routing matrix](./midi-thru.md).)
+- A message reaches a button when the **type**, **number** and **channel** all match that button's settings. Channels match exactly — a button on channel 1 ignores the same CC on channel 2.
+- Only buttons on the **active page** react.
+- Receiving is **LED-and-state-only**. An inbound message never makes the pedal send MIDI back, so you can safely wire your host to echo every change to the pedal — no feedback loops.
+- Every message that lands shows briefly on the LCD status line (e.g. `RX CC69=2`), so you can verify your wiring without a MIDI monitor.
 
-- **USB MIDI** — messages from the connected host
-- **5-pin DIN MIDI IN** — messages from other hardware
+## Mode 1: State sync
 
-Both feed the same processing, unless you've turned an input's route to the pedal off in the [routing matrix](./midi-thru.md) — that makes the port forward-only and nothing on it matches buttons. A message matches a button when the message type, number, and channel all line up with that button's config:
+Any **CC** or **Note** button that isn't in Select mode simply follows the host: whatever it says, the button becomes.
 
-| Button type | Matches on |
-|---|---|
-| `cc` | CC number + channel (or `cc_receive`, see below) |
-| `note` | Note number + channel |
-| `pc` | Program number + channel (select mode only) |
-| `cc_inc` / `cc_dec` | CC number + channel, any value (see Mode 3 below) |
+![A toggle button set to CC 20, ON Value 127, OFF Value 0](./img/inbound-midi/state-sync-toggle.png)
 
-Keytimes buttons don't match inbound MIDI, unless they carry CC+/CC- fields.
+For CC buttons the incoming value is checked against **ON Value** and **OFF Value**. Anything else falls back to the classic MIDI convention — above 63 is on, 63 or below is off — so hosts that only send 0 and 127 keep working even if you've customized those fields.
 
-Channels are matched exactly. A button configured for channel 1 ignores the same CC on channel 2. (Config files use 0-indexed channels; the editor displays 1–16.)
+Note buttons turn on for a NoteOn with velocity above zero, and off for a NoteOff or a NoteOn at velocity 0.
 
-Receiving is **LED-and-state-only**: an inbound message updates the pedal's display and internal state but never causes the pedal to re-send MIDI. There is no feedback-loop risk — you can safely wire your host to echo every change back to the pedal.
+If two non-Select buttons share the same CC and channel, the **first one in the list wins** — scan order runs top-left to bottom-right.
 
-Only buttons on the **active page** react to inbound messages.
+### Scenario: Ableton track-arm feedback
 
-## Mode 1: State sync (toggle, momentary, and friends)
+Button 3 sends CC 20 to toggle a device. Map Ableton to also *send* CC 20 when the device state changes. Now toggling it from your laptop, a push controller or automation lights up button 3 correctly — the pedal never goes stale.
 
-Any non-select `cc` or `note` button tracks inbound messages as a **host override**: whatever the host says, the button becomes.
+### Scenario: Gig Performer 2-way sync
 
-### CC buttons
+Button 3 sends CC 20 to toggle a widget. In Gig Performer's *Edit* mode, select the widget, open the MIDI tab in Widget Properties, and choose the **Sync** behavior:
 
-The incoming value is checked against the button's configured `cc_on` and `cc_off`:
+![The Gig Performer MIDI tab](./img/inbound-midi/gp-edit-midi-props.png)
 
-1. Value equals `cc_on` (default 127) → button turns **on**
-2. Value equals `cc_off` (default 0) → button turns **off**
-3. Anything else → falls back to the classic MIDI convention: **value > 63 = on, ≤ 63 = off**
+Gig Performer now sends CC 20 back whenever the widget changes, and the pedal follows.
 
-The fallback means hosts that send generic 0/127 keep working even if you've customized `cc_on`/`cc_off` to other values. Because `cc_on` is checked first, setting `cc_on == cc_off` would make the button impossible to turn off via that value — the firmware warns about this at boot.
+### Listen CC: send on one CC, listen on another
 
-If several non-select buttons share the same CC and channel, the **first matching button in scan order** (top-left to bottom-right, by button index) receives the update. When a select-mode button shares that CC too, which button actually reacts depends on scan order in a different way — see [Shielding](#shielding) below.
+Some hosts take commands on one CC and report state on a different one — a looper's play/stop trigger versus its is-playing indicator. Fill in **Listen CC** and the button sends on its own CC but takes its state from that one instead.
 
-### Note buttons
+![A button sending on CC 20 with Listen CC set to 21](./img/inbound-midi/listen-cc.png)
 
-- **NoteOn** with velocity > 0 → button on
-- **NoteOn** with velocity 0, or **NoteOff** → button off
+Two things change when you set it:
 
-### Listening on a different CC: `cc_receive`
+- **The host owns the LED.** A press still sends MIDI, but only the host's reply lights the button. Foot and host can never disagree.
+- **"Sharing a CC" now means sharing the Listen CC.** Everything below — Select matching, shielding, scan order — goes by the number the button listens on.
 
-Some hosts take commands on one CC and report state on another — a looper's play/stop trigger vs. its is-playing indicator. Set `cc_receive` and the button **sends** on `cc` but **listens** on `cc_receive`:
-
-```jsonc
-{ "type": "cc", "cc": 20, "cc_receive": 21, "label": "LOOP" }
-```
-
-Presses send CC 20; the LED follows CC 21. Two things to know:
-
-- **The LED becomes host-owned.** A press still sends MIDI, but no longer lights the button — only the host's reply does. Foot and host can't disagree.
-- **Shared-CC rules use the listened-on number.** Select matching, shielding and scan order all treat two buttons as "sharing a CC" when they *listen* on the same one.
-
-CC only — note buttons have no equivalent.
-
-### Example: Ableton track-arm feedback
-
-Button 3 sends CC 20 to toggle an Ableton device. Map Ableton to also *send* CC 20 back out when the device state changes (via the same MIDI mapping or a Max for Live feedback patch). Now toggling the device from your laptop, a push controller, or automation lights up button 3 correctly — the pedal never goes stale.
-
-### Example: Gig Performer 2-Way sync
-
-Button 3 sends CC 20 to toggle a widget in Gig Performer. In Gig Performer's _Edit_ mode, select the widget and go to the MIDI tab in the Widget Properties pane. 
-
-![The GP MIDI tab](./img/inbound-midi/gp-edit-midi-props.png)
-
-Click to select the `Sync` behavior. This maps Gig Performer to also *send* CC 20 back out when you click the widget in GP. 
-
-Now toggling the device from your laptop, a push controller, or automation lights up button 3 correctly — the pedal never goes stale.
+Listen CC is for CC buttons; Note buttons have no equivalent.
 
 ## Mode 2: Select sync (radio groups)
 
-Buttons with `mode: "select"` behave as a radio group locally — pressing one activates it and dims its `select_group` siblings. Inbound MIDI can drive the same behavior from the host side.
+Buttons set to **Mode: Select** with the same **Select Group** behave as a radio group: one is active, the rest are dim. Inbound MIDI drives the same behavior from the host side.
 
-### CC select buttons
+A Select button activates **only on an exact ON Value match**. Near-misses are ignored on purpose, so a stray value can't falsely flip your active snapshot. That's what lets several Select buttons share one CC number and differ only by ON Value:
 
-A select button activates **only on an exact `cc_on` match**. Near-misses are deliberately ignored — a stray value can't falsely flip your active snapshot.
+![Two Select buttons on CC 69, ON Value 0 and 1, both in select group "snap"](./img/inbound-midi/select-group.png)
 
-Several select buttons may share one CC number and differ only by `cc_on`. This is exactly how Helix snapshots work:
+### Scenario: Helix snapshots
 
-```jsonc
-// Four buttons, all CC 69, one per snapshot
-{ "type": "cc", "cc": 69, "cc_on": 0, "mode": "select", "select_group": "snap", "label": "SNAP1" },
-{ "type": "cc", "cc": 69, "cc_on": 1, "mode": "select", "select_group": "snap", "label": "SNAP2" },
-{ "type": "cc", "cc": 69, "cc_on": 2, "mode": "select", "select_group": "snap", "label": "SNAP3" },
-{ "type": "cc", "cc": 69, "cc_on": 3, "mode": "select", "select_group": "snap", "label": "SNAP4" }
-```
+Four buttons, all on CC 69, ON Values 0 / 1 / 2 / 3, all in the same Select Group. When the Helix changes snapshot — from its own footswitches, a preset load, or automation — it sends CC 69 back out, the matching button lights, and its siblings dim. The pedal always shows the true active snapshot.
 
-When the Helix changes snapshots (from its own footswitches, a preset load, or automation) and sends CC 69 back out, the matching button lights and its siblings dim. The pedal always shows the true active snapshot.
+### Shielding: keep a select group's CC to itself
 
-### Shielding
+Once a Select button claims a CC number, plain buttons further down the list are **shielded** from it: a value that matches no ON Value is swallowed rather than being misread as a generic on/off by the above-63 rule. The status line still logs the message; nothing changes state.
 
-Once a select button claims a CC number, non-select buttons on that same CC are **shielded** from it. Without this, an inbound CC 69 = 2 would match no select button's `cc_on` exactly, fall through to a plain toggle button on CC 69, and spuriously flip it via the >63 fallback. Values that match a select-claimed CC but no `cc_on` are consumed silently — no state change anywhere.
+Shielding only protects buttons that come **after** the select group in the list. So if a plain button shares a CC with a select group, put the **group first** — otherwise the plain button is simply the first match and flips on values meant for the group.
 
-**What "shielded" means:** the message is dropped with zero effect on that button — no LED change, no state flip. It just stays exactly as it was. The button isn't disabled generally; its own CC still works normally, and physical presses are unaffected. It's only non-matching *inbound* values on this shared CC that get eaten instead of being misread as a generic on/off via the >63 fallback. The status line still logs the raw message (e.g. `RX CC69=2`) — you're just seeing that the message arrived, not that anything happened as a result.
+### On re-press
 
-**Shielding only protects buttons later in scan order.** Matching runs top-left to bottom-right, same as state sync above, and a select button can only shield the non-select buttons it reaches *after* itself in that scan. A non-select button positioned *before* the select group on the same CC is never shielded — it's simply the first match, wins outright under the ordinary state-sync rule, and applies the >63 fallback like any other toggle button. If you want a select group to reliably own a CC number, put every button in that group ahead of any other button using that CC — earlier in the buttons list, which on real hardware means earlier in the physical scan order.
-
-**Example** — the CC 69 Helix snapshot group from above, sharing the pedal with an unrelated MUTE toggle also wired to CC 69:
-
-Protected — select group listed first:
-
-```jsonc
-{ "type": "cc", "cc": 69, "cc_on": 0, "mode": "select", "select_group": "snap", "label": "SNAP1" },
-{ "type": "cc", "cc": 69, "cc_on": 1, "mode": "select", "select_group": "snap", "label": "SNAP2" },
-{ "type": "cc", "cc": 69, "mode": "toggle", "label": "MUTE" }
-```
-
-An inbound `CC69=5` matches neither SNAP1's nor SNAP2's `cc_on`, so the scan passes over both, marks the CC claimed, then reaches MUTE and shields it. MUTE holds its state. Only `CC69=0` or `CC69=1` does anything.
-
-Unprotected — same three buttons, MUTE listed first:
-
-```jsonc
-{ "type": "cc", "cc": 69, "mode": "toggle", "label": "MUTE" },
-{ "type": "cc", "cc": 69, "cc_on": 0, "mode": "select", "select_group": "snap", "label": "SNAP1" },
-{ "type": "cc", "cc": 69, "cc_on": 1, "mode": "select", "select_group": "snap", "label": "SNAP2" }
-```
-
-Now MUTE is the first match, full stop — the scan never even reaches SNAP1 or SNAP2. An inbound `CC69=5` flips MUTE on via the >63 fallback, exactly the spurious-toggle case shielding exists to prevent. Same three buttons, same CC — only the list order changed.
-
-### PC select buttons
-
-Select buttons of type `pc` activate on an exact **program number** match on their channel. If your amp modeler sends Program Change when presets load, a row of PC select buttons stays in sync with the current preset no matter how it was changed.
-
-### `select_repress` and inbound MIDI
-
-The `select_repress` setting (`resend` / `nothing` / `deselect`) applies **only to physical presses**. Inbound activation is idempotent: receiving the same message twice just confirms the LED state, sends nothing, and deselects nothing.
+The **On re-press** setting (Resend / Nothing / Deselect) applies to physical presses only. Inbound activation is idempotent: the same message twice just confirms the LED, sends nothing, deselects nothing.
 
 ## Mode 3: CC+ / CC- buttons
 
-A `cc_inc` / `cc_dec` button (and a keytimes button carrying CC+/CC- fields) owns its CC number outright: the incoming value simply **becomes** the shared value, clamped to the button's range.
+A **CC+** or **CC-** button steps a shared value up or down on each press. Over MIDI, the host simply sets that value: send its CC with any value and that becomes the new value, clamped to the button's Min and Max.
 
-```jsonc
-{ "type": "cc_inc", "cc": 30, "label": "GAIN" }
-```
+![A CC+ button on CC 30 with a step of 8](./img/inbound-midi/cc-plus.png)
 
-Press it and the value steps up; send CC 30 = 64 from the host and the value jumps to 64. No `cc_on`/`cc_off` check, no >63 fallback, no select shielding — any value is accepted. The LED and label repaint only when the value actually changes (or in SLOT mode, when the slot changes).
+No ON Value check, no above-63 rule, no shielding — every value is accepted. The LED and label repaint only when the value actually changes (in Slots mode, when the slot changes).
 
-Don't put a plain `cc` button on the same CC and channel — the CC+/CC- button claims it first.
+Don't put a plain CC button on the same CC and channel: the CC+ / CC- button claims it first.
 
-## Status line
-
-Every handled inbound message briefly shows on the LCD status line (e.g. `RX CC69=2`), which makes wiring up host feedback easy to verify without a MIDI monitor.
+Keytimes buttons don't react to inbound MIDI at all, unless they carry CC+ / CC- settings — then they behave like this.
 
 ## Quick reference
 
 | | State sync | Select sync | CC+ / CC- |
 |---|---|---|---|
-| Applies to | `cc` (non-select), `note` | `cc` / `pc` with `mode: "select"` | `cc_inc`, `cc_dec` |
-| Match rule | exact `cc_on`/`cc_off`, else >63 fallback | exact `cc_on` (CC) or program (PC) only | any value on its CC |
-| Non-matching values | flip via >63 fallback | ignored (shielded) | n/a — all values accepted |
-| Effect | that button on/off | activate button, dim group siblings | value becomes the new shared value |
+| Applies to | CC or Note, not Select | CC or PC set to **Select** | CC+ / CC- |
+| Reacts to | ON Value / OFF Value, else above-63 | exact ON Value (CC) or program (PC) | any value |
+| Other values | flip via the above-63 rule | ignored (shielded) | n/a |
+| Effect | that button on/off | activate it, dim its group | sets the shared value |
 | Sends MIDI back? | never | never | never |

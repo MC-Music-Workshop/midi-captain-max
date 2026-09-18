@@ -139,3 +139,22 @@ test('routing: settings for the pedal that closes a MIDI ring', async ({ page })
   const matrix = await openRouting(page);
   await matrix.screenshot({ path: `${MR}/ring-settings.png` });
 });
+
+// --- Page Control guide -----------------------------------------------------
+
+const PC = '../docs/user/img/page-control';
+
+test('page control: all three slots configured', async ({ page }) => {
+  const cfg = config([{ label: 'B0', cc: 20, color: 'green' }]) as Record<string, unknown>;
+  cfg.page_control = {
+    enabled: true,
+    channel: 0,
+    jump: { cc: 30 },
+    inc: { cc: 21, value: 127, page_step: 1 },
+    dec: { cc: 22, value: 127, page_step: 1 },
+  };
+  await loadApp(page, cfg);
+  const section = page.locator('.page-control-section');
+  await section.scrollIntoViewIfNeeded();
+  await section.screenshot({ path: `${PC}/page-control.png` });
+});

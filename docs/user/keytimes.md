@@ -1,184 +1,87 @@
-# Keytimes: Multi-State Buttons and Long Presses
+# Keytimes: One Button, Several Jobs
 
-Keytimes turns one footswitch into several. Set a button's `mode` to `"keytimes"` and each press advances it through a cycle of states — its own messages, its own LED color, its own screen label. Short taps and long holds get **separate** cycles, so a single switch can tap through three reverb levels *and* hold for a tuner.
+Keytimes turns one footswitch into several. Each tap steps the button to its next state — its own message, its own LED color, its own screen label — and **holds get a completely separate cycle**. One switch can tap through three reverb levels *and* hold for a tuner.
 
-This is the MIDI Captain MAX equivalent of the OEM SuperMode behavior, with per-state control over everything the button does.
+This is the MIDI Captain MAX answer to the OEM SuperMode behavior, with per-state control over everything the button does.
 
-## How a press becomes events
+## Setting one up
 
-Every physical press produces one or two timing events, split by the long-press threshold (500 ms by default):
+In the Config Editor, set the button's **Mode** to **Keytimes (short/long)**. Two sections appear — **Short Press Cycle** and **Long Press Cycle** — each with an **+ Add entry** button. Every entry is one state of the button.
 
-| Event | When it fires |
-|---|---|
-| `short_down` | immediately, on every press |
-| `short_up` | on release, if the release came **before** the threshold |
-| `long_down` | the moment the threshold elapses, while still held |
-| `long_up` | on release, if the release came **after** the threshold |
+You don't have to use both. A button with only short entries is a plain multi-state tap button; one with only long entries does nothing until you hold it.
 
-A quick tap therefore fires `short_down` then `short_up`. A hold fires `short_down`, then `long_down` at the threshold, then `long_up` on release — note that `short_down` fires on a hold too, which matters (see [Taps vs. holds](#taps-vs-holds-the-short_down-trap)).
+## Taps: the short press cycle
 
-The short events are served by the `short[]` cycle, the long events by `long[]`. The two have independent counters.
+![The Short Press Cycle section with three entries stepping CC 20 through 64, 96 and 127](./img/keytimes/short-cycle.png)
 
-## Anatomy of a keytimes button
+Each tap fires the next entry and wraps around at the end. Above: tap for 50% wet, tap for 75%, tap for 100%, tap back to 50% — with the LED going blue, cyan, white and the screen showing LO, MID, MAX.
 
-```jsonc
-{
-  "label": "VERB",
-  "color": "blue",
-  "mode": "keytimes",
-  "long_press_threshold_ms": 600,   // optional per-button override
-  "short": [
-    { "down": [{ "type": "cc", "cc": 20, "value": 64 }],  "color": "blue",  "label": "LO" },
-    { "down": [{ "type": "cc", "cc": 20, "value": 96 }],  "color": "cyan",  "label": "MID" },
-    { "down": [{ "type": "cc", "cc": 20, "value": 127 }], "color": "white", "label": "MAX" }
-  ],
-  "long": [
-    { "down": [{ "type": "cc", "cc": 21, "value": 127 }], "color": "red",   "label": "TUNER" },
-    { "down": [{ "type": "cc", "cc": 21, "value": 0 }],   "color": "blue",  "label": "VERB" }
-  ]
-}
-```
-
-Tapping sends CC20 = 64 → 96 → 127 → back to 64, with the LED and screen label following along. Holding is a separate two-state cycle that toggles a tuner, untouched by how many times you've tapped.
-
-Each entry in `short[]` / `long[]` takes:
+Per entry you get:
 
 | Field | What it does |
 |---|---|
-| `down` | messages fired on that cycle's *down* event (`short_down` / `long_down`) |
-| `up` | messages fired on that cycle's *up* event (`short_up` / `long_up`) |
-| `color` | LED color for this position. Omit to inherit the button's `color`; `"off"` forces the LED dark |
-| `dim` | render the resolved color at 15% brightness |
-| `label` | screen text for this position (max 6 characters; letters, digits, spaces, hyphens and `_`). Omit to inherit the button's `label` |
+| **Color** | LED color for this state. Leave it on `(inherit)` to use the button's own color, or pick `off` to go dark |
+| **dim** | render that color at low brightness |
+| **Label** | screen text for this state (6 characters max). Blank inherits the button's label |
+| **short_down** | messages fired the instant you press |
+| **short_up** | messages fired when you release (before the hold threshold) |
 
-`down` and `up` are arrays, so an entry can be silent on one event and active on the other.
+**An empty slot does nothing at all** — no MIDI, no LED change, and the cycle does not advance. That's deliberate: it's what lets you build a hold-only button that taps can't disturb.
 
-## When the cycle advances
+## Holds: the long press cycle
 
-Cycles advance at **press-end** — on `short_up` / `long_up` — and only for the timing class that actually did something during that press.
+![The Long Press Cycle section with two entries toggling a tuner on CC 21](./img/keytimes/long-cycle.png)
 
-"Did something" means **the slot had at least one message in it**. An empty slot is a complete no-op: no MIDI, no LED or label change, and no cycle advance. This is deliberate — it's what lets you build a button that only responds to holds, without taps quietly walking the short cycle forward.
+Holds work the same way on their own counter: **long_down** fires the moment you cross the hold threshold (while still holding), **long_up** fires when you let go.
 
-### Taps vs. holds: the `short_down` trap
+Tapping never moves the long cycle, and holding never moves the short one — with one exception, below.
 
-Because `short_down` fires on *every* press — including the start of a hold — a short entry that puts its messages in `down` will also fire (and advance) when you hold the button.
+## The one gotcha: a hold also fires `short_down`
 
-If you want taps and holds to stay fully independent, put the short cycle's messages in `up` instead of `down`:
+Pressing the switch fires `short_down` immediately, every time — including at the start of a hold. So if your short entries put their messages in **short_down**, holding the switch fires them too, and steps the short cycle along with it.
 
-```jsonc
-"short": [
-  { "up": [{ "type": "cc", "cc": 20, "value": 64 }], "color": "blue" }
-]
-```
+If you want taps and holds to stay fully independent, **put the short messages in `short_up` instead**. That slot only fires on a release *before* the threshold, so a hold never touches the short cycle. The tradeoff: the message goes out when you lift your foot rather than when you press.
 
-`short_up` only fires on a release *before* the threshold, so a hold never touches the short cycle. The tradeoff: the message fires on release rather than on press. Use `down` when you want instant response and don't mind holds advancing the short cycle too.
+Use `short_down` when you want instant response and don't mind holds advancing the taps too.
 
-## LED and label rules
+## Hold threshold and color behavior
 
-By default the LED shows **whichever timing class fired most recently** — tap and the LED shows the short entry's color, hold and it shows the long entry's, tap again and it's back to short. The screen label follows the same rule.
+![The long-press threshold field set to 600 ms, and the overlay checkbox](./img/keytimes/threshold-overlay.png)
 
-Within that, colors resolve like this:
+**Long-press threshold (ms)** is the tap/hold boundary for this button. Leave it blank to use the global default of 500 ms. Raise it if you're triggering holds by accident mid-song; lower it if holds feel sluggish.
 
-1. Short entry's color is `"off"` → LED dark. Short `"off"` is a kill switch and wins over everything.
-2. Long entry has a color → that color.
-3. Short entry has a color → that color.
-4. Nothing set → the button-level `color`.
-5. No button color either → dark.
+**Long-press color overrides short-press color** changes what the LED shows. Off (the default), the LED reflects whichever you did most recently — tap and you see the tap color, hold and you see the hold color. On, the hold color sticks while you keep tapping, which is what you want when a hold turns on a *mode* you need to stay visible.
 
-A `dim: true` on the winning layer renders it at reduced brightness. `off_color` is ignored on keytimes buttons — the cycle entries own the LED.
+## What the LED and screen show
 
-### `long_overlay`: make the hold color stick
+Normally the last press wins, and colors resolve in this order:
 
-Set `"long_overlay": true` on the button when the long cycle represents a **mode** that should stay visible while you keep tapping — a shimmer-on color riding over a reverb level cycle, say. The long color (and its label) persists instead of flipping back on the next tap, while short presses still send their messages normally. A short `"off"` entry still kills the LED.
+1. A short entry set to **off** turns the LED dark — it beats everything, so `off` works as a kill switch.
+2. Otherwise a hold color, if the entry sets one.
+3. Otherwise a tap color.
+4. Otherwise the button's own **LED Color**.
 
-Clearing the long layer (a long entry with no color) drops back to the normal last-press-wins behavior.
+The screen label follows the same last-press-wins rule, falling back to the button's label when an entry doesn't set one. A button's **LED Off Color** is ignored in keytimes mode — the cycle entries own the LED.
 
-## What a cycle entry can send
+## What an entry can send
 
-Entries accept the same message types as a regular button:
+Each slot takes any message the editor offers: **CC**, **Note**, **PC Fixed**, **PC+** / **PC-**, **CC+** / **CC-**, **HID** (keyboard/mouse), and **Page+** / **Page-** / **Page Jump**. One entry can hold several messages — click **+ message** again.
 
-| Type | Fields |
-|---|---|
-| `cc` | `cc`, `value`, optional `channel` |
-| `note` | `note`, `velocity`, optional `channel` |
-| `pc` | `program`, optional `channel` |
-| `pc_inc` / `pc_dec` | optional `step`, `channel` |
-| `cc_inc` / `cc_dec` | none — see below |
-| `page_inc` / `page_dec` | optional `page_step` |
-| `page_jump` | `page` |
-| `hid` | `action`, `key`, optional `modifier`, `delay_ms` |
+Two worth calling out:
 
-`cc_inc` / `cc_dec` entries carry no fields of their own: the CC number, channel, step size, min/max, wrap behavior, and slot color/name tables are configured **once on the button**, and every entry just picks a direction. That's what lets one keytimes button tap-up and hold-down through a shared CC value.
+- **CC+ / CC-** entries only pick a direction. The CC number, range, step size and slot names are set once on the button and shared by every entry, so one switch can tap the value up and hold to take it back down.
+- **Page+ / Page- / Page Jump** in a long entry is the usual way to put page switching on a hold while taps do something musical.
 
-`page_inc` / `page_dec` / `page_jump` in a `long[]` entry is the usual way to put page switching on a hold while the taps do something musical.
+## Pages reset the cycles
 
-## Threshold tuning
+Switching pages puts every keytimes button on the incoming page **back at entry #1**, showing the button's own color and label until its first press. Shared CC+ / CC- values and PC patch memory are *not* reset.
 
-`long_press_threshold_ms` sets the tap/hold boundary in milliseconds (50–5000):
+## Scenarios
 
-- Top-level in the config: the global default, 500 ms.
-- On a button: overrides the global for that button only.
+**Three reverb levels, taps only.** Three short entries, each a CC with a different value, each its own color and label. No long entries — holding does nothing.
 
-Raise it if you're accidentally triggering holds mid-song; lower it if holds feel sluggish. Only keytimes buttons use it.
+**Tap to toggle, hold for the tuner.** Two short entries in `short_up` (on and off, the off one with Color `off` so the LED goes dark), and two long entries toggling your tuner CC in red. Because the taps live in `short_up`, holding for the tuner never disturbs the toggle.
 
-## Pages and keytimes
+**Hold to change page.** One short entry sending your normal message, one long entry with a **Page+** message. A quick tap plays; a hold moves to the next page.
 
-Switching pages **resets every keytimes cycle on the incoming page back to its first entry** — cycle positions are not preserved across page switches. Shared `cc_inc`/`cc_dec` values and PC patch memory *are* preserved.
-
-So after a page switch, a keytimes button is back at entry 1 and shows the button-level color and label until its first press.
-
-## Editing in the Config Editor
-
-Set a button's **Mode** to `keytimes` and the **Keytimes** editor appears with a **Short Press Cycle** and a **Long Press Cycle** section. Per entry you get a color dropdown (with `(inherit)` and an `⌀` dark option), a dim checkbox, a label field, and the `down` / `up` message slots. Empty slots are flagged with a hint, since an empty slot means that event does nothing at all.
-
-The per-button threshold field and the `long_overlay` checkbox sit above the two cycles.
-
-## Worked examples
-
-**Three-level reverb, tap only** — the config at the top of this page, minus the `long` array.
-
-**Tap to toggle, hold for tuner:**
-
-```jsonc
-{
-  "label": "DLY",
-  "color": "green",
-  "mode": "keytimes",
-  "short": [
-    { "up": [{ "type": "cc", "cc": 22, "value": 127 }], "color": "green" },
-    { "up": [{ "type": "cc", "cc": 22, "value": 0 }],   "color": "off" }
-  ],
-  "long": [
-    { "down": [{ "type": "cc", "cc": 31, "value": 127 }], "color": "red", "label": "TUNE" },
-    { "down": [{ "type": "cc", "cc": 31, "value": 0 }],   "label": "DLY" }
-  ]
-}
-```
-
-Taps toggle the delay (LED green / dark, using `up` so holds don't disturb the toggle); holds toggle the tuner in red.
-
-**Hold to change page:**
-
-```jsonc
-{
-  "label": "SOLO",
-  "color": "yellow",
-  "mode": "keytimes",
-  "short": [
-    { "down": [{ "type": "cc", "cc": 25, "value": 127 }] }
-  ],
-  "long": [
-    { "down": [{ "type": "page_inc" }], "color": "white", "label": "PAGE" }
-  ]
-}
-```
-
-## Deprecated fields
-
-The old flat `keytimes: <count>` and `states: [...]` fields are **forbidden** on `mode: "keytimes"` buttons — use `short[]` / `long[]`. On other modes they still load with a deprecation warning at boot and will be removed in v3.0.
-
-## Full examples in the repo
-
-- [`config-example-keytimes.json`](https://github.com/MC-Music-Workshop/midi-captain-max/blob/main/firmware/dev/config-example-keytimes.json)
-- [`config-example-keytimes-mode.json`](https://github.com/MC-Music-Workshop/midi-captain-max/blob/main/firmware/dev/config-example-keytimes-mode.json)
-- [`config-example-mini6-keytimes.json`](https://github.com/MC-Music-Workshop/midi-captain-max/blob/main/firmware/dev/config-example-mini6-keytimes.json)
+**A mode that stays lit.** Tick **Long-press color overrides short-press color**, give the long entry a distinct color and label, and it stays on screen while you keep tapping the short cycle underneath it.

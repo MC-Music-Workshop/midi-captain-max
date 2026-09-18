@@ -7,6 +7,7 @@ import { loadApp } from './helpers';
 // Each shot is an element capture of the button row(s) that demonstrate one
 // feature, seeded from a config so the fields are already filled in.
 const OUT = '../docs/user/img/inbound-midi';
+const KT = '../docs/user/img/keytimes';
 
 // std10 = 10 buttons per page; only the rows we shoot need to be meaningful.
 function config(buttons: Record<string, unknown>[]) {
@@ -60,4 +61,54 @@ test('CC+ button: host sets the shared value', async ({ page }) => {
     { label: 'GAIN', type: 'cc_inc', cc: 30, cc_step: 8, cc_min: 0, cc_max: 127, color: 'cyan' },
   ]));
   await shoot(page, [0], `${OUT}/cc-plus.png`);
+});
+
+// --- Keytimes guide ---------------------------------------------------------
+
+// A reverb button: taps step three wet levels, holds toggle a tuner.
+function keytimesConfig() {
+  return config([{
+    label: 'VERB',
+    color: 'blue',
+    mode: 'keytimes',
+    long_press_threshold_ms: 600,
+    short: [
+      { down: [{ type: 'cc', cc: 20, value: 64 }], color: 'blue', label: 'LO' },
+      { down: [{ type: 'cc', cc: 20, value: 96 }], color: 'cyan', label: 'MID' },
+      { down: [{ type: 'cc', cc: 20, value: 127 }], color: 'white', label: 'MAX' },
+    ],
+    long: [
+      { down: [{ type: 'cc', cc: 21, value: 127 }], color: 'red', label: 'TUNE' },
+      { down: [{ type: 'cc', cc: 21, value: 0 }], color: 'blue', label: 'VERB' },
+    ],
+  }]);
+}
+
+test('keytimes: the short press cycle', async ({ page }) => {
+  await loadApp(page, keytimesConfig());
+  const cycle = page.locator('.kt-cycle').first();
+  await cycle.scrollIntoViewIfNeeded();
+  await cycle.screenshot({ path: `${KT}/short-cycle.png` });
+});
+
+test('keytimes: the long press cycle', async ({ page }) => {
+  await loadApp(page, keytimesConfig());
+  const cycle = page.locator('.kt-cycle').nth(1);
+  await cycle.scrollIntoViewIfNeeded();
+  await cycle.screenshot({ path: `${KT}/long-cycle.png` });
+});
+
+test('keytimes: threshold and overlay settings', async ({ page }) => {
+  await loadApp(page, keytimesConfig());
+  // Two sibling rows with no shared wrapper: scroll them into view, then clip
+  // the span between them out of a viewport screenshot.
+  const top = page.locator('.kt-threshold-row');
+  const bottom = page.locator('.kt-overlay-row');
+  await top.scrollIntoViewIfNeeded();
+  const t = await top.boundingBox();
+  const b = await bottom.boundingBox();
+  await page.screenshot({
+    path: `${KT}/threshold-overlay.png`,
+    clip: { x: t!.x, y: t!.y, width: Math.max(t!.width, b!.width), height: b!.y + b!.height - t!.y },
+  });
 });

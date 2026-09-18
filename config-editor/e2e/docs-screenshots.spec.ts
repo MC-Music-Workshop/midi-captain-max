@@ -112,3 +112,30 @@ test('keytimes: threshold and overlay settings', async ({ page }) => {
     clip: { x: t!.x, y: t!.y, width: Math.max(t!.width, b!.width), height: b!.y + b!.height - t!.y },
   });
 });
+
+// --- MIDI Routing guide -----------------------------------------------------
+
+const MR = '../docs/user/img/midi-routing';
+
+// The routing pane sits below the buttons and is open by default.
+async function openRouting(page: any) {
+  const matrix = page.locator('.thru-matrix');
+  await matrix.scrollIntoViewIfNeeded();
+  return matrix;
+}
+
+test('routing: the matrix at its defaults', async ({ page }) => {
+  await loadApp(page, config([{ label: 'B0', cc: 20, color: 'green' }]));
+  const matrix = await openRouting(page);
+  await matrix.screenshot({ path: `${MR}/routing-matrix.png` });
+});
+
+test('routing: settings for the pedal that closes a MIDI ring', async ({ page }) => {
+  const cfg = config([{ label: 'B0', cc: 20, color: 'green' }]) as Record<string, unknown>;
+  cfg.midi_thru_din_to_din = false;
+  cfg.midi_local_to_din = false;
+  cfg.midi_din_to_local = false;
+  await loadApp(page, cfg);
+  const matrix = await openRouting(page);
+  await matrix.screenshot({ path: `${MR}/ring-settings.png` });
+});

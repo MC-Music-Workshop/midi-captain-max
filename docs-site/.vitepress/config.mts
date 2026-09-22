@@ -35,7 +35,10 @@ export default defineConfig({
     nav: [
       // Repo-relative (not domain-hardcoded), so this survives a custom
       // domain move; only needs updating if the repo itself is renamed.
-      { text: 'Home', link: '/midi-captain-max/' },
+      // Escapes the /docs/ base to reach the hand-built landing page one
+      // level up. Relative (not "/midi-captain-max/"), so it isn't
+      // base-prefixed by VitePress and survives a custom domain move.
+      { text: 'Home', link: '../' },
       { text: 'GitHub', link: 'https://github.com/MC-Music-Workshop/midi-captain-max' },
     ],
     sidebar: [

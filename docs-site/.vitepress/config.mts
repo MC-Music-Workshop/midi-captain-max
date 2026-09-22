@@ -33,12 +33,13 @@ export default defineConfig({
 
   themeConfig: {
     nav: [
-      // Repo-relative (not domain-hardcoded), so this survives a custom
-      // domain move; only needs updating if the repo itself is renamed.
       // Escapes the /docs/ base to reach the hand-built landing page one
       // level up. Relative (not "/midi-captain-max/"), so it isn't
       // base-prefixed by VitePress and survives a custom domain move.
-      { text: 'Home', link: '../' },
+      // target forces a real browser navigation: the landing page isn't
+      // part of this VitePress build, so the SPA router's click handler
+      // would otherwise intercept it and fail to find a matching route.
+      { text: 'Home', link: '../', target: '_self' },
       { text: 'GitHub', link: 'https://github.com/MC-Music-Workshop/midi-captain-max' },
     ],
     sidebar: [

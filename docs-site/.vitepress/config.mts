@@ -50,6 +50,7 @@ export default defineConfig({
           { text: 'Saving and Loading Configs', link: '/configs' },
           { text: 'Multiple Messages', link: '/multiple-messages' },
           { text: 'Keytimes', link: '/keytimes' },
+          { text: 'MIDI Learn', link: '/midi-learn' },
           { text: 'Inbound MIDI', link: '/inbound-midi' },
           { text: 'Page Control (MIDI-IN)', link: '/page-control' },
           { text: 'MIDI Routing Matrix', link: '/midi-thru' },

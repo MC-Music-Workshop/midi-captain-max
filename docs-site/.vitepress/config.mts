@@ -48,6 +48,7 @@ export default defineConfig({
         items: [
           { text: 'Installation', link: '/installation' },
           { text: 'Keytimes', link: '/keytimes' },
+          { text: 'MIDI Learn', link: '/midi-learn' },
           { text: 'Inbound MIDI', link: '/inbound-midi' },
           { text: 'Page Control (MIDI-IN)', link: '/page-control' },
           { text: 'MIDI Routing Matrix', link: '/midi-thru' },

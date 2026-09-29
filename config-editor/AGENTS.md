@@ -29,6 +29,7 @@ The config editor is a desktop app built with **SvelteKit 5 + Tauri 2 (Rust back
 | `src-tauri/src/commands.rs` | Tauri commands: read/write/validate config, restart device, path security |
 | `src-tauri/src/device.rs` | USB device detection and watcher (cross-platform) |
 | `src-tauri/src/installer.rs` | Firmware installer (mirrors `deploy.sh` copy order) |
+| `src-tauri/src/midi_learn.rs` + `src/lib/midiLearn.ts` | MIDI Learn (#54): capture the next message the device receives |
 
 ## Save Flow
 
@@ -140,6 +141,15 @@ The config editor is held to **0 svelte-check warnings**. When adding form contr
 - Use Svelte 5 event syntax: `onclick`, `onblur`, `onchange` — never `on:click` etc.
 - Modal dialogs need `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `tabindex="-1"`, and an Escape key handler.
 - Backdrops need `role="presentation"` + `tabindex="-1"` + an `onkeydown` handler.
+
+## MIDI Learn (#54)
+
+Clicking **Learn** on a button fills Type/Channel/CC-Note-Program from the next CC, Note or PC the *device* receives (USB or DIN). No firmware protocol: `learn_midi` opens the serial console **without** Ctrl-C (code.py keeps running) and parses the first `[MIDI RX <src>] Ch<n> ...` line that `_process_midi_msg` in `code.py` already prints. Those print formats are a contract; `midi_learn.rs` tests pin every one.
+
+- **Only messages that reach `_process_midi_msg` are learnable.** An input whose → pedal route is off in the routing matrix prints nothing, so Learn times out (30 s).
+- **One listener at a time.** `serialport` opens the port exclusively, so `startLearn()` awaits the previous listener's release (`cancel_midi_learn` + its promise settling, ≤100 ms read timeout) before opening again. The same exclusivity means a restart/install during a listen fails to open the port.
+- **Identity only:** `learnedFieldUpdates()` sets type/channel/number and resets Mode to `toggle` when the new type doesn't offer it (flash is PC-only, select is PC/CC-only). `cc_on`/`cc_off`/velocities are untouched. Not offered in keytimes mode.
+- `ButtonRow` rows are keyed by position, so a result that arrives after a page switch is discarded instead of landing on the other page's button.
 
 ## Serial Soft-Reboot
 

@@ -155,3 +155,21 @@ export async function exportPageTemplate(path: string, page: Page): Promise<void
 export async function importPageTemplate(path: string, device: MidiCaptainConfig['device']): Promise<Page> {
   return invoke('import_page_template', { path, device });
 }
+
+// MIDI Learn (#54)
+export interface LearnedMidi {
+  type: 'cc' | 'note' | 'pc';
+  channel: number; // 0-15
+  number: number; // CC number, note or program
+  value: number | null; // CC value or note velocity
+  source: string; // "USB" | "DIN"
+}
+
+/** Resolves with the next MIDI message the device receives, or null if cancelled. */
+export async function learnMidi(path: string): Promise<LearnedMidi | null> {
+  return invoke('learn_midi', { path });
+}
+
+export async function cancelMidiLearn(): Promise<void> {
+  return invoke('cancel_midi_learn');
+}

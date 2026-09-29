@@ -2,12 +2,14 @@ mod commands;
 mod config;
 mod device;
 mod installer;
+mod midi_learn;
 mod reflash;
 mod templates;
 
 use commands::{detect_oem_v5_port, eject_device, enter_bootloader, enter_bootloader_oem_v5, read_config, read_config_raw, restart_device, validate_config, write_config, write_config_raw};
 use device::{scan_devices, start_device_watcher, stop_device_watcher};
 use installer::{get_firmware_versions, install_firmware};
+use midi_learn::{cancel_midi_learn, learn_midi};
 use reflash::{reflash_circuitpython, rpi_rp2_mount_path};
 use templates::{export_page_template, import_page_template, list_page_templates, page_templates_dir};
 
@@ -38,7 +40,9 @@ pub fn run() {
             export_page_template,
             import_page_template,
             list_page_templates,
-            page_templates_dir
+            page_templates_dir,
+            learn_midi,
+            cancel_midi_learn
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

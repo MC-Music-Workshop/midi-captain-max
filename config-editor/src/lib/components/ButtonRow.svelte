@@ -6,6 +6,9 @@
   import { MESSAGE_TYPE_LABELS, BUTTON_MODE_LABELS, BUTTON_COLORS } from '$lib/types';
   import { validationErrors, syncButtonStates, selectGroupNames, config } from '$lib/formStore';
   import { keytimesUsesCcStep } from '$lib/validation';
+  import { selectedDevice, statusMessage } from '$lib/stores';
+  import { learningButton, startLearn, cancelLearn, learnedFieldUpdates, describeLearned } from '$lib/midiLearn';
+  import { onDestroy } from 'svelte';
 
   interface Props {
     button: ButtonConfig;
@@ -138,6 +141,39 @@
       onUpdate('mode', 'flash');
     }
   }
+
+  let buttonName = $derived(displayName ?? `Button ${index + 1}`);
+  let isLearning = $derived($learningButton === index);
+
+  async function handleLearn() {
+    const device = $selectedDevice;
+    if (!device) return;
+    const page = $config.active_page;
+    $statusMessage = `${buttonName}: listening for MIDI. Send a CC, Note or Program Change to the pedal`;
+    try {
+      const msg = await startLearn(device.config_path, index);
+      // null = cancelled; whoever cancelled owns the status line.
+      if (!msg) return;
+      // Rows are per position, so a page switch mid-listen would land this on another page's button.
+      if ($config.active_page !== page) {
+        $statusMessage = 'MIDI Learn discarded: the page changed while listening';
+        return;
+      }
+      for (const [field, value] of learnedFieldUpdates(button, msg)) onUpdate(field, value);
+      $statusMessage = `${buttonName}: learned ${describeLearned(msg)}`;
+    } catch (e: any) {
+      $statusMessage = `MIDI Learn failed: ${e.message || e}`;
+    }
+  }
+
+  async function handleCancelLearn() {
+    await cancelLearn();
+    $statusMessage = 'MIDI Learn cancelled';
+  }
+
+  onDestroy(() => {
+    if (isLearning) cancelLearn();
+  });
 
   function handleNoteChange(e: Event) {
     const target = e.target as HTMLInputElement;
@@ -327,6 +363,18 @@
           <option {value}>{label}</option>
         {/each}
       </select>
+    </div>
+
+    <div class="field">
+      <span class="field-label">MIDI Learn:</span>
+      {#if isLearning}
+        <button type="button" class="learn-btn listening" onclick={handleCancelLearn}
+          title="Stop listening">Listening… ✕</button>
+      {:else}
+        <button type="button" class="learn-btn" onclick={handleLearn}
+          disabled={disabled || !$selectedDevice}
+          title="Set Type, Channel and CC/Note/Program from the next message the pedal receives over USB or MIDI In.">Learn</button>
+      {/if}
     </div>
   {/if}
 
@@ -896,6 +944,27 @@
     border-radius: 4px;
     font-size: 0.875rem;
     background: white;
+  }
+
+  .learn-btn {
+    padding: 0.375rem 0.75rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    background: white;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .learn-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .learn-btn.listening {
+    border-color: #d97706;
+    background: #fef3c7;
+    color: #92400e;
   }
 
   input.error {

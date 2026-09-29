@@ -399,7 +399,7 @@ fn find_device_serial_port(_device_path: &Path) -> Result<String, ConfigError> {
     }
 }
 
-fn open_device_serial(path: &Path) -> Result<Box<dyn serialport::SerialPort>, ConfigError> {
+pub(crate) fn open_device_serial(path: &Path) -> Result<Box<dyn serialport::SerialPort>, ConfigError> {
     let serial_port = find_device_serial_port(path)?;
     serialport::new(&serial_port, 115200)
         .timeout(Duration::from_secs(2))

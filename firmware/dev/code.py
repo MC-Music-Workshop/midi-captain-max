@@ -1130,6 +1130,9 @@ def _process_midi_msg(msg, source="USB"):
 
     msg_channel = getattr(msg, 'channel', 0) or 0
 
+    # The "[MIDI RX ...]" prints below are parsed by the config editor's MIDI
+    # Learn (#54, config-editor/src-tauri/src/midi_learn.rs). Keep their format.
+
     if isinstance(msg, ControlChange):
         cc = msg.control
         val = msg.value

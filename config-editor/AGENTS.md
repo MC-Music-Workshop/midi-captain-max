@@ -201,9 +201,7 @@ targets, etc.) import fine and surface as normal in-editor validation errors.
 
 - **Default folder is `~/Documents/MIDICaptainMAX/templates`** (resolved via
   `document_dir()`, created on demand) — under Documents, not the hidden
-  app-data dir, so users can manage templates in Finder. A sibling
-  `MIDICaptainMAX/pages/` folder is created alongside, reserved for saved
-  pages.
+  app-data dir, so users can manage templates in Finder.
 - **Accepted security tradeoff (recorded 2026-07-13):**
   `export_page_template` / `import_page_template` accept arbitrary
   user-chosen paths over IPC *without* `validate_device_path` — "save/load

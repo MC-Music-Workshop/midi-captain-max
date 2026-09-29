@@ -106,15 +106,13 @@ pub(crate) fn list_templates_in(dir: &Path) -> Result<Vec<TemplateInfo>, ConfigE
 /// (`~/Documents/MIDICaptainMAX/templates`), created on demand. The frontend
 /// uses this as the file pickers' default path. Lives under Documents rather
 /// than the hidden app-data dir so users can find and manage their templates
-/// in Finder (user request, 2026-07-13). A sibling `pages/` folder is created
-/// alongside, reserved for saved pages.
+/// in Finder (user request, 2026-07-13).
 fn templates_dir(app: &AppHandle) -> Result<std::path::PathBuf, ConfigError> {
     let root = app
         .path()
         .document_dir()
         .map_err(|e| ConfigError::msg(format!("Could not resolve Documents dir: {e}")))?
         .join("MIDICaptainMAX");
-    fs::create_dir_all(root.join("pages"))?;
     let dir = root.join("templates");
     fs::create_dir_all(&dir)?;
     Ok(dir)

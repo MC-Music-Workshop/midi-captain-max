@@ -35,6 +35,8 @@ The first time you use the page-template feature (**Edit Pages… → Save as te
 
 Templates are plain JSON files, one page each — feel free to back them up, rename them in Finder/Explorer, or share them with other MIDI Captain users.
 
+Saved configs work the same way: **Save to File…** and **Load from File…** point at `Documents/MIDICaptainMAX/configs`, which the editor creates the first time it needs it. See [Saving and Loading Configs](./configs.md).
+
 ## First Run on OEM Firmware
 
 If your MIDI Captain is still running the factory Paint Audio firmware, the Config Editor may show `OEM (no VERSION.txt file)`.
@@ -42,8 +44,8 @@ If your MIDI Captain is still running the factory Paint Audio firmware, the Conf
 The deploy script is no longer required — the entire first install can be done from the Config Editor. The installer only needs to know your device type, and you tell it that by saving a config from the editor first:
 
 1. Hold Button 1 / KEY0 while plugging in USB to enter the OEM USB settings mode. A `MIDICAPTAIN` drive should appear.
-2. Open the Config Editor and select the device. Since there's no MAX `config.json` on the drive yet, the editor starts a fresh default config.
-3. Set **Device Type** to your model and click **Save to Device**.
+2. Open the Config Editor and select the device. Since there's no MAX `config.json` on the drive yet, the editor opens with nothing loaded: click **New Config…** and pick your model.
+3. Click **Save to Device**. Because the drive has no config to say what model it is, the editor asks you to confirm the model first.
 4. Scroll to the **Firmware Installation** section and click **Install Firmware**. For a first install, enable **Reset config.json to bundled defaults** so you start from the full default template for your device.
    - If the button blocks with a CircuitPython version error, see the next section, then come back.
 

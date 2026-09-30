@@ -13,9 +13,10 @@ The config editor is a desktop app built with **SvelteKit 5 + Tauri 2 (Rust back
 
 | Path | Purpose |
 |------|---------|
-| `src/routes/+page.svelte` | App shell: device selector, save/reload/reset, ⌘S shortcut |
+| `src/routes/+page.svelte` | App shell: device selector, header (what you're working on), load/save/reload flows, device events |
+| `src/lib/workingOn.ts` | Pure "what you're working on" rules: button states and post-save outcomes (tested against the plan's button table) |
 | `src/lib/formStore.ts` | Form state, undo/redo history (50 items), `updateField`, `normalizeConfig`, `loadConfig` |
-| `src/lib/stores.ts` | UI state: devices, selectedDevice, hasUnsavedChanges, isLoading |
+| `src/lib/stores.ts` | UI state: devices, selectedDevice, workingOn, isLoading |
 | `../config.schema.json` | JSON Schema (draft-07) — single source of truth for the config format |
 | `src/lib/types.generated.ts` | Auto-generated TypeScript types from `config.schema.json` (run `npm run generate:types`) |
 | `src/lib/types.ts` | Re-exports generated types + UI-only types |
@@ -29,6 +30,7 @@ The config editor is a desktop app built with **SvelteKit 5 + Tauri 2 (Rust back
 | `src-tauri/src/commands.rs` | Tauri commands: read/write/validate config, restart device, path security |
 | `src-tauri/src/device.rs` | USB device detection and watcher (cross-platform) |
 | `src-tauri/src/installer.rs` | Firmware installer (mirrors `deploy.sh` copy order) |
+| `src-tauri/src/config_files.rs` | Whole-config file IO with no device: open/save/default config, device type probe (#36) |
 
 ## Save Flow
 
@@ -40,21 +42,33 @@ ButtonRow/DeviceSection/etc. → onUpdate(field, value)
       → validate() re-runs client-side validation
       → debounced pushHistory() (500ms) for undo/redo
 
-Save button / ⌘S → saveToDevice(restart)   ← restart = ($saveMode === 'save_restart')
-  → validate()
-  → normalizeConfig(get(config))   ← strips type-irrelevant fields
-  → JSON.stringify()
+Save to Device / ⌘S (when working on a device) → saveToDevice(restart)   ← restart = ($saveMode === 'save_restart')
+  → prepareSave(): blur field, validate(), validateAllPages(), normalizeConfig(), JSON.stringify()
+  → confirmDeviceType(): device_config_type() vs config.device; mismatch → ask(), unreadable → model picker
   → writeConfigRaw(path, json)     ← Tauri IPC
     → Rust: validate_device_path() + verify_device_connected()
     → serde_json::from_str() → MidiCaptainConfig
     → config.validate()
     → serde_json::to_string_pretty() → fs::write() + sync_all()
+  → afterSaveToDevice(): a new config becomes the device; markSaved() only if working on the device
   → if restart: doRestartDevice()   (no per-save "restart?" prompt)
+
+Save to File / Save to File… → prepareSave() → save_config_file(path, json)   (no device checks)
 ```
 
 `ConfigForm.svelte` owns the ⌘S shortcut. `+page.svelte` used to register a second `keydown` listener for it, so one ⌘S fired two concurrent `saveToDevice` calls and the extra one ignored the chosen Save mode — don't reintroduce it.
 
-The Save button is a split button (`ConfigForm.svelte`): the main half runs the sticky `saveMode` store (`stores.ts`, persisted in `localStorage` under `mcm.saveMode`), the caret opens a menu that only *changes* the mode — "Save to Device" (write only; footer says restart to apply) or "Save & Restart" (write, then soft-reboot). Picking a menu item never fires a save, so a mis-click can't restart a live device.
+The Save to Device button is a split button (`ConfigForm.svelte`): the main half runs the sticky `saveMode` store (`stores.ts`, persisted in `localStorage` under `mcm.saveMode`), the caret opens a menu that only *changes* the mode — "Save to Device" (write only; footer says restart to apply) or "Save to Device & Restart" (write, then soft-reboot). Picking a menu item never fires a save, so a mis-click can't restart a live device. The file saves have no menu.
+
+## What the Editor Is Working On (#36)
+
+The editor always works on exactly one thing (`workingOn` store): a **device**, a **file**, or a **new** unsaved config (or nothing). Loading changes it; saving never does, except a new config's first save. Every button names its target (Save to Device, Save to File, Load from File…, Reload from Device…). The full button and device-event decision tables are in [`docs/plans/2026-09-29-issue-36-saved-configs.md`](../docs/plans/2026-09-29-issue-36-saved-configs.md); `workingOn.ts` encodes them and `workingOn.test.ts` tests them row by row.
+
+- **One dirty flag: `formStore.isDirty`.** `markSaved()` clears it and records the saved history index, so undo back onto the saved state is clean. Call it only after saving to what you're working on; a backup copy leaves the dot on.
+- **A device connecting never loads over an open file or unsaved edits** — it's only auto-selected so Save to Device has a target. Disconnecting keeps the form and edits.
+- **File IO is Rust `std::fs` in `config_files.rs`** (`open_config_file`, `save_config_file`, `default_config`, `configs_dir`), separate from the device-scoped `read_config_raw`/`write_config_raw`. `save_config_file` validates, writes `<name>.tmp`, then renames, so a crash can't leave a half-written config.
+- **Same accepted security tradeoff as page templates:** `open_config_file` / `save_config_file` take any picker-chosen path without `validate_device_path` (see Page Templates below).
+- **Default folder:** `~/Documents/MIDICaptainMAX/configs` (shares `mcm_documents_root()` with `templates/`).
 
 ## Schema-Driven Config Types (CRITICAL)
 

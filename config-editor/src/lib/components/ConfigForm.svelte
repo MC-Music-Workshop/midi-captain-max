@@ -1,15 +1,22 @@
 <script lang="ts">
   import { onMount, type Snippet } from 'svelte';
-  import { isDirty, canUndo, canRedo, undo, redo, validationErrors, config, normalizeConfig } from '$lib/formStore';
+  import { canUndo, canRedo, undo, redo, validationErrors, config, normalizeConfig } from '$lib/formStore';
   import { saveMode, type SaveMode } from '$lib/stores';
+  import type { ButtonStates } from '$lib/workingOn';
 
   interface Props {
+    // What each button does for the current "working on" (see workingOn.ts).
+    states: ButtonStates;
     // restart=true: write config.json, then soft-reboot the device so it applies now.
-    onSave: (restart: boolean) => void;
+    onSaveToDevice: (restart: boolean) => void;
+    onSaveToFile: () => void;
+    onSaveToFileAs: () => void;
+    onLoadFromFile: () => void;
+    onNewConfig: () => void;
     children: Snippet;
   }
 
-  let { onSave, children }: Props = $props();
+  let { states, onSaveToDevice, onSaveToFile, onSaveToFileAs, onLoadFromFile, onNewConfig, children }: Props = $props();
 
   let hasErrors = $derived($validationErrors.size > 0);
   let showJsonModal = $state(false);
@@ -21,10 +28,16 @@
   let showSaveMenu = $state(false);
   const SAVE_MODE_LABELS: Record<SaveMode, string> = {
     save: 'Save to Device',
-    save_restart: 'Save & Restart',
+    save_restart: 'Save to Device & Restart',
   };
-  let saveLabel = $derived(
-    hasErrors ? 'Fix errors to save' : SAVE_MODE_LABELS[$saveMode] + ($isDirty ? ' *' : '')
+  let saveLabel = $derived(SAVE_MODE_LABELS[$saveMode]);
+  let saveToDeviceDisabled = $derived(hasErrors || !states.saveToDevice.enabled);
+  let saveToDeviceTitle = $derived(
+    !states.saveToDevice.enabled
+      ? states.saveToDevice.hint ?? ''
+      : $saveMode === 'save_restart'
+        ? 'Save to the device and restart it'
+        : 'Save to the device. It keeps running the old config until you restart it.'
   );
 
   function chooseSaveMode(mode: SaveMode) {
@@ -68,8 +81,16 @@
     navigator.clipboard.writeText(jsonText);
   }
 
-  function handleSave() {
-    onSave($saveMode === 'save_restart');
+  // ⌘S runs the save that matches what you're working on.
+  function handlePrimarySave() {
+    if (hasErrors) return;
+    if (states.primary === 'device') {
+      if (states.saveToDevice.enabled) onSaveToDevice($saveMode === 'save_restart');
+    } else if (states.primary === 'file') {
+      onSaveToFile();
+    } else {
+      onSaveToFileAs();
+    }
   }
 
   // Keyboard shortcuts
@@ -97,7 +118,7 @@
       }
     } else if (isCmd && event.key === 's') {
       event.preventDefault();
-      handleSave();
+      handlePrimarySave();
     }
   }
 
@@ -139,24 +160,41 @@
       <button class="toolbar-btn secondary" onclick={handleViewJson}>
         View JSON
       </button>
+      <button class="toolbar-btn secondary" onclick={onLoadFromFile}>Load from File…</button>
+      <button class="toolbar-btn secondary" onclick={onNewConfig}>New Config…</button>
+      <button
+        class="toolbar-btn {states.primary === 'file-as' ? 'primary' : 'secondary'}"
+        disabled={hasErrors}
+        onclick={onSaveToFileAs}
+      >
+        Save to File…
+      </button>
+      {#if states.saveToFile.visible}
+        <button
+          class="toolbar-btn {states.primary === 'file' ? 'primary' : 'secondary'}"
+          disabled={hasErrors}
+          onclick={onSaveToFile}
+          title="Overwrite the open file (⌘S)"
+        >
+          Save to File
+        </button>
+      {/if}
       <div class="save-split">
         <button
-          class="toolbar-btn primary save-main"
-          disabled={hasErrors}
-          onclick={handleSave}
-          title={$saveMode === 'save_restart'
-            ? 'Save and restart the device (⌘S)'
-            : 'Save (⌘S). The device keeps running the old config until you restart it.'}
+          class="toolbar-btn {states.primary === 'device' ? 'primary' : 'secondary'} save-main"
+          disabled={saveToDeviceDisabled}
+          onclick={() => onSaveToDevice($saveMode === 'save_restart')}
+          title={saveToDeviceTitle}
         >
           {saveLabel}
         </button>
         <button
-          class="toolbar-btn primary save-caret"
+          class="toolbar-btn {states.primary === 'device' ? 'primary' : 'secondary'} save-caret"
           onclick={() => (showSaveMenu = !showSaveMenu)}
           aria-haspopup="menu"
           aria-expanded={showSaveMenu}
-          aria-label="Choose what the Save button does"
-          title="Choose what the Save button does"
+          aria-label="Choose what the Save to Device button does"
+          title="Choose what the Save to Device button does"
         >▾</button>
         {#if showSaveMenu}
           <div class="save-menu" role="menu" aria-label="Save mode">
@@ -240,6 +278,7 @@
 
   .toolbar-group {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
   }
 
@@ -297,7 +336,7 @@
   .save-caret {
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
-    border-left: 1px solid rgba(255, 255, 255, 0.4);
+    border-left-color: rgba(128, 128, 128, 0.4);
     padding: 6px 8px;
   }
 

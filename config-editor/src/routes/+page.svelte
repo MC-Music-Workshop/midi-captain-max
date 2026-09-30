@@ -1,18 +1,24 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
-  import { message, ask } from '@tauri-apps/plugin-dialog';
+  import { message, ask, open, save } from '@tauri-apps/plugin-dialog';
   import { getVersion } from '@tauri-apps/api/app';
   import {
-    devices, selectedDevice, currentConfigRaw,
-    hasUnsavedChanges, validationErrors, statusMessage, isLoading
+    devices, selectedDevice, currentConfigRaw, workingOn,
+    validationErrors, statusMessage, isLoading
   } from '$lib/stores';
   import {
     scanDevices, startDeviceWatcher, readConfigRaw, writeConfigRaw,
     onDeviceConnected, onDeviceDisconnected, restartDevice, ejectDevice,
-    rpiRp2MountPath, detectOemV5Port
+    rpiRp2MountPath, detectOemV5Port, configsDir, openConfigFile, saveConfigFile,
+    defaultConfig, deviceConfigType
   } from '$lib/api';
-  import type { DetectedDevice } from '$lib/types';
+  import type { DetectedDevice, DeviceType } from '$lib/types';
+  import {
+    buttonStates, afterSaveToDevice, afterSaveToFileAs, fileName, workingOnLabel,
+    type WorkingOn
+  } from '$lib/workingOn';
+  import DeviceTypePicker from '$lib/components/DeviceTypePicker.svelte';
   import ConfigForm from '$lib/components/ConfigForm.svelte';
   import DeviceSection from '$lib/components/DeviceSection.svelte';
   import PageBar from '$lib/components/PageBar.svelte';
@@ -25,7 +31,7 @@
 import PageControlSection from '$lib/components/PageControlSection.svelte';
   import FirmwareInstaller from '$lib/components/FirmwareInstaller.svelte';
   import ReflashCircuitPython from '$lib/components/ReflashCircuitPython.svelte';
-  import { loadConfig, validate, normalizeConfig, config, currentPage } from '$lib/formStore';
+  import { loadConfig, validate, normalizeConfig, markSaved, isDirty, config, currentPage } from '$lib/formStore';
   import { validateAllPages } from '$lib/validation';
 
   let appVersion = $state('');
@@ -43,6 +49,46 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
   let unlistenConnect: (() => void) | undefined;
   let unlistenDisconnect: (() => void) | undefined;
   
+  const DEVICE_LABELS: Record<DeviceType, string> = {
+    std10: 'STD10', mini6: 'Mini6', nano4: 'NANO4', duo2: 'DUO2', one1: 'ONE',
+  };
+
+  // Promise-based device model picker (New Config…, and Save to Device when the
+  // device's model can't be read). Resolves null when cancelled.
+  let picker = $state<{
+    title: string; message?: string; confirmLabel: string; initial?: DeviceType;
+    resolve: (d: DeviceType | null) => void;
+  } | null>(null);
+
+  function pickDeviceType(opts: { title: string; message?: string; confirmLabel: string; initial?: DeviceType }) {
+    return new Promise<DeviceType | null>(resolve => {
+      picker = { ...opts, resolve };
+    });
+  }
+
+  function resolvePicker(d: DeviceType | null) {
+    picker?.resolve(d);
+    picker = null;
+  }
+
+  // Everything that replaces what you're working on goes through here first.
+  async function confirmDiscard(): Promise<boolean> {
+    if (!$isDirty) return true;
+    return ask('You have unsaved edits. Discard them?', {
+      title: 'Unsaved Changes', kind: 'warning', okLabel: 'Discard', cancelLabel: 'Cancel'
+    });
+  }
+
+  const errText = (e: any) => e?.message ?? String(e);
+
+  let deviceConnected = $derived(
+    $selectedDevice !== null && $devices.some(d => d.path === $selectedDevice!.path)
+  );
+  let states = $derived($workingOn ? buttonStates($workingOn, deviceConnected) : null);
+  let workingOnDevice = $derived(
+    $workingOn?.kind === 'device' && $selectedDevice !== null && $workingOn.device.path === $selectedDevice.path
+  );
+
   onMount(async () => {
     try {
       appVersion = await getVersion();
@@ -58,61 +104,42 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
       unlistenConnect = await onDeviceConnected(async (device) => {
         // Deduplicate: check if device is already in the list
         const exists = $devices.some(d => d.path === device.path);
-        if (!exists) {
-          $devices = [...$devices, device];
-          $statusMessage = `Device connected: ${device.name}`;
-          
-          // Auto-select if device was previously selected or if it's the only one
-          const shouldAutoSelect = $devices.length === 1 || 
-            ($selectedDevice && $selectedDevice.path === device.path);
-          
-          if (shouldAutoSelect) {
+        if (exists) return;
+        $devices = [...$devices, device];
+        $statusMessage = `Device connected: ${device.name}`;
+
+        const wasSelected = $selectedDevice?.name === device.name;
+        const reconnectedWorkingOn = $workingOn?.kind === 'device' && $workingOn.device.name === device.name;
+
+        if (reconnectedWorkingOn) {
+          // Same device is back: re-enable Save to Device without touching edits.
+          $selectedDevice = device;
+          $workingOn = { kind: 'device', device };
+          if (!$isDirty) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await loadFromDevice(device);
+          } else {
+            $statusMessage = `${device.name} reconnected. Your unsaved edits are kept.`;
+          }
+        } else if ($workingOn === null) {
+          // Nothing open: auto-select and load, as before.
+          if ($devices.length === 1 || wasSelected) {
             // Small delay to ensure device is fully mounted before loading config
             await new Promise(resolve => setTimeout(resolve, 500));
-            
-            // Force reload config by reading directly from device
             $selectedDevice = device;
-            $isLoading = true;
-            
-            try {
-              const configRaw = await readConfigRaw(device.config_path);
-              const configObj = JSON.parse(configRaw);
-              
-              // Load into form store
-              loadConfig(configObj);
-              
-              $currentConfigRaw = configRaw;
-              $hasUnsavedChanges = false;
-              $validationErrors = [];
-              $statusMessage = 'Config reloaded from device';
-            } catch (e: any) {
-              $currentConfigRaw = '';
-              $statusMessage = `Error loading config: ${e.message || e}`;
-            } finally {
-              $isLoading = false;
-            }
+            await loadFromDevice(device);
           }
+        } else if ($selectedDevice === null) {
+          // Something is open: give Save to Device a target, but never load over it.
+          $selectedDevice = device;
         }
       });
       
       unlistenDisconnect = await onDeviceDisconnected(async (name) => {
-        const wasSelected = $selectedDevice?.name === name;
-        
-        // Remove device by name
+        // Remove device by name. The form and any edits stay (D7); Save to
+        // Device disables itself via `deviceConnected`. selectedDevice is kept
+        // so the device is re-selected when it reconnects.
         $devices = $devices.filter(d => d.name !== name);
-        
-        if (wasSelected) {
-          if ($hasUnsavedChanges) {
-            await message(
-              `Device "${name}" was disconnected. Your unsaved changes have been lost.`,
-              { title: 'Device Disconnected', kind: 'warning' }
-            );
-          }
-          // Don't clear selectedDevice - keep it so we can auto-select when it reconnects
-          $currentConfigRaw = '';
-          $hasUnsavedChanges = false;
-        }
-        
         $statusMessage = `Device disconnected: ${name}`;
       });
       
@@ -152,51 +179,94 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
       rpiRp2PollTimer = null;
     }
   });
-  
-  async function selectDevice(device: DetectedDevice) {
-    console.log('selectDevice called with:', device);
-    
-    if ($hasUnsavedChanges) {
-      if (!confirm('You have unsaved changes. Discard them?')) {
-        return;
-      }
-    }
-    
-    $selectedDevice = device;
+
+  function applyLoaded(configRaw: string, working: WorkingOn, status: string) {
+    loadConfig(JSON.parse(configRaw));
+    $currentConfigRaw = configRaw;
+    $workingOn = working;
+    $validationErrors = [];
+    $statusMessage = status;
+  }
+
+  // Read the device's config into the form and start working on that device.
+  // No discard prompt here — callers decide (see confirmDiscard).
+  async function loadFromDevice(device: DetectedDevice, status = 'Config loaded from device') {
     $isLoading = true;
-    
     try {
-      if (device.has_config) {
-        console.log('Reading config from:', device.config_path);
-        const configRaw = await readConfigRaw(device.config_path);
-        console.log('Config raw loaded, length:', configRaw.length);
-        const configObj = JSON.parse(configRaw);
-        console.log('Config parsed:', configObj);
-        
-        // Load into form store
-        loadConfig(configObj);
-        console.log('Config loaded into form store');
-        
-        $currentConfigRaw = configRaw;
-        $hasUnsavedChanges = false;
-        $validationErrors = [];
-        $statusMessage = 'Config loaded successfully';
-      } else {
-        console.log('No config found on device');
-        $currentConfigRaw = '';
-        $statusMessage = 'No config.json found on device';
-      }
+      // Don't gate on the snapshot's has_config — it's frozen at detection
+      // time and can be stale (e.g. device re-detected mid-mount after the
+      // post-install reboot). A genuinely missing config.json surfaces as an
+      // error in the footer instead.
+      const configRaw = await readConfigRaw(device.config_path);
+      applyLoaded(configRaw, { kind: 'device', device }, status);
     } catch (e: any) {
       console.error('Error loading config:', e);
-      $statusMessage = `Error reading config: ${e.message || e}`;
+      $statusMessage = `Error reading config: ${errText(e)}`;
     } finally {
       $isLoading = false;
     }
   }
-  
-  async function saveToDevice(restart = false) {
-    if (!$selectedDevice) return;
 
+  // Picking a device loads it, even while working on a file (D12).
+  async function selectDevice(device: DetectedDevice) {
+    if ($workingOn && !(await confirmDiscard())) return;
+
+    $selectedDevice = device;
+    if (device.has_config) {
+      await loadFromDevice(device, 'Config loaded successfully');
+    } else {
+      if ($workingOn?.kind === 'device') $workingOn = null;
+      $statusMessage = 'No config.json found on device';
+    }
+  }
+
+  async function reloadFromDevice() {
+    if (!$selectedDevice || !(await confirmDiscard())) return;
+    await loadFromDevice($selectedDevice, 'Config reloaded from device');
+  }
+
+  async function loadFromFile(path?: string) {
+    if (!path && !(await confirmDiscard())) return;
+    try {
+      if (!path) {
+        const picked = await open({
+          title: 'Load config from file',
+          defaultPath: await configsDir(),
+          multiple: false,
+          filters: [{ name: 'MIDI Captain config', extensions: ['json'] }],
+        });
+        if (typeof picked !== 'string') return; // cancelled
+        path = picked;
+      }
+      applyLoaded(await openConfigFile(path), { kind: 'file', path }, `Loaded ${fileName(path)}`);
+    } catch (e: any) {
+      await message(errText(e), { title: 'Could not load file', kind: 'error' });
+    }
+  }
+
+  async function reloadFromFile() {
+    if ($workingOn?.kind !== 'file' || !(await confirmDiscard())) return;
+    await loadFromFile($workingOn.path);
+  }
+
+  async function newConfig() {
+    if (!(await confirmDiscard())) return;
+    const device = await pickDeviceType({
+      title: 'New config',
+      message: 'Start from the default config for:',
+      confirmLabel: 'Create',
+    });
+    if (!device) return;
+    try {
+      applyLoaded(await defaultConfig(device), { kind: 'new' }, `New ${DEVICE_LABELS[device]} config`);
+    } catch (e: any) {
+      await message(errText(e), { title: 'Could not create config', kind: 'error' });
+    }
+  }
+
+  // Steps every save runs: commit the focused field, validate everything, and
+  // produce the JSON to write. Returns null (after telling the user) on failure.
+  async function prepareSave(): Promise<string | null> {
     // Field edits commit on blur, and WebKit doesn't blur the focused input
     // when Save is clicked (or on ⌘S) — force it so the save includes an
     // in-flight edit instead of silently dropping it.
@@ -212,19 +282,54 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
         title: 'Validation Error',
         kind: 'error'
       });
-      return;
+      return null;
     }
+    return JSON.stringify(normalizeConfig(get(config)), null, 2);
+  }
+
+  // D8/D10: confirm before writing a config to a device of a different model.
+  async function confirmDeviceType(device: DetectedDevice, configType: DeviceType): Promise<boolean> {
+    let deviceType: DeviceType | null = null;
+    try {
+      deviceType = await deviceConfigType(device.path);
+    } catch {
+      // Unreadable: treated as unknown below.
+    }
+    if (deviceType === null) {
+      deviceType = await pickDeviceType({
+        title: 'Which model is this device?',
+        message: "Its current config.json doesn't say, so choose its model.",
+        confirmLabel: 'Continue',
+        initial: configType,
+      });
+      if (deviceType === null) return false;
+    }
+    if (deviceType === configType) return true;
+    return ask(
+      `This device is set up as a ${DEVICE_LABELS[deviceType]}. Save a ${DEVICE_LABELS[configType]} config to it?`,
+      { title: 'Device Type Mismatch', kind: 'warning', okLabel: 'Save Anyway', cancelLabel: 'Cancel' }
+    );
+  }
+
+  async function saveToDevice(restart = false) {
+    const device = $selectedDevice;
+    const working = $workingOn;
+    if (!device || !working || !deviceConnected) return;
+
+    const configJson = await prepareSave();
+    if (configJson === null) return;
+    if (!(await confirmDeviceType(device, get(config).device ?? 'std10'))) return;
 
     $isLoading = true;
-    
     try {
-      const configObj = normalizeConfig(get(config));
-      const configJson = JSON.stringify(configObj, null, 2);
-      
-      await writeConfigRaw($selectedDevice.config_path, configJson);
-      
-      $currentConfigRaw = configJson;
-      $hasUnsavedChanges = false;
+      await writeConfigRaw(device.config_path, configJson);
+
+      const outcome = afterSaveToDevice(working, device);
+      $workingOn = outcome.working;
+      if (outcome.clearsDirty) {
+        $currentConfigRaw = configJson;
+        markSaved();
+      }
 
       // The toolbar's sticky Save mode decides this — no per-save prompt. Plain
       // save leaves the device running the old config until the user restarts it
@@ -236,41 +341,62 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
         $statusMessage = 'Config saved — restart device to apply';
       }
     } catch (e: any) {
-      $statusMessage = `Error saving config: ${e.message || e}`;
+      $statusMessage = `Error saving config: ${errText(e)}`;
       await message($statusMessage, { title: 'Error', kind: 'error' });
     } finally {
       $isLoading = false;
     }
   }
-  
-  async function reloadFromDevice() {
-    console.log('reloadFromDevice called, selectedDevice:', $selectedDevice);
-    if (!$selectedDevice) return;
-    
-    $isLoading = true;
+
+  // Overwrite the open file.
+  async function saveToFile() {
+    if ($workingOn?.kind !== 'file') return;
+    const path = $workingOn.path;
+    const json = await prepareSave();
+    if (json === null) return;
     try {
-      // Don't gate on the snapshot's has_config — it's frozen at detection
-      // time and can be stale (e.g. device re-detected mid-mount after the
-      // post-install reboot), which turned this button into a silent no-op.
-      // Attempt the read; a genuinely missing config.json surfaces as an
-      // error in the footer instead.
-      console.log('Reloading config from:', $selectedDevice.config_path);
-      const configRaw = await readConfigRaw($selectedDevice.config_path);
-      console.log('Config reloaded, length:', configRaw.length);
-      const configObj = JSON.parse(configRaw);
-
-      // Load into form store
-      loadConfig(configObj);
-
-      $currentConfigRaw = configRaw;
-      $hasUnsavedChanges = false;
-      $validationErrors = [];
-      $statusMessage = 'Config reloaded from device';
+      await saveConfigFile(path, json);
+      markSaved();
+      $statusMessage = `Saved ${fileName(path)}`;
     } catch (e: any) {
-      console.error('Error reloading config:', e);
-      $statusMessage = `Error reloading config: ${e.message || e}`;
-    } finally {
-      $isLoading = false;
+      $statusMessage = `Error saving file: ${errText(e)}`;
+      await message($statusMessage, { title: 'Error', kind: 'error' });
+    }
+  }
+
+  // Save a copy to a chosen file; a new config becomes that file (D3).
+  async function saveToFileAs() {
+    const working = $workingOn;
+    if (!working) return;
+    const json = await prepareSave();
+    if (json === null) return;
+    try {
+      const dir = await configsDir();
+      const path = await save({
+        title: 'Save config to file',
+        defaultPath: working.kind === 'file' ? working.path : `${dir}/${get(config).device ?? 'config'}.json`,
+        filters: [{ name: 'MIDI Captain config', extensions: ['json'] }],
+      });
+      if (!path) return; // cancelled
+      await saveConfigFile(path, json);
+      const outcome = afterSaveToFileAs(working, path);
+      $workingOn = outcome.working;
+      if (outcome.clearsDirty) markSaved();
+      $statusMessage = `Saved ${fileName(path)}`;
+    } catch (e: any) {
+      $statusMessage = `Error saving file: ${errText(e)}`;
+      await message($statusMessage, { title: 'Error', kind: 'error' });
+    }
+  }
+
+  // Firmware install finished (D13): reload only when that would replace nothing
+  // the user is working on.
+  async function onFirmwareInstalled() {
+    const device = $selectedDevice;
+    if (device && ($workingOn === null || workingOnDevice)) {
+      await loadFromDevice(device, 'Firmware installed; config reloaded from device');
+    } else {
+      $statusMessage = 'Firmware install finished. Your open config was not changed.';
     }
   }
   
@@ -297,7 +423,8 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
   async function doEjectDevice() {
     if (!$selectedDevice) return;
 
-    if ($hasUnsavedChanges) {
+    const editingThisDevice = workingOnDevice && $isDirty;
+    if (editingThisDevice) {
       const proceed = await ask(
         'You have unsaved changes that will be lost. Eject anyway?',
         { title: 'Unsaved Changes', kind: 'warning', okLabel: 'Eject', cancelLabel: 'Cancel' }
@@ -314,13 +441,16 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
       // fire, but we update immediately to avoid stale UI.
       $devices = $devices.filter(d => d.config_path !== $selectedDevice!.config_path);
       $selectedDevice = null;
-      $currentConfigRaw = '';
-      $hasUnsavedChanges = false;
+      if (workingOnDevice) {
+        $workingOn = null;
+        $currentConfigRaw = '';
+      }
       $statusMessage = `${ejectedName} ejected safely`;
 
-      // Auto-select another device if one is still connected
+      // Pick another connected device: load it only if nothing else is open.
       if ($devices.length > 0) {
-        await selectDevice($devices[0]);
+        if ($workingOn === null) await selectDevice($devices[0]);
+        else $selectedDevice = $devices[0];
       }
     } catch (e: any) {
       console.error('Eject failed:', e);
@@ -342,6 +472,13 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
         <span class="version">v{appVersion}</span>
       {/if}
     </div>
+    {#if $workingOn}
+      <div class="working-on" title="What you're working on">
+        <span class="working-on-kind">{$workingOn.kind === 'device' ? 'Device' : $workingOn.kind === 'file' ? 'File' : ''}</span>
+        <strong>{workingOnLabel($workingOn)}</strong>
+        {#if $isDirty}<span class="dot" title="Unsaved edits" aria-label="Unsaved edits">●</span>{/if}
+      </div>
+    {/if}
     <div class="device-selector">
       {#if $devices.length === 0}
         <span class="no-device">No device connected</span>
@@ -413,8 +550,15 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
 
 
   <div class="editor-container">
-    {#if $selectedDevice && !$isLoading}
-      <ConfigForm onSave={saveToDevice}>
+    {#if $workingOn && states && !$isLoading}
+      <ConfigForm
+        {states}
+        onSaveToDevice={saveToDevice}
+        onSaveToFile={saveToFile}
+        onSaveToFileAs={saveToFileAs}
+        onLoadFromFile={() => loadFromFile()}
+        onNewConfig={newConfig}
+      >
         <DeviceSection />
         <PageBar />
         <!-- Keyed by page identity: switching pages rebuilds these sections'
@@ -429,18 +573,31 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
         <DisplaySection />
         <MidiThruSection />
         <PageControlSection />
-        <FirmwareInstaller
-          device={$selectedDevice}
-          hasUnsavedChanges={$hasUnsavedChanges}
-          onInstalled={reloadFromDevice}
-        />
+        {#if $selectedDevice}
+          <FirmwareInstaller
+            device={$selectedDevice}
+            hasUnsavedChanges={$isDirty && workingOnDevice}
+            onInstalled={onFirmwareInstalled}
+          />
+        {/if}
       </ConfigForm>
     {:else if $isLoading}
       <div class="loading">Loading config...</div>
     {:else}
       <div class="no-device">
-        <p>No device selected</p>
-        <p>Connect a MIDI Captain device and select it above.</p>
+        <p>Nothing open</p>
+        <div class="empty-actions">
+          <button onclick={() => loadFromFile()}>Load from File…</button>
+          <button onclick={newConfig}>New Config…</button>
+        </div>
+        <p>Or connect a MIDI Captain device and select it above.</p>
+        {#if $selectedDevice}
+          <FirmwareInstaller
+            device={$selectedDevice}
+            hasUnsavedChanges={false}
+            onInstalled={onFirmwareInstalled}
+          />
+        {/if}
       </div>
     {/if}
   </div>
@@ -459,32 +616,48 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
   <footer>
     <div class="status">{$statusMessage}</div>
     <div class="actions">
-      {#if $hasUnsavedChanges}
+      {#if $isDirty}
         <span class="unsaved">● Unsaved changes</span>
       {/if}
-      <button 
+      {#if states?.reloadFromFile.visible}
+        <button class="secondary" onclick={reloadFromFile} disabled={$isLoading}>
+          Reload from File
+        </button>
+      {/if}
+      <button
         class="secondary"
-        onclick={reloadFromDevice} 
-        disabled={!$selectedDevice || $isLoading}
+        onclick={reloadFromDevice}
+        disabled={!deviceConnected || $isLoading}
+        title={deviceConnected ? '' : 'No device connected'}
       >
-        Reload
+        Reload from Device
       </button>
       <button 
         class="secondary"
         onclick={doRestartDevice}
-        disabled={!$selectedDevice || $isLoading}
+        disabled={!deviceConnected || $isLoading}
       >
         Restart Device
       </button>
       <button
         class="secondary"
         onclick={doEjectDevice}
-        disabled={!$selectedDevice || $isLoading}
+        disabled={!deviceConnected || $isLoading}
       >
         Eject
       </button>
     </div>
   </footer>
+
+  {#if picker}
+    <DeviceTypePicker
+      title={picker.title}
+      message={picker.message}
+      confirmLabel={picker.confirmLabel}
+      initial={picker.initial}
+      onPick={resolvePicker}
+    />
+  {/if}
 </main>
 
 <style>
@@ -575,6 +748,28 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
   .no-device {
     color: var(--text-secondary);
     font-style: italic;
+  }
+
+  .empty-actions {
+    display: flex;
+    gap: 12px;
+    margin: 12px 0;
+  }
+
+  .working-on {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 14px;
+  }
+
+  .working-on-kind {
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
+  .working-on .dot {
+    color: #dcdcaa;
   }
 
   .rpi-banner.oem-v5 {

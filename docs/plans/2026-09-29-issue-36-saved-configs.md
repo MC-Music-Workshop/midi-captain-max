@@ -19,8 +19,12 @@
 | D5 | **Unsaved dot:** it means "what you're working on doesn't have these edits yet." Saving to the other side, for example a backup to a file while working on the device, leaves it on. |
 | D6 | **Starting with no device:** **Load from File…** opens an existing file. **New Config…** asks for a device type and starts from that device's bundled default config. |
 | D7 | **Unplugging the device:** the form stays open with unsaved edits. **Save to File…** still works, and **Save to Device** comes back when the device reconnects. |
-| D8 | **Device type mismatch:** saving a config to a device of a different type is blocked. |
+| D8 | **Device type mismatch:** the only way to know a device's model is the `device` field in its current `config.json`. If the config you're saving is for a different type, **Save to Device** asks first, for example "This device is set up as a Mini6. Save a STD10 config to it?". It isn't a hard block, so a wrong device type can still be fixed from the editor. |
 | D9 | **Drop `pages/`:** the unused `~/Documents/MIDICaptainMAX/pages/` folder is no longer created. Done in `e079fe1`. |
+| D10 | **Device model unknown:** if the device has no readable `config.json`, **Save to Device** asks which model it is before saving, using the same model picker the installer shows for `DEVICE_TYPE_UNKNOWN_CODE`. |
+| D11 | **Shortcuts:** ⌘S only for now. ⌘O and ⇧⌘S can come later. |
+| D12 | **Picking a device loads it,** even while you're working on a file, the same as today. With two devices connected, saving a file to the second one means picking that device first, then loading the file. Accepted because several connected devices is rare. |
+| D13 | **Firmware install:** the installer shows whenever a device is selected, whatever you're working on. After an install, the editor reloads from the device only if you're working on that device. If you're working on a file or a new config, it keeps it and says the install finished. |
 
 ## What Each Button Does
 
@@ -28,14 +32,14 @@
 
 | Button | Working on a device | Working on a file | Working on a new config | Enabled when |
 |---|---|---|---|---|
-| **Save to Device** (split button: **Save to Device & Restart**) | Writes to the device. Clears the dot. | Writes to the selected device. You stay on the file, and the dot is unchanged. | Writes to the selected device. You're now working on that device. | A device is selected and connected, and its type matches (D8) |
+| **Save to Device** (split button: **Save to Device & Restart**) | Writes to the device. Clears the dot. | Writes to the selected device. You stay on the file, and the dot is unchanged. | Writes to the selected device. You're now working on that device. | A device is selected and connected. A type mismatch asks first (D8), and an unknown model asks for the model (D10). |
 | **Save to File** | *(hidden)* | Overwrites the file. Clears the dot. | *(hidden)* | Working on a file |
 | **Save to File…** | Saves a copy to a file you choose. You stay on the device, and the dot is unchanged. | Saves a copy to a file you choose. You stay on the original file. | Saves to a file you choose. You're now working on that file, and the dot clears. | Always |
 | **Load from File…** | Asks before discarding unsaved edits, then you're working on the chosen file. | Same | Same | Always |
 | **Reload from Device** | Asks before discarding unsaved edits, then re-reads the device. | Asks before discarding unsaved edits, then you're working on the selected device. | Same as working on a file | A device is selected and connected |
 | **Reload from File** | *(hidden)* | Asks before discarding unsaved edits, then re-reads the file from disk. | *(hidden)* | Working on a file |
 | **New Config…** | Asks before discarding unsaved edits, then asks for a device type. You're now working on a new config. | Same | Same | Always |
-| **Picking a device in the picker** | Same as **Reload from Device** for that device | Same | Same | A device is connected |
+| **Picking a device in the picker** | Same as **Reload from Device** for that device (D12) | Same | Same | A device is connected |
 
 - **⌘S** runs **Save to Device** when you're working on a device, **Save to File** when you're working on a file, and **Save to File…** when you're working on a new config. The main toolbar button shows that label, and the other saves stay available next to it.
 - **The Save to Device & Restart split button** only applies to **Save to Device**. The file saves have no menu.
@@ -48,13 +52,8 @@
 | Device connects, nothing open | Auto-select it and load its config, as today. |
 | Device connects, something already open | Auto-select it if nothing is selected, so **Save to Device** has a target. **Don't load it.** Report it in the status bar. |
 | The device you're working on reconnects | Turn **Save to Device** back on. Don't reload over unsaved edits. |
+| Firmware install finishes | Working on that device: reload from it, as today. Otherwise: keep what you're working on and report the install in the status bar (D13). |
 | The device you're working on disconnects | Keep the form and its edits. You're still working on that device. **Save to Device** is disabled with a "device disconnected" hint, and **Save to File…** still works. Remove today's "unsaved changes have been lost" dialog. |
-
-## Open Questions (confirm before or during implementation)
-
-- **Q1: How do we check the device type (D8) when the device has no readable `config.json`?** The only way to tell a device's model is the `device` field in its current `config.json`, the same thing `installer.rs::detect_device_type` reads. Proposed: if it's missing or unreadable, ask the user to confirm the model before saving, using the same model picker the installer shows for `DEVICE_TYPE_UNKNOWN_CODE`.
-- **Q2: Keyboard shortcuts beyond ⌘S?** Proposed: none for now (YAGNI). ⌘O and ⇧⌘S can be added later.
-- **Q3: Several devices connected while working on a file.** Picking a device in the picker loads it, the same as today, so it replaces the file you're working on. To save a file to a second device, you'd pick that device first and then load the file. Proposed: accept this for now, since several connected devices is rare.
 
 ---
 
@@ -108,12 +107,12 @@ Pull the steps every save runs out of `saveToDevice` into one helper: blur the f
 |---|---|
 | `configs_dir()` | Returns `~/Documents/MIDICaptainMAX/configs` and creates it if needed. Shares a `mcm_documents_root()` helper with `templates::templates_dir` so the root isn't duplicated. |
 | `open_config_file(path)` | `fs::read_to_string`, then `migrate_to_pages`, then pretty JSON. Same as `read_config_raw` without the device-path check. |
-| `save_config_file(path, json)` | Parses into `MidiCaptainConfig`, runs `config.validate()`, then writes pretty JSON (same checks as `write_config_raw`, minus the device checks). No `sync_all`: this is a local disk, not a USB MSC volume. |
+| `save_config_file(path, json)` | Parses into `MidiCaptainConfig`, runs `config.validate()`, then writes pretty JSON (same checks as `write_config_raw`, minus the device checks). Writes to a temporary file in the same folder and renames it into place, so a crash mid-save can't leave a half-written config. No `sync_all`: this is a local disk, not a USB MSC volume. |
 | `default_config(device)` | Reads `bundled_firmware_dir()/config_source_name(device)` (making both `pub(crate)`), then `migrate_to_pages`, then JSON. |
 
 - `open_config_file` and `save_config_file` take any picker-chosen path, the same accepted tradeoff as page templates. Record it in `config-editor/AGENTS.md` next to the templates note.
 - Register the commands in `lib.rs` and add wrappers in `api.ts`.
-- **Save to Device's type check (D5):** a small `device_config_type(device_path)` command that returns the `device` field from the device's current `config.json`, or `null`. This can reuse `installer::detect_device_type` (made `pub(crate)`).
+- **Save to Device's type check (D8, D10):** a small `device_config_type(device_path)` command that returns the `device` field from the device's current `config.json`, or `null`. This can reuse `installer::detect_device_type` (made `pub(crate)`).
 
 ---
 
@@ -121,30 +120,32 @@ Pull the steps every save runs out of `saveToDevice` into one helper: blur the f
 
 1. **Rust file commands.** Add `config_files.rs` with the commands above, plus unit tests using `tempfile`:
    - A file written with `save_config_file` opens back unchanged.
-   - An invalid config fails to save.
+   - An invalid config fails to save and leaves any existing file untouched.
    - A legacy flat config opens migrated to pages.
    - `default_config` round-trips for every `DeviceType`. Split it into a path-taking inner function that the test runs against `firmware/dev/`, which is where the bundled configs come from. `test_roundtrip_all_shipped_configs` already reads that folder.
 2. **Single dirty flag.** Add `markSaved()` to `formStore`, remove `hasUnsavedChanges`, and update its callers. Add `formStore.test.ts` cases showing that `markSaved` clears `isDirty` and that later edits set it again.
 3. **`workingOn` store and empty state.** Add the store, change the form's render condition, and add the **Load from File…** and **New Config…** empty-state buttons, including the device-type prompt for New Config.
 4. **Buttons and labels.** Build every row of the "What Each Button Does" table:
+   - Put the table's logic in one pure function (for example `buttonStates(workingOn, selectedDevice, isDirty)` in a new `src/lib/workingOn.ts`) that returns each button's enabled state, label, and effect. Unit test it row by row against the table, then have the components render from it.
    - Pull out the shared save steps.
    - Wire ⌘S and the main toolbar label to what you're working on.
    - Limit the **Save to Device & Restart** split button to **Save to Device**.
    - Rename the footer's **Reload** button to **Reload from Device** or **Reload from File**, depending on what you're working on.
-5. **Device type check.** Add the D8 check to **Save to Device** (including the Q1 fallback), reusing the existing device write and restart path.
-6. **Device events.** Implement the Device Events table.
+5. **Device type check.** Add the D8 confirm and the D10 model prompt to **Save to Device**, reusing the existing device write and restart path.
+6. **Device events and installer.** Implement the Device Events table. Move `FirmwareInstaller` so it renders whenever a device is selected, and change its `onInstalled` so it reloads only when you're working on that device (D13).
 7. **Header.** Show what you're working on, plus the unsaved dot.
 8. **Docs.**
    - `config-editor/AGENTS.md`: update the Save Flow diagram and key files, add the file-IO security note, and add a short section on what the editor is working on, linking this plan's button table.
    - `docs/user/`: how to load and save configs with no device, plus the `configs/` folder in the "First Run" section of `installation.md`.
 9. **Verify.** Run `./tools/test-all.sh`, `npm run check` (0 warnings), and a manual pass in `npm run tauri dev`:
    - With no device: New Config…, then Save to File…, then Load from File….
-   - Plug in a device: its config is not loaded over the open file. Save to Device works, and a device-type mismatch is blocked.
+   - Plug in a device: its config is not loaded over the open file. Save to Device works, and a device-type mismatch asks first.
+   - Working on a file: install firmware, and the file stays open afterward.
    - Working on the device: Save to File… keeps the dot on, and Reload from Device asks before discarding.
    - Unplug the device with edits: the edits are kept and can be saved to a file.
 
 ## Out of Scope
 
 - The in-app library browser, list view, or "View Library" (#17).
-- Recent-files list, ⌘O / ⇧⌘S (Q2).
+- Recent-files list, ⌘O / ⇧⌘S (D11).
 - Moving the file dialogs into Rust to harden the IPC path boundary (noted as an option in `AGENTS.md`).

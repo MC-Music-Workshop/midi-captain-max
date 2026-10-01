@@ -1,6 +1,6 @@
 # Listen CC for `mode: "keytimes"` buttons
 
-**Status:** Design, not yet implemented.
+**Status:** Implemented in #200 (231217b). Not yet verified on a device; the editor has no UI for the new fields (JSON only).
 
 ## Problem
 
@@ -75,14 +75,14 @@ MIDI (e.g. a transient flash-only entry).
 
 `find_cc_rx_action` currently returns a 2-tuple `(action, index)`. Extend to
 a 3-tuple `(action, index, extra)`, `extra=None` for existing actions, to
-carry the matched track + entry for the new case:
+carry the matched press + entry for the new case:
 
 - Check `mode == "keytimes"` buttons for `short_cc_receive`/`long_cc_receive`
   matches (cc + channel) before the existing cc_step/state/select scan —
   same tier as `is_cc_step_button`.
-- On a track match, scan that track's entries for an exact `rx_value` match.
+- On a press match, scan that press's entries for an exact `rx_value` match.
   No match → no action (message simply doesn't land, same as today).
-- Return `("keytimes", i, {"track": "short"|"long", "entry": idx})`.
+- Return `("keytimes", i, {"press": "short"|"long", "entry": idx})`.
 
 All three existing call-site unpacks (`code.py:1158` and any other callers)
 move from `action, i = ...` to `action, i, extra = ...`.
@@ -94,8 +94,12 @@ New branch in `_process_midi_msg` for `action == "keytimes"`:
 - Set `state.short_cycle`/`long_cycle`'s index to the matched entry (needs a
   setter on `PressCycle`, `button.py:228` — it currently only advances).
 - Apply that entry's `color`/`dim`/`label` to `state.short_color`/`dim`/`label`
-  (or `long_*`) — reuse the entry-applying logic already in
-  `dispatch_keytimes_events` rather than duplicating it.
+  (or `long_*`) — via `apply_keytimes_entry_render` (button.py), extracted from
+  `dispatch_keytimes_events` so press and RX share it. `PressCycle.set_index`
+  is the new setter.
+- Set `state.last_fired` to the updated press, so the host's change is visible
+  even when the last physical press was the other type (without
+  `long_overlay`, a stale long color would otherwise hide a short update).
 - Repaint the LED through the same path a normal press-end event uses
   (`long_overlay` precedence unchanged).
 - Do **not** dispatch the entry's `down`/`up` MIDI messages — state/LED-only,
@@ -117,7 +121,7 @@ and RX is a correction path rather than the sole authority.
   exclusion note to point at `short_cc_receive`/`long_cc_receive` instead of
   just saying "not available."
 - `docs/user/inbound-midi.md:84` and the Quick Reference table: describe the
-  new per-track listen behavior; keep the existing "keytimes reacts to
+  new per-press listen behavior; keep the existing "keytimes reacts to
   CC+/CC-" note (unaffected, orthogonal mechanism).
 
 ### Tests
@@ -125,6 +129,6 @@ and RX is a correction path rather than the sole authority.
 - `config.py`: `short_cc_receive`/`long_cc_receive`/`rx_value` validation,
   including the duplicate-`rx_value` warning.
 - `midi_rx.py`: exact-match / no-fallback / no-match-not-configured cases for
-  both tracks independently, plus the 3-tuple return shape.
+  both presses independently, plus the 3-tuple return shape.
 - `code.py`/integration (mock-based): RX sets cycle index + LED without
   sending MIDI; `long_overlay` precedence holds after an RX-driven change.

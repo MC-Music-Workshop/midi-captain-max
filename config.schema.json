@@ -308,6 +308,10 @@
           "maxLength": 6,
           "pattern": "^[\\w \\-]+$",
           "description": "Optional display label override for this cycle position. Missing or empty inherits the button-level label."
+        },
+        "rx_value": {
+          "$ref": "#/definitions/MidiByte",
+          "description": "Incoming CC value that selects this entry when the cycle's short_cc_receive / long_cc_receive CC arrives. Exact match only. Entries without it can't be reached from inbound MIDI."
         }
       },
       "additionalProperties": false
@@ -447,7 +451,7 @@
         },
         "cc_receive": {
           "$ref": "#/definitions/MidiByte",
-          "description": "CC number this button LISTENS on, when it differs from the one it sends. Use when the host exposes a command input and a separate state output (e.g. a looper's play/stop trigger vs. its is-playing indicator): the button sends on 'cc' and takes its LED/state from this CC instead. Setting it makes the LED host-owned — local presses still send MIDI but no longer repaint the LED, so foot and host can't fight over it. Matched on the button's 'channel', against the same cc_on/cc_off values. type='cc' only; not available on cc_inc/cc_dec (their shared value is keyed by 'cc') or mode='keytimes'."
+          "description": "CC number this button LISTENS on, when it differs from the one it sends. Use when the host exposes a command input and a separate state output (e.g. a looper's play/stop trigger vs. its is-playing indicator): the button sends on 'cc' and takes its LED/state from this CC instead. Setting it makes the LED host-owned — local presses still send MIDI but no longer repaint the LED, so foot and host can't fight over it. Matched on the button's 'channel', against the same cc_on/cc_off values. type='cc' only; not available on cc_inc/cc_dec (their shared value is keyed by 'cc'). For mode='keytimes' use short_cc_receive / long_cc_receive."
         },
         "note": {
           "$ref": "#/definitions/MidiByte",
@@ -512,6 +516,14 @@
           "type": "array",
           "items": { "$ref": "#/definitions/KeytimesEntry" },
           "description": "Long-press cycle entries. Only valid when mode='keytimes'. Independent counter from short. Each entry can fire messages on down (long_down event, when threshold reached) and up (long_up event, on release after threshold)."
+        },
+        "short_cc_receive": {
+          "$ref": "#/definitions/MidiByte",
+          "description": "Only meaningful when mode='keytimes'. CC number the short cycle LISTENS on (matched on the button's 'channel'). An incoming value equal to a short[] entry's 'rx_value' moves the cycle to that entry and repaints its color/label; the entry's messages are not sent. Physical presses still repaint immediately."
+        },
+        "long_cc_receive": {
+          "$ref": "#/definitions/MidiByte",
+          "description": "Only meaningful when mode='keytimes'. CC number the long cycle LISTENS on. Same behavior as short_cc_receive, matched against long[] entries' 'rx_value'."
         },
         "long_press_threshold_ms": {
           "type": "integer",

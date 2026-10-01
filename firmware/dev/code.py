@@ -61,7 +61,7 @@ from core.config import (
     get_midi_din_to_local,
     get_dev_mode,
 )
-from core.button import Switch, ButtonState, KeytimesButtonState, dispatch_keytimes_events
+from core.button import Switch, ButtonState, KeytimesButtonState, dispatch_keytimes_events, apply_keytimes_entry_render
 from core.display_model import build_screen, button_visual, keytimes_visual
 from core.encoder import EncoderState
 from core.midi_rx import find_cc_rx_action
@@ -1155,7 +1155,7 @@ def _process_midi_msg(msg, source="USB"):
         # and no feedback risk. select_repress is intentionally not consulted
         # on RX — it applies only to local presses; RX is idempotent
         # LED-and-state-only.
-        action, i = find_cc_rx_action(buttons, cc, val, msg_channel)
+        action, i, extra = find_cc_rx_action(buttons, cc, val, msg_channel)
         if action == "cc_step":
             # Inc/dec button (#11): the host sets the shared value. LED/display
             # react only when the value (STEP) or the slot (SLOT) actually changes;
@@ -1171,6 +1171,18 @@ def _process_midi_msg(msg, source="USB"):
                 changed = new != old
             if changed:
                 pending_cc_step_updates.append((btn_config, new, "RX"))
+        elif action == "keytimes":
+            # Host-driven cycle sync (#200): move the press cycle to the matched entry
+            # and repaint. State/LED-only — the entry's down/up messages are NOT
+            # dispatched, so this can't echo back to the host.
+            kt_state = keytimes_states[i]
+            press = extra["press"]
+            cycle = kt_state.short_cycle if press == "short" else kt_state.long_cycle
+            cycle.set_index(extra["entry"])
+            apply_keytimes_entry_render(kt_state, press, buttons[i][press][extra["entry"]])
+            kt_state.last_fired = press
+            _render_keytimes_led(i + 1, kt_state, buttons[i])
+            update_status(f"RX CC{cc}={val}")
         elif action == "select":
             update_select_group(i + 1, buttons[i].get("select_group", ""))
             update_status(f"RX CC{cc}={val}")

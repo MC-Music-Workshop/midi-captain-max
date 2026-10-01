@@ -9,6 +9,24 @@ only decides which button reacts and how.
 from core.cc_step import is_cc_step_button
 
 
+def _find_keytimes_entry(btn, cc, val, channel):
+    """Match an incoming CC against a keytimes button's per-press listen CCs.
+
+    Returns {"press": "short"|"long", "entry": idx} for the first entry whose
+    rx_value equals val exactly (no >63 fallback: a cycle can have more than
+    two positions), else None.
+    """
+    if btn.get("channel", 0) != channel:
+        return None
+    for press in ("short", "long"):
+        if btn.get(press + "_cc_receive") != cc:
+            continue
+        for idx, entry in enumerate(btn.get(press) or []):
+            if entry.get("rx_value") == val:
+                return {"press": press, "entry": idx}
+    return None
+
+
 def find_cc_rx_action(buttons, cc, val, channel):
     """Decide how an incoming CC message maps onto the button list.
 
@@ -41,19 +59,28 @@ def find_cc_rx_action(buttons, cc, val, channel):
         val: Incoming CC value (0-127)
         channel: Incoming MIDI channel (0-indexed)
 
+    - A keytimes button with short_cc_receive/long_cc_receive listens per
+      press: the incoming value must equal an entry's rx_value exactly
+      ("keytimes", i, {"press", "entry"}). No matching entry: no action.
+
     Returns:
-        (action, index) tuple:
-        - ("cc_step", i): store val as button i's shared inc/dec value (#11)
-        - ("select", i): activate select button i and its group
-        - ("state", i): feed val to button i's on_midi_receive
-        - ("ignored", None): consumed by a select-claimed CC, no state change
-        - (None, None): no button matched
+        (action, index, extra) tuple; extra is None except for "keytimes":
+        - ("keytimes", i, {"press", "entry"}): set button i's cycle to that entry (#200)
+        - ("cc_step", i, None): store val as button i's shared inc/dec value (#11)
+        - ("select", i, None): activate select button i and its group
+        - ("state", i, None): feed val to button i's on_midi_receive
+        - ("ignored", None, None): consumed by a select-claimed CC, no state change
+        - (None, None, None): no button matched
     """
     select_claimed = False
     for i, btn in enumerate(buttons):
+        if btn.get("mode") == "keytimes":
+            hit = _find_keytimes_entry(btn, cc, val, channel)
+            if hit is not None:
+                return ("keytimes", i, hit)
         if is_cc_step_button(btn):
             if btn.get("cc") == cc and btn.get("channel", 0) == channel:
-                return ("cc_step", i)
+                return ("cc_step", i, None)
             continue
         if btn.get("type", "cc") != "cc":
             continue
@@ -64,12 +91,12 @@ def find_cc_rx_action(buttons, cc, val, channel):
             continue
         if btn.get("mode") == "select":
             if val == btn.get("cc_on", 127):
-                return ("select", i)
+                return ("select", i, None)
             select_claimed = True
             continue
         if select_claimed:
             break
-        return ("state", i)
+        return ("state", i, None)
     if select_claimed:
-        return ("ignored", None)
-    return (None, None)
+        return ("ignored", None, None)
+    return (None, None, None)

@@ -407,14 +407,29 @@ def _validate_keytimes_entry(entry):
         out["dim"] = True
     if "label" in entry and isinstance(entry["label"], str):
         out["label"] = entry["label"]
+    rx_value = entry.get("rx_value")
+    if isinstance(rx_value, int) and not isinstance(rx_value, bool):
+        out["rx_value"] = max(0, min(127, rx_value))
     return out
 
 
-def _validate_keytimes_cycle(entries):
+def _validate_keytimes_cycle(entries, name="", index=0):
     """Validate a list of cycle entries. Returns a list (possibly empty)."""
     if not isinstance(entries, list):
         return []
-    return [_validate_keytimes_entry(e) for e in entries]
+    validated = [_validate_keytimes_entry(e) for e in entries]
+    seen = set()
+    for e in validated:
+        rx = e.get("rx_value")
+        if rx is None:
+            continue
+        if rx in seen:
+            print(
+                "[CONFIG WARN] Button " + str(index + 1) + " " + name + "[] has more than one entry with "
+                "rx_value " + str(rx) + "; the first one wins."
+            )
+        seen.add(rx)
+    return validated
 
 
 def _validate_keytimes_button(btn, index, default_channel):
@@ -448,10 +463,16 @@ def _validate_keytimes_button(btn, index, default_channel):
 
     short = btn.get("short")
     if short is not None:
-        validated["short"] = _validate_keytimes_cycle(short)
+        validated["short"] = _validate_keytimes_cycle(short, "short", index)
     long_ = btn.get("long")
     if long_ is not None:
-        validated["long"] = _validate_keytimes_cycle(long_)
+        validated["long"] = _validate_keytimes_cycle(long_, "long", index)
+
+    # Per-press listen CCs (#200): host state drives the cycle position.
+    for press in ("short", "long"):
+        rx_cc = btn.get(press + "_cc_receive")
+        if isinstance(rx_cc, int) and not isinstance(rx_cc, bool):
+            validated[press + "_cc_receive"] = max(0, min(127, rx_cc))
 
     # cc_inc/cc_dec entries (#11) only pick a direction; the CC, range, STEP/SLOT
     # choice and slot tables are button-level and shared by short and long.

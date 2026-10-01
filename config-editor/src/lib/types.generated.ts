@@ -255,7 +255,7 @@ export interface ButtonConfig {
    */
   cc_off?: number;
   /**
-   * CC number this button LISTENS on, when it differs from the one it sends. Use when the host exposes a command input and a separate state output (e.g. a looper's play/stop trigger vs. its is-playing indicator): the button sends on 'cc' and takes its LED/state from this CC instead. Setting it makes the LED host-owned — local presses still send MIDI but no longer repaint the LED, so foot and host can't fight over it. Matched on the button's 'channel', against the same cc_on/cc_off values. type='cc' only; not available on cc_inc/cc_dec (their shared value is keyed by 'cc') or mode='keytimes'.
+   * CC number this button LISTENS on, when it differs from the one it sends. Use when the host exposes a command input and a separate state output (e.g. a looper's play/stop trigger vs. its is-playing indicator): the button sends on 'cc' and takes its LED/state from this CC instead. Setting it makes the LED host-owned — local presses still send MIDI but no longer repaint the LED, so foot and host can't fight over it. Matched on the button's 'channel', against the same cc_on/cc_off values. type='cc' only; not available on cc_inc/cc_dec (their shared value is keyed by 'cc'). For mode='keytimes' use short_cc_receive / long_cc_receive.
    */
   cc_receive?: number;
   /**
@@ -306,6 +306,14 @@ export interface ButtonConfig {
    * Long-press cycle entries. Only valid when mode='keytimes'. Independent counter from short. Each entry can fire messages on down (long_down event, when threshold reached) and up (long_up event, on release after threshold).
    */
   long?: KeytimesEntry[];
+  /**
+   * Standard MIDI byte value (0-127).
+   */
+  short_cc_receive?: number;
+  /**
+   * Standard MIDI byte value (0-127).
+   */
+  long_cc_receive?: number;
   /**
    * Per-button long-press threshold override in milliseconds. Only meaningful when mode='keytimes'. Falls back to top-level long_press_threshold_ms (default 500).
    */
@@ -377,6 +385,10 @@ export interface KeytimesEntry {
    * Optional display label override for this cycle position. Missing or empty inherits the button-level label.
    */
   label?: string;
+  /**
+   * Standard MIDI byte value (0-127).
+   */
+  rx_value?: number;
 }
 /**
  * Per-page rotary encoder configuration. Only supported on STD10.

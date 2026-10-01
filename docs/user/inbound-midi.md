@@ -81,7 +81,12 @@ No ON Value check, no above-63 rule, no shielding — every value is accepted. T
 
 Don't put a plain CC button on the same CC and channel: the CC+ / CC- button claims it first.
 
-Keytimes buttons don't react to inbound MIDI at all, unless they carry CC+ / CC- settings — then they behave like this.
+Keytimes buttons ignore inbound MIDI unless they carry CC+ / CC- settings (then they behave like this) or a listen CC:
+
+- **`short_cc_receive` / `long_cc_receive`**: the CC each cycle listens on, on the button's channel.
+- **`rx_value`** on a cycle entry: the exact incoming value that selects it. There's no above-63 rule, since a cycle can have more than two positions. Entries without `rx_value` can't be reached from MIDI, and a value that matches no entry is ignored.
+
+A match moves that cycle to the entry and repaints its color and label. The entry's own messages are not sent, so nothing echoes back to the host. Physical presses still repaint immediately; if the host disagrees, its next message corrects the button.
 
 ## Quick reference
 

@@ -14,7 +14,7 @@ from pathlib import Path
 FIRMWARE_DIR = Path(__file__).parent.parent / "firmware" / "dev"
 sys.path.insert(0, str(FIRMWARE_DIR))
 
-from core.midi_rx import find_cc_rx_action
+from core.midi_rx import find_cc_rx_action, find_note_rx_target
 
 
 def select_btn(cc, cc_on=127, group="g", channel=0):
@@ -186,3 +186,38 @@ class TestCcReceive:
         b["cc_receive"] = 21
         assert find_cc_rx_action([a, b], 20, 127, 0) == ("state", 0)
         assert find_cc_rx_action([a, b], 21, 127, 0) == ("state", 1)
+
+
+class _State:
+    def __init__(self, state=False):
+        self.state = state
+
+
+def note_btn(note, channel=0, mode="toggle"):
+    return {"type": "note", "note": note, "channel": channel, "mode": mode}
+
+
+class TestNoteRxTarget:
+    """find_note_rx_target: match + skip redundant repaints (Visibox resend storm)."""
+
+    def test_state_change_targets_button(self):
+        buttons = [note_btn(60), note_btn(61)]
+        assert find_note_rx_target(buttons, [_State(), _State()], 61, True, 0) == 1
+
+    def test_redundant_message_is_skipped(self):
+        buttons = [note_btn(60)]
+        assert find_note_rx_target(buttons, [_State(True)], 60, True, 0) is None
+        assert find_note_rx_target(buttons, [_State(False)], 60, False, 0) is None
+
+    def test_wrong_channel_or_note_does_not_match(self):
+        buttons = [note_btn(60, channel=0)]
+        assert find_note_rx_target(buttons, [_State()], 60, True, 5) is None
+        assert find_note_rx_target(buttons, [_State()], 61, True, 0) is None
+
+    def test_keytimes_button_always_repaints(self):
+        buttons = [note_btn(60, mode="keytimes")]
+        assert find_note_rx_target(buttons, [_State(True)], 60, True, 0) == 0
+
+    def test_non_note_buttons_ignored(self):
+        buttons = [{"type": "cc", "cc": 60, "channel": 0}, note_btn(60)]
+        assert find_note_rx_target(buttons, [_State(), _State()], 60, True, 0) == 1

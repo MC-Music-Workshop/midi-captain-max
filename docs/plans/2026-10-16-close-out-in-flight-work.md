@@ -1,7 +1,7 @@
 # Plan: close out in-flight work
 
 - **Date**: 2026-10-16
-- **Status**: In progress (Phase 3)
+- **Status**: In progress. Phases 0–2 done (2026-10-17); next is Phase 3, rebasing #200 onto `main`
 - **Related**: [ADR 0001](../adr/0001-separate-midi-receive-from-rendering.md), #202, #206, #200, #207, #54, #208, #190
 
 ## Goal

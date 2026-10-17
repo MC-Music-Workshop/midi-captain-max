@@ -1,6 +1,7 @@
 // Svelte stores for state management
 import { writable, derived } from 'svelte/store';
 import type { DetectedDevice } from './types';
+import type { WorkingOn } from './workingOn';
 
 // Connected devices
 export const devices = writable<DetectedDevice[]>([]);
@@ -11,8 +12,8 @@ export const selectedDevice = writable<DetectedDevice | null>(null);
 // Current config as raw JSON (for text editor)
 export const currentConfigRaw = writable<string>('');
 
-// Whether config has unsaved changes
-export const hasUnsavedChanges = writable<boolean>(false);
+// What the editor is working on (device, file, or new config). null = nothing open.
+export const workingOn = writable<WorkingOn | null>(null);
 
 // Validation errors
 export const validationErrors = writable<string[]>([]);

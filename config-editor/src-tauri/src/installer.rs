@@ -58,7 +58,7 @@ pub const CP_VERSION_UNSUPPORTED_CODE: &str = "cp_version_unsupported";
 pub const DEVICE_TYPE_UNKNOWN_CODE: &str = "device_type_unknown";
 
 /// Bundled filename of the default config template for this device type.
-fn config_source_name(dt: DeviceType) -> &'static str {
+pub(crate) fn config_source_name(dt: DeviceType) -> &'static str {
     match dt {
         DeviceType::Std10 => "config.json",
         DeviceType::Mini6 => "config-mini6.json",
@@ -103,7 +103,7 @@ pub enum InstallPhase {
     Done,
 }
 
-fn bundled_firmware_dir(app: &AppHandle) -> Result<PathBuf, ConfigError> {
+pub(crate) fn bundled_firmware_dir(app: &AppHandle) -> Result<PathBuf, ConfigError> {
     let resource_dir = app
         .path()
         .resource_dir()
@@ -183,7 +183,7 @@ fn check_cp_version_supported(device_root: &Path) -> Result<(), ConfigError> {
     })
 }
 
-fn detect_device_type(device_root: &Path) -> Option<DeviceType> {
+pub(crate) fn detect_device_type(device_root: &Path) -> Option<DeviceType> {
     let config_path = device_root.join("config.json");
     let contents = fs::read_to_string(&config_path).ok()?;
     let value: serde_json::Value = serde_json::from_str(&contents).ok()?;

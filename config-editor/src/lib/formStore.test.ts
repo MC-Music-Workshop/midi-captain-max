@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage, deletePage, movePage, updatePageField, PAGE_CAP, addPageFromTemplate } from './formStore';
+import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage, deletePage, movePage, updatePageField, PAGE_CAP, addPageFromTemplate, markSaved, updateField } from './formStore';
 import type { MidiCaptainConfig, DeviceType, Page } from './types';
 
 // Minimal valid config: one1 = 1 button per page, so validation stays green.
@@ -289,5 +289,37 @@ describe('cc_inc / cc_dec normalization (#11)', () => {
     loadConfig(withButton({ type: 'cc', cc: 20, cc_step: 5, cc_slots: 4, cc_min: 1, cc_wrap: false }));
     const out = normalizeConfig(get(formState).config).pages[0].buttons[0];
     expect(out).toEqual({ label: 'X', color: 'green', type: 'cc', cc: 20 });
+  });
+});
+
+describe('markSaved', () => {
+  it('clears isDirty, keeps undo history, and later edits set it again', () => {
+    loadConfig(makeConfig(1));
+    updateField('buttons[0].label', 'EDIT');
+    expect(get(isDirty)).toBe(true);
+    markSaved(); // saves before the debounced history push has landed
+    expect(get(isDirty)).toBe(false);
+    expect(get(canUndo)).toBe(true);
+    updateField('buttons[0].label', 'EDIT2');
+    expect(get(isDirty)).toBe(true);
+  });
+
+  it('undo back to the saved state is clean; undo past it is dirty', () => {
+    vi.useFakeTimers();
+    try {
+      loadConfig(makeConfig(1));
+      updateField('buttons[0].label', 'ONE');
+      vi.advanceTimersByTime(600);
+      markSaved();
+      updateField('buttons[0].label', 'TWO');
+      vi.advanceTimersByTime(600);
+      expect(get(isDirty)).toBe(true);
+      undo(); // back to the saved state
+      expect(get(isDirty)).toBe(false);
+      undo(); // before the saved state
+      expect(get(isDirty)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

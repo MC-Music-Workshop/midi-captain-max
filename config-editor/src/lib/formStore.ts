@@ -8,6 +8,9 @@ interface FormState {
   historyIndex: number;
   validationErrors: Map<string, string>;
   isDirty: boolean;
+  // History index matching what was last loaded/saved; -1 once history trimming
+  // drops it. Undo/redo back onto it is clean, anywhere else is dirty.
+  savedIndex: number;
   // Per-page button tails / encoders stashed when shrinking to a smaller device,
   // so switching back restores them. Indexed by page.
   _hiddenButtons?: ButtonConfig[][];
@@ -58,6 +61,7 @@ const initialState: FormState = {
   historyIndex: 0,           // At first checkpoint
   validationErrors: new Map(),
   isDirty: false,
+  savedIndex: 0,
 };
 
 const formState = writable<FormState>(initialState);
@@ -140,7 +144,20 @@ export function loadConfig(newConfig: MidiCaptainConfig) {
     historyIndex: 0,
     validationErrors: new Map(),
     isDirty: false,
+    savedIndex: 0,
   }));
+}
+
+/** Mark the current edits as saved (clears the dirty flag, keeps undo history). */
+export function markSaved() {
+  // Land any debounced edit in history first, so the saved checkpoint includes it
+  // and the pending push can't flip the flag back to dirty.
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+    formState.update(state => pushHistory(state));
+  }
+  formState.update(state => ({ ...state, isDirty: false, savedIndex: state.historyIndex }));
 }
 
 function pushHistory(state: FormState): FormState {
@@ -151,12 +168,17 @@ function pushHistory(state: FormState): FormState {
   newHistory.push(structuredClone(state.config));
   
   // Limit history size
+  let savedIndex = state.savedIndex;
   if (newHistory.length > HISTORY_LIMIT) {
     newHistory.shift();
+    savedIndex -= 1;
   }
-  
+  // A saved checkpoint that was in the discarded redo tail is gone.
+  if (savedIndex > state.historyIndex) savedIndex = -1;
+
   return {
     ...state,
+    savedIndex,
     history: newHistory,
     historyIndex: newHistory.length - 1,
     isDirty: true,
@@ -172,7 +194,7 @@ export function undo() {
       ...state,
       config: structuredClone(state.history[newIndex]),
       historyIndex: newIndex,
-      isDirty: newIndex !== 0,
+      isDirty: newIndex !== state.savedIndex,
     };
   });
 }
@@ -186,7 +208,7 @@ export function redo() {
       ...state,
       config: structuredClone(state.history[newIndex]),
       historyIndex: newIndex,
-      isDirty: true,
+      isDirty: newIndex !== state.savedIndex,
     };
   });
 }

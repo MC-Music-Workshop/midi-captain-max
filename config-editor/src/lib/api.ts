@@ -10,6 +10,7 @@ import type {
   InstallReport,
   ReflashProgress,
   Page,
+  DeviceType,
 } from './types';
 
 // Config operations
@@ -154,4 +155,27 @@ export async function exportPageTemplate(path: string, page: Page): Promise<void
 // come in and are flagged by in-editor validation.
 export async function importPageTemplate(path: string, device: MidiCaptainConfig['device']): Promise<Page> {
   return invoke('import_page_template', { path, device });
+}
+
+// Saved configs (#36): whole-config files on the computer, no device needed.
+export async function configsDir(): Promise<string> {
+  return invoke('configs_dir');
+}
+
+export async function openConfigFile(path: string): Promise<string> {
+  return invoke('open_config_file', { path });
+}
+
+export async function saveConfigFile(path: string, json: string): Promise<void> {
+  return invoke('save_config_file', { path, json });
+}
+
+/** Bundled default config JSON for a device type (what New Config… starts from). */
+export async function defaultConfig(device: DeviceType): Promise<string> {
+  return invoke('default_config', { device });
+}
+
+/** `device` field of the device's current config.json, or null if unreadable. */
+export async function deviceConfigType(devicePath: string): Promise<DeviceType | null> {
+  return invoke('device_config_type', { devicePath });
 }

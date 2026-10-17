@@ -38,9 +38,10 @@ Land every open branch on `main` in an order that keeps conflicts small, keeps e
 - [x] File the receive/render split implementation issue (#208); add it to the ADR's **Related** line
 - [x] Delete merged local branches: `off-color`, `midi-thru-chan`, `fix/save-restart-serial-park`, `faceplate-store`
 - [x] Delete the empty `118-incoming-led-control` branch. #118 stays open: #197 added a separate listen CC and off colors, not the runtime color and blink control #118 asks for.
-- [ ] Delete the stale `.worktrees/15-pages` and `.worktrees/15-pages-p4d` folders (only Vite cache files aren't already in git), then `git worktree prune`
-- [ ] Decide on the `OEM` stash: it holds 552 untracked Paint Audio files (`docs/PaintAudio_OEM/` FW 3.5 and 5.0 packages, manuals, wallpapers, and `docs/MCM_PaintAudio_Partnership_OnePager.pdf`) that exist nowhere else in the repo. Export them somewhere outside the repo before dropping it.
-- [ ] Decide keep / archive / delete for `hot-reload-plan` (1 commit), `marketing` (5 commits), `ui-test-plan` (1 commit; its "#134 hotfix" already reached `main`), `wokwi-emulator-spike` (1 commit)
+- [x] Delete the stale `.worktrees/15-pages` and `.worktrees/15-pages-p4d` folders (only Vite cache files aren't already in git), then `git worktree prune`
+- [x] `OEM` stash: its 552 untracked Paint Audio files (FW 3.5 and 5.0 packages, manuals, wallpapers, partnership one-pager) exported to `~/Documents/PaintAudio_OEM`, then dropped
+- [x] Old branches decided: keep `hot-reload-plan`; archive `marketing` and `ui-test-plan` (tags `archive/marketing`, `archive/ui-test-plan`, pushed); delete `wokwi-emulator-spike`. The `ui-test-plan` doc's recommended approach was already built in `config-editor/e2e/`, but nothing runs it automatically: filed #209.
+- [ ] Delete the `marketing`, `ui-test-plan` and `wokwi-emulator-spike` branches, locally and on `origin`
 - [x] Archive session files for merged work (moved to `~/.claude/session-archive/`)
 
 ### Phase 1: #202 saved configs (editor)

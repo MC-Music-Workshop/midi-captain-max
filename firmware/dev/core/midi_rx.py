@@ -73,3 +73,23 @@ def find_cc_rx_action(buttons, cc, val, channel):
     if select_claimed:
         return ("ignored", None)
     return (None, None)
+
+
+def find_note_rx_target(buttons, states, note, on, channel):
+    """Index of the note button an incoming NoteOn/NoteOff should repaint, or None.
+
+    None when no note button matches (note, channel), or when the match is
+    already in the requested state. The second case is the hot one: hosts
+    like Visibox resend every clip's LED state several times a second, and
+    each repaint costs tens of ms on the TFT, so redundant messages must be
+    cheap or the input backs up. Keytimes-mode buttons always repaint —
+    their LED is driven by the keytimes renderer, not `state`.
+
+    `states` is the parallel ButtonState list; only `.state` is read.
+    """
+    for i, btn in enumerate(buttons):
+        if btn.get("type") == "note" and btn.get("note") == note and btn.get("channel", 0) == channel:
+            if btn.get("mode") != "keytimes" and i < len(states) and states[i].state == on:
+                return None
+            return i
+    return None

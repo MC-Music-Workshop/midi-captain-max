@@ -123,7 +123,7 @@ ST7789(spi, width=240, height=240, rowstart=80, rotation=180)
 - **TX:** GP16
 - **RX:** GP17
 - **Baud:** 31250
-- **Timeout:** 0.003s
+- **Timeout:** 0 (non-blocking; the OEM firmware used 0.003s, which made every idle `receive()` block for 3 ms)
 
 ---
 

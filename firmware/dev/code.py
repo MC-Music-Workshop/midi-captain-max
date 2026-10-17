@@ -64,7 +64,7 @@ from core.config import (
 from core.button import Switch, ButtonState, KeytimesButtonState, dispatch_keytimes_events
 from core.display_model import build_screen, button_visual, keytimes_visual
 from core.encoder import EncoderState
-from core.midi_rx import find_cc_rx_action
+from core.midi_rx import find_cc_rx_action, find_note_rx_target
 from core.cc_step import (
     is_cc_step_button, cc_step_key, cc_step_initial, cc_step_clamp, cc_step_next,
     cc_slot_index, cc_slot_color, cc_slot_name, cc_slot_text,
@@ -503,7 +503,7 @@ print("USB MIDI initialized")
 
 # 5-pin DIN MIDI via UART (GP16=TX, GP17=RX, 31250 baud)
 try:
-    _uart = busio.UART(tx=board.GP16, rx=board.GP17, baudrate=31250, timeout=0.003,
+    _uart = busio.UART(tx=board.GP16, rx=board.GP17, baudrate=31250, timeout=0,
                        receiver_buffer_size=64)
     midi_serial = adafruit_midi.MIDI(midi_in=_uart, midi_out=_uart,
                                      in_channel=None, out_channel=0, in_buf_size=64)
@@ -1133,7 +1133,8 @@ def _process_midi_msg(msg, source="USB"):
     if isinstance(msg, ControlChange):
         cc = msg.control
         val = msg.value
-        print(f"[MIDI RX {source}] Ch{msg_channel+1} CC{cc}={val}")
+        if MIDI_RX_LOG:
+            print(f"[MIDI RX {source}] Ch{msg_channel+1} CC{cc}={val}")
 
         # MIDI-IN CC page control (#15 P3b): a matching page_control CC short-circuits
         # button-CC processing entirely (MIDI THRU still forwards it downstream).
@@ -1189,25 +1190,28 @@ def _process_midi_msg(msg, source="USB"):
     elif isinstance(msg, NoteOn):
         note = msg.note
         vel = msg.velocity
-        print(f"[MIDI RX {source}] Ch{msg_channel+1} NoteOn{note} vel{vel}")
-        for i, btn_config in enumerate(buttons):
-            if btn_config.get("type") == "note" and btn_config.get("note") == note and btn_config.get("channel", 0) == msg_channel:
-                set_button_state(i + 1, vel > 0)
-                update_status(f"RX Note{note}")
-                break
+        if MIDI_RX_LOG:
+            print(f"[MIDI RX {source}] Ch{msg_channel+1} NoteOn{note} vel{vel}")
+        i = find_note_rx_target(buttons, button_states, note, vel > 0, msg_channel)
+        if i is not None:
+            button_states[i].state = vel > 0
+            set_button_state(i + 1, vel > 0)
+            update_status(f"RX Note{note}")
 
     elif isinstance(msg, NoteOff):
         note = msg.note
-        print(f"[MIDI RX {source}] Ch{msg_channel+1} NoteOff{note}")
-        for i, btn_config in enumerate(buttons):
-            if btn_config.get("type") == "note" and btn_config.get("note") == note and btn_config.get("channel", 0) == msg_channel:
-                set_button_state(i + 1, False)
-                update_status(f"RX NoteOff{note}")
-                break
+        if MIDI_RX_LOG:
+            print(f"[MIDI RX {source}] Ch{msg_channel+1} NoteOff{note}")
+        i = find_note_rx_target(buttons, button_states, note, False, msg_channel)
+        if i is not None:
+            button_states[i].state = False
+            set_button_state(i + 1, False)
+            update_status(f"RX NoteOff{note}")
 
     elif isinstance(msg, ProgramChange):
         program = msg.patch
-        print(f"[MIDI RX {source}] Ch{msg_channel+1} PC{program}")
+        if MIDI_RX_LOG:
+            print(f"[MIDI RX {source}] Ch{msg_channel+1} PC{program}")
         pc_values[msg_channel] = program
         update_status(f"RX PC{program}")
         # Select-mode: activate the matching select-mode PC button and dim its
@@ -1222,11 +1226,49 @@ def _process_midi_msg(msg, source="USB"):
                 break
 
 
+MIDI_RX_BATCH = 32  # max messages drained per port per main-loop pass
+# Per-message RX prints cost several ms each over USB CDC, which caps how many
+# messages per second the pedal can absorb. Flip on for debugging only.
+MIDI_RX_LOG = False
+_rx_count = 0     # dev_mode-only throughput stats, reported once a second
+_rx_busy_ns = 0
+
+
 def handle_midi():
-    """Handle incoming MIDI: local dispatch (gated per input) and MIDI thru."""
+    """Drain pending MIDI on both ports, up to MIDI_RX_BATCH each per pass.
+
+    One message per pass made the whole main loop (switch scan, display
+    refresh) the per-message cost — ~10 ms on a Mini6 — so a host that sends
+    in bursts (e.g. Visibox: every note on all 16 channels) built a backlog
+    that took seconds to drain and replayed stale LED states. The cap keeps
+    a flood from starving the switch scan.
+    """
+    global _rx_count, _rx_busy_ns
+    if not DEV_MODE:
+        for _ in range(MIDI_RX_BATCH):
+            if not _handle_midi_once():
+                break
+        return
+    # dev_mode: same drain, timed. monotonic_ns() returns a heap-allocated long
+    # on CircuitPython, so performance mode skips it entirely.
+    t0 = time.monotonic_ns()
+    n = 0
+    for _ in range(MIDI_RX_BATCH):
+        if not _handle_midi_once():
+            break
+        n += 1
+    if n:
+        _rx_count += n
+        _rx_busy_ns += time.monotonic_ns() - t0
+
+
+def _handle_midi_once():
+    """Receive and handle at most one message per port. True if any arrived."""
+    got = False
     # --- USB MIDI in ---
     usb_msg = midi.receive()
     if usb_msg:
+        got = True
         if MIDI_USB_TO_LOCAL:
             _process_midi_msg(usb_msg, source="USB")
         # Thru must carry the source channel through explicitly: adafruit_midi's
@@ -1252,6 +1294,7 @@ def handle_midi():
     if midi_serial is not None:
         din_msg = midi_serial.receive()
         if din_msg:
+            got = True
             if MIDI_DIN_TO_LOCAL:
                 _process_midi_msg(din_msg, source="DIN")
             din_ch = getattr(din_msg, "channel", None)
@@ -1267,6 +1310,7 @@ def handle_midi():
                     midi_serial.send(din_msg, channel=din_ch)
                 except Exception:
                     pass
+    return got
 
 
 def _dispatch_keytimes_message(msg, default_channel, btn_num):
@@ -1479,11 +1523,13 @@ def handle_switches():
                 if mode == "momentary":
                     if pressed:
                         midi_send(NoteOn(note, vel_on), channel=channel)
+                        btn_state.state = True  # keep in sync: note RX dedupes on it
                         set_button_state(btn_num, True)
                         print(f"[MIDI TX] Ch{channel+1} NoteOn{note} vel{vel_on} (switch {btn_num})")
                         update_status(f"TX Note{note}")
                     else:
                         midi_send(NoteOff(note, vel_off), channel=channel)
+                        btn_state.state = False
                         set_button_state(btn_num, False)
                         print(f"[MIDI TX] Ch{channel+1} NoteOff{note} (switch {btn_num})")
                 elif pressed:
@@ -1793,6 +1839,7 @@ DEV_MODE = get_dev_mode(config)
 _ram_low = None
 _ram_next_check = 0.0
 RAM_CHECK_INTERVAL_S = 2.0
+_rx_next_report = 0.0
 
 if DEV_MODE:
     gc.collect()
@@ -1825,3 +1872,9 @@ while True:
             if _free < _ram_low:
                 _ram_low = _free
                 print("ram low-water:", _free, "bytes")
+        if _now >= _rx_next_report:
+            _rx_next_report = _now + 1.0
+            if _rx_count:
+                print("[MIDI RX] " + str(_rx_count) + " msgs/s, avg " + str(_rx_busy_ns // _rx_count // 1000) + " us/msg")
+                _rx_count = 0
+                _rx_busy_ns = 0

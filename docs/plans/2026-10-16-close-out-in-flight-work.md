@@ -1,7 +1,7 @@
 # Plan: close out in-flight work
 
 - **Date**: 2026-10-16
-- **Status**: In progress (Phase 0)
+- **Status**: In progress (Phase 3)
 - **Related**: [ADR 0001](../adr/0001-separate-midi-receive-from-rendering.md), #202, #206, #200, #207, #54, #208, #190
 
 ## Goal
@@ -12,8 +12,8 @@ Land every open branch on `main` in an order that keeps conflicts small, keeps e
 
 | Work | Branch / worktree | Kind | State |
 |---|---|---|---|
-| #202 saved configs (#36) | `36-saved-configs` | Editor | PR open, CI green |
-| #206 MIDI RX throughput (jjeff) | `fix/midi-rx-throughput` | Firmware | Fork PR open, CI awaiting approval, reviewed locally (799 tests pass) |
+| #202 saved configs (#36) | `36-saved-configs` | Editor | Merged (`0286585`) |
+| #206 MIDI RX throughput (jjeff) | `fix/midi-rx-throughput` | Firmware | Merged (`804b48e`) |
 | #200 keytimes listen CC | `200-keytimes-listen-cc` | Firmware | 3 commits, latest (`d3db6dd`) unpushed, no PR, `cargo test` never run |
 | #207 per-event prints in dev mode only | none yet | Firmware | Issue filed |
 | #54 MIDI Learn | `54-midi-learn` | Editor + firmware | 1 commit (log-scraping design, now superseded), no PR |
@@ -41,20 +41,20 @@ Land every open branch on `main` in an order that keeps conflicts small, keeps e
 - [x] Delete the stale `.worktrees/15-pages` and `.worktrees/15-pages-p4d` folders (only Vite cache files aren't already in git), then `git worktree prune`
 - [x] `OEM` stash: its 552 untracked Paint Audio files (FW 3.5 and 5.0 packages, manuals, wallpapers, partnership one-pager) exported to `~/Documents/PaintAudio_OEM`, then dropped
 - [x] Old branches decided: keep `hot-reload-plan`; archive `marketing` and `ui-test-plan` (tags `archive/marketing`, `archive/ui-test-plan`, pushed); delete `wokwi-emulator-spike`. The `ui-test-plan` doc's recommended approach was already built in `config-editor/e2e/`, but nothing runs it automatically: filed #209.
-- [ ] Delete the `marketing`, `ui-test-plan` and `wokwi-emulator-spike` branches, locally and on `origin`
+- [x] Delete the `marketing`, `ui-test-plan` and `wokwi-emulator-spike` branches, locally and on `origin`
 - [x] Archive session files for merged work (moved to `~/.claude/session-archive/`)
 
 ### Phase 1: #202 saved configs (editor)
 
-- [ ] Smoke test on the bench
-- [ ] Merge
+- [x] Smoke test on the bench
+- [x] Merge
 
 ### Phase 2: #206 MIDI RX throughput (firmware)
 
-- [ ] Approve the fork's CI run
-- [ ] Bench test with Visibox in omni mode, USB and DIN
-- [ ] Reply to jjeff: thanks, merging as is, link ADR 0001 as the longer-term direction (draft for review before posting)
-- [ ] Merge
+- [x] CI: fork PRs get no CI (`ci.yml` triggers on push only), so the head commit was pushed to a temporary `ci/pr-206` branch. All jobs passed except macOS notarization, which fails on `main` too (see **Found along the way**).
+- [x] Bench test on a NANO4 with `tools/visibox-flood.sh` standing in for Visibox omni mode. v1.14.0 fell behind at the first clip start and never caught up; #206 followed every clip change with no flicker over USB and DIN, and 45 footswitch presses during the flood all registered immediately.
+- [x] Reply to jjeff: thanks, merging as is, link ADR 0001 as the longer-term direction
+- [x] Merge
 
 ### Phase 3: #200 keytimes listen CC (firmware)
 
@@ -98,11 +98,19 @@ Lands after #206 and #200 because it touches many lines in `code.py`.
 
 ## Bench sessions
 
-1. #202 smoke test, #206 with Visibox (USB and DIN), #190 drive-label check
+1. ~~#202 smoke test, #206 flood test (USB and DIN)~~ done; #190 drive-label check still open
 2. #200, #207 suspended-terminal check, Learn over USB and DIN
-3. Receive/render split with Visibox
+3. Receive/render split, flood test on a TFT and a non-TFT device
+
+Flood tests use `tools/visibox-flood.sh "<port>" [seconds] [clip_secs]` (needs `sendmidi`). The NANO4 is on #206 firmware with buttons set to notes 60–63; its original config is in `~/Documents/MIDICaptainMAX/configs/nano4-before-206-test.json`.
+
+## Found along the way
+
+- **macOS notarization fails in CI** (`HTTP 401 Invalid credentials`) on `main` and every branch since 2026-10-17. The Apple app-specific password in the repo secrets needs regenerating (see `.github/AGENTS.md`).
+- **Fork PRs get no CI**: `ci.yml` has no `pull_request` trigger. Consider adding one (or a maintainer-run workflow) before the next outside contribution.
+- **Editor e2e specs run nowhere automatically**: #209.
 
 ## Open decisions (owner: Max)
 
-- Keep / archive / delete for the four old branches
 - Unique volume ID UX
+- Whether to file the fork-PR CI gap as an issue

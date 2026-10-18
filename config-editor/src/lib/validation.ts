@@ -354,11 +354,22 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
       // cc_inc/cc_dec entries (#11) are direction-only; their cc/range/slot fields
       // ride on the button and validate like a plain cc_inc button.
       if (keytimesUsesCcStep(btn)) validateCcStep(btn, idx, errors);
+      // Host sync (#200): per-cycle listen CC and per-entry receive value.
+      for (const field of ['short_cc_receive', 'long_cc_receive'] as const) {
+        if (btn[field] !== undefined) {
+          const e = validators.cc(btn[field]);
+          if (e) errors.set(`buttons[${idx}].${field}`, e);
+        }
+      }
       // Validate Message objects nested inside short[i].down[j] / up[j] and same for long.
       for (const cycle of ['short', 'long'] as const) {
         const entries = btn[cycle];
         if (!entries) continue;
         entries.forEach((entry, ei) => {
+          if (entry.rx_value !== undefined) {
+            const e = validators.withinRange(entry.rx_value, 0, 127);
+            if (e) errors.set(`buttons[${idx}].${cycle}[${ei}].rx_value`, e);
+          }
           for (const slot of ['down', 'up'] as const) {
             const messages = entry[slot];
             if (!messages) continue;

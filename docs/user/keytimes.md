@@ -72,6 +72,23 @@ Two worth calling out:
 - **CC+ / CC-** entries only pick a direction. The CC number, range, step size and slot names are set once on the button and shared by every entry, so one switch can tap the value up and hold to take it back down.
 - **Page+ / Page- / Page Jump** in a long entry is the usual way to put page switching on a hold while taps do something musical.
 
+## Following the host
+
+![The Short Press Cycle with Listen CC set to 20 and receive values 64, 96 and 127 on its three entries](./img/keytimes/host-sync.png)
+
+A keytimes button can also take its position from the host, so it stays in step when the host changes the setting itself (a scene recall, a snapshot, another controller):
+
+1. Set **Listen CC** on the cycle to the CC your host reports the setting on. Each cycle has its own, and it listens on the button's **Channel**.
+2. Give each entry the **Receive value** the host sends for that state. The field appears once the cycle has a Listen CC.
+
+When a value arrives that matches an entry, the cycle moves to that entry and the LED and screen show it. The entry's messages are **not** sent, so nothing echoes back to the host. Your next tap continues from there to the following entry.
+
+- An entry with no Receive value can't be reached from the host; taps still reach it.
+- A value that matches no entry is ignored.
+- If two entries share a value, the first one wins. The editor flags the later one.
+
+Above: the host reports the reverb's wet level on CC 20, so the button follows when the host changes it.
+
 ## Pages reset the cycles
 
 Switching pages puts every keytimes button on the incoming page **back at entry #1**, showing the button's own color and label until its first press. Shared CC+ / CC- values and PC patch memory are *not* reset.

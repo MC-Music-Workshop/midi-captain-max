@@ -323,3 +323,31 @@ describe('markSaved', () => {
     }
   });
 });
+
+describe('keytimes host sync normalization (#200)', () => {
+  function withButton(btn: Record<string, unknown>): MidiCaptainConfig {
+    return {
+      device: 'one1', active_page: 0,
+      pages: [{ buttons: [{ label: 'X', color: 'green', ...btn } as never] }],
+    };
+  }
+
+  it('keytimes button keeps listen CCs and receive values', () => {
+    loadConfig(withButton({
+      mode: 'keytimes', short_cc_receive: 20, long_cc_receive: 21,
+      short: [{ rx_value: 0, color: 'red' }], long: [{ rx_value: 127 }],
+    }));
+    const out = normalizeConfig(get(formState).config).pages[0].buttons[0];
+    expect(out.short_cc_receive).toBe(20);
+    expect(out.long_cc_receive).toBe(21);
+    expect(out.short?.[0].rx_value).toBe(0);
+    expect(out.long?.[0].rx_value).toBe(127);
+  });
+
+  it('a non-keytimes button drops leftover listen CCs', () => {
+    loadConfig(withButton({ mode: 'toggle', cc: 20, short_cc_receive: 20, long_cc_receive: 21 }));
+    const out = normalizeConfig(get(formState).config).pages[0].buttons[0];
+    expect(out.short_cc_receive).toBeUndefined();
+    expect(out.long_cc_receive).toBeUndefined();
+  });
+});

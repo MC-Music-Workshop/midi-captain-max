@@ -47,9 +47,8 @@ Save to Device / ⌘S (when working on a device) → saveToDevice(restart)   ←
   → confirmDeviceType(): device_config_type() vs config.device; mismatch → ask(), unreadable → model picker
   → writeConfigRaw(path, json)     ← Tauri IPC
     → Rust: validate_device_path() + verify_device_connected()
-    → serde_json::from_str() → MidiCaptainConfig
-    → config.validate()
-    → serde_json::to_string_pretty() → fs::write() + sync_all()
+    → validate_config_json(): serde_json::from_str() → MidiCaptainConfig, config.validate()
+    → fs::write(json as sent) + sync_all()   ← never the re-serialized struct (#215)
   → afterSaveToDevice(): a new config becomes the device; markSaved() only if working on the device
   → if restart: doRestartDevice()   (no per-save "restart?" prompt)
 
@@ -81,7 +80,10 @@ The editor always works on exactly one thing (`workingOn` store): a **device**, 
 
 **CI validates** all `firmware/dev/config*.json` files pass the schema, and that `types.generated.ts` is up to date.
 
-**Serde drops unknown fields silently** — if a field exists in TypeScript but not in the Rust struct, it is deserialized away and the re-serialized output omits it. Round-trip tests in `config.rs` catch this.
+**Serde drops unknown fields silently** — if a field exists in the schema but not in the Rust struct, it is deserialized away and a re-serialized struct omits it. Two guards (#215, #216):
+
+- **Saves write the editor's JSON, not the struct.** `write_config_raw` and `save_config_file` parse into `MidiCaptainConfig` only to run `validate()` (`commands::validate_config_json`), then write the string they were given. Before #215 they wrote `to_string_pretty(&config)`, which deleted keytimes host sync (`short_cc_receive`, `long_cc_receive`, `rx_value`) on every editor save because step 3 above had been skipped. The typed `read_config`/`write_config` commands still round-trip through the struct; the UI doesn't use them.
+- **`test_every_schema_field_survives_round_trip`** (`config.rs`) builds a config that sets every schema property at every level, round-trips it through `MidiCaptainConfig`, and names any key that's lost. A schema field missing from the structs fails `cargo test` instead of shipping. A missing field still skips Rust validation, so step 3 stays required.
 
 **The schema `title` field is load-bearing.** `json-schema-to-typescript` derives the root TypeScript interface name from `title` (PascalCased). Changing the title renames the interface and breaks every import in `types.ts`. Keep the title short and stable.
 
@@ -140,6 +142,7 @@ The keytimes mode is rendered by `KeytimesEditor.svelte`, which composes per-cyc
 - The legacy `keytimes` spinner is hidden (deprecated in favor of `short[]`/`long[]` array lengths)
 - `off_mode` is hidden (color/dim live per cycle entry instead)
 - `KeytimesEditor` renders threshold input, short cycle entries, long cycle entries
+- Host sync (#200, #211): each cycle header has a **Listen CC** (`short_cc_receive` / `long_cc_receive`); once it's set, each entry shows a **Receive value** (`rx_value`), and a later entry repeating an earlier value gets a warning (the firmware matches the first). `normalizeButton` strips the listen CCs from non-keytimes buttons
 
 Mutations on the nested structure (add/remove entry, add/remove message, change message type) go through dedicated `formStore` helpers (`addKeytimesEntry`, `removeKeytimesEntry`, `addKeytimesMessage`, `removeKeytimesMessage`, `setKeytimesMessageType`) because `updateField()` requires intermediate path components to already exist. Leaf-value edits (color, dim, label, individual message field values) use `updateField()`.
 
@@ -248,7 +251,7 @@ Requires GTK system libraries on Linux (`sudo apt-get install -y libgtk-3-dev li
 
 **Fresh worktree gotcha:** `cargo test` (and any Tauri build) fails in the build script with `glob pattern resources/circuitpython/*.uf2 path not found` until firmware + the CP `.uf2` are staged into `src-tauri/resources/`. `npm run tauri dev` stages them via a predev hook, but a worktree where you've only ever run `cargo test` won't have them. Fix: run `tools/bundle-firmware-for-dev.sh` from the repo root once (stages firmware and fetches the pinned `.uf2` via `tools/fetch-cp-uf2.sh`; both idempotent).
 
-`test_roundtrip_all_shipped_configs` parses every `firmware/dev/config*.json` file and round-trips through the typed Rust struct — catches "struct missing a field" silent data loss without needing a per-feature test.
+`test_roundtrip_all_shipped_configs` parses every `firmware/dev/config*.json` file and round-trips through the typed Rust struct, but only covers fields the shipped configs use. `test_every_schema_field_survives_round_trip` covers the rest by generating a config from `config.schema.json` (see Schema-Driven Config Types).
 
 Also run:
 ```bash

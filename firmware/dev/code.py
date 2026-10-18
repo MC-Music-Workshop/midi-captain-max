@@ -503,8 +503,10 @@ print("USB MIDI initialized")
 
 # 5-pin DIN MIDI via UART (GP16=TX, GP17=RX, 31250 baud)
 try:
+    # 512 B holds ~160 ms of continuous DIN traffic; DIN has no flow control,
+    # so bytes arriving while a repaint blocks the loop are dropped once it fills.
     _uart = busio.UART(tx=board.GP16, rx=board.GP17, baudrate=31250, timeout=0,
-                       receiver_buffer_size=64)
+                       receiver_buffer_size=512)
     midi_serial = adafruit_midi.MIDI(midi_in=_uart, midi_out=_uart,
                                      in_channel=None, out_channel=0, in_buf_size=64)
     print("5-pin DIN MIDI initialized")

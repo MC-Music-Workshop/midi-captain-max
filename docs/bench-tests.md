@@ -95,8 +95,8 @@ Device NANO4, macOS, 2026-10-17.
 |------|----------|--------|
 | DIN receive count, paced | `receiver_buffer_size=64` | 100/100 |
 | DIN receive count, burst | `receiver_buffer_size=64` | 52, 53, 52 of 100 (three runs): **FAIL** |
-| DIN receive count, burst | 512-byte buffer (#207 fix) | Expected 100/100; being measured |
-| Serial console stall, `hold` | before #207 | No stall. macOS buffered ~44.9 KB (1,726 lines), then dropped the rest; the pedal kept flipping pages |
+| DIN receive count, burst | `receiver_buffer_size=512` | 100/100 (four runs). Draining the burst takes ~5.7 s (~57 ms per repainting note, see #208) |
+| Serial console stall, `hold` | per-event prints on (`main` at `f8ddd56`) | No stall. macOS buffered ~44.9 KB (1,726 lines), then dropped the rest; the pedal kept flipping pages |
 
 Linux and Windows hosts are untested.
 

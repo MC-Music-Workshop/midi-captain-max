@@ -77,8 +77,17 @@ count_mode() {
       sleep 0.06
     done
   fi
-  # Let the pedal drain its backlog before counting.
-  sleep 3
+  # Let the pedal drain its backlog before counting: a 100-message burst of
+  # repainting notes takes ~6 s, so wait until no new line has arrived for 2 s
+  # (capped at 30 s) rather than a fixed delay.
+  local last=-1 now quiet=0 waited=0
+  while [ "$quiet" -lt 4 ] && [ "$waited" -lt 60 ]; do
+    sleep 0.5
+    now="$(wc -l <"$log")"
+    if [ "$now" -eq "$last" ]; then quiet=$((quiet + 1)); else quiet=0; fi
+    last=$now
+    waited=$((waited + 1))
+  done
   kill "$rx_pid" 2>/dev/null || true
   wait "$rx_pid" 2>/dev/null || true
   rx_pid=""

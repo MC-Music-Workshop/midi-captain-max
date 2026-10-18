@@ -124,7 +124,7 @@ For reverse engineering history, see [docs/midicaptain_reverse_engineering_hando
 ### 5-pin DIN MIDI
 
 - **TX pin**: `board.GP16`, **RX pin**: `board.GP17`, **baud**: `31250`, **timeout**: `0` (non-blocking — `adafruit_midi.receive()` calls `uart.read(64)`, which with the OEM `0.003` blocked 3 ms on every idle poll; `adafruit_midi` buffers partial messages itself)
-- Use `receiver_buffer_size=64`; wrap init in `try/except` — if UART unavailable, firmware must still boot (`midi_serial = None`)
+- Use `receiver_buffer_size=512` (the OEM value): at 31,250 baud a 64-byte buffer fills in ~20 ms of continuous traffic, shorter than one button repaint, and DIN can't make the sender wait, so the overflow is lost (ADR 0001). Wrap init in `try/except` — if UART unavailable, firmware must still boot (`midi_serial = None`)
 - **Channel API gotcha**: `midi.send(ControlChange(cc, val, channel=X))` does **NOT** work — the library ignores `msg.channel`. Channel must be passed to `send()`: `midi.send(ControlChange(cc, val), channel=X)`. This caused issue #95 where all output was stuck on channel 1.
 - **`in_channel`**: both USB and serial MIDI objects should use `in_channel=None` (receive all channels)
 - Both `handle_midi()` reads USB and DIN ports; USB→DIN and DIN→USB forwarding happens there

@@ -1,7 +1,7 @@
 # Plan: close out in-flight work
 
 - **Date**: 2026-10-16
-- **Status**: In progress. Phases 0–2 done (2026-10-17); next is Phase 3, rebasing #200 onto `main`
+- **Status**: In progress. Phases 0–3 done (2026-10-17); next is Phase 4, #207
 - **Related**: [ADR 0001](../adr/0001-separate-midi-receive-from-rendering.md), #202, #206, #200, #207, #54, #208, #190
 
 ## Goal
@@ -14,8 +14,8 @@ Land every open branch on `main` in an order that keeps conflicts small, keeps e
 |---|---|---|---|
 | #202 saved configs (#36) | `36-saved-configs` | Editor | Merged (`0286585`) |
 | #206 MIDI RX throughput (jjeff) | `fix/midi-rx-throughput` | Firmware | Merged (`804b48e`) |
-| #200 keytimes listen CC | `200-keytimes-listen-cc` | Firmware | 3 commits, latest (`d3db6dd`) unpushed, no PR, `cargo test` never run |
-| #207 per-event prints in dev mode only | none yet | Firmware | Issue filed |
+| #200 keytimes listen CC | `200-keytimes-listen-cc` | Firmware | Merged via #210 (`b8d20dd`); editor fields follow-up #211 |
+| #207 per-event prints in dev mode only | `207-quiet-serial` | Firmware | Branch created, stall bench done (see Phase 4) |
 | #54 MIDI Learn | `54-midi-learn` | Editor + firmware | 1 commit (log-scraping design, now superseded), no PR |
 | #208 receive/render split (ADR 0001) | none yet | Firmware | ADR committed, issue filed |
 | #190 device rename | `190-device-rename` | Editor + firmware | Plan only |
@@ -58,18 +58,19 @@ Land every open branch on `main` in an order that keeps conflicts small, keeps e
 
 ### Phase 3: #200 keytimes listen CC (firmware)
 
-- [ ] Rebase onto `main`; resolve `midi_rx.py` by keeping the 3-item return and adding `find_note_rx_target`
-- [ ] Run the full `./tools/test-all.sh`, including `cargo`
-- [ ] Bench test
-- [ ] Add the `firmware/AGENTS.md` note
-- [ ] File a follow-up issue for the editor UI (new fields are JSON-only for now)
-- [ ] Push, open the PR, merge
+- [x] Rebase onto `main`; resolve `midi_rx.py` by keeping the 3-item return and adding `find_note_rx_target`
+- [x] Run the full `./tools/test-all.sh`, including `cargo`
+- [x] Bench test (found and fixed a press after a host change resending the host's entry)
+- [x] Add the `firmware/AGENTS.md` note
+- [x] File a follow-up issue for the editor UI (new fields are JSON-only for now): #211
+- [x] Push, open the PR, merge: #210
 
 ### Phase 4: #207 quiet serial + DIN buffer (firmware)
 
 - [ ] Gate per-event prints behind dev mode
 - [ ] Raise `receiver_buffer_size` to 512
 - [ ] Bench check: open a serial terminal, suspend it with Ctrl-Z, and confirm footswitches and LEDs still respond
+  - Before the change (2026-10-17, macOS, console held open but unread, `[PAGE]` prints from paced CC page flips): no stall. macOS buffers about 44.9 KB of unread output, then drops the rest; the pedal kept switching pages and a footswitch press still worked. Linux and Windows untested.
 - [ ] Open the PR, merge
 
 Lands after #206 and #200 because it touches many lines in `code.py`.

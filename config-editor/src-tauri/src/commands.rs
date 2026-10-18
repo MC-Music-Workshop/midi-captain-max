@@ -313,20 +313,26 @@ pub fn write_config_raw(path: String, json: String) -> Result<(), ConfigError> {
     // Verify volume is still mounted
     verify_device_connected(path_obj)?;
     
-    // Validate JSON is parseable
-    let config: MidiCaptainConfig = serde_json::from_str(&json)?;
+    validate_config_json(&json)?;
+    write_sync(path_obj, json.as_bytes())?;
 
-    // Validate config
+    Ok(())
+}
+
+/// Parse `json` into `MidiCaptainConfig` and run `validate()`. Save paths then
+/// write `json` itself (the editor sends it pretty-printed), never the parsed
+/// struct re-serialized: serde skips fields the structs don't declare, so
+/// writing the struct back silently dropped any schema field missing from
+/// config.rs (#215).
+pub(crate) fn validate_config_json(json: &str) -> Result<(), ConfigError> {
+    let config: MidiCaptainConfig = serde_json::from_str(json)?;
+
     if let Err(errors) = config.validate() {
         return Err(ConfigError {
             message: "Validation failed".to_string(),
             details: Some(errors),
         });
     }
-
-    // Pretty-print and write
-    let pretty = serde_json::to_string_pretty(&config)?;
-    write_sync(path_obj, pretty.as_bytes())?;
 
     Ok(())
 }
@@ -334,16 +340,7 @@ pub fn write_config_raw(path: String, json: String) -> Result<(), ConfigError> {
 /// Validate JSON without writing
 #[command]
 pub fn validate_config(json: String) -> Result<(), ConfigError> {
-    let config: MidiCaptainConfig = serde_json::from_str(&json)?;
-
-    if let Err(errors) = config.validate() {
-        return Err(ConfigError {
-            message: "Validation failed".to_string(),
-            details: Some(errors),
-        });
-    }
-
-    Ok(())
+    validate_config_json(&json)
 }
 
 /// Adafruit USB Vendor ID — all MIDI Captain devices use Adafruit CircuitPython boards

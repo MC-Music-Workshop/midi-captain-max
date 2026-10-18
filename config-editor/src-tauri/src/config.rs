@@ -187,6 +187,10 @@ pub struct KeytimesEntry {
     pub dim: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    /// Incoming value on the cycle's short_cc_receive/long_cc_receive CC that
+    /// selects this entry (#200). Entries without it can't be reached from MIDI.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rx_value: Option<u8>,
 }
 
 /// Per-state overrides for keytimes cycling
@@ -318,6 +322,12 @@ pub struct ButtonConfig {
     // default last-press-wins. Only meaningful when mode == "keytimes".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub long_overlay: Option<bool>,
+    // #200: CCs the short/long cycles listen on; an incoming value matching an
+    // entry's rx_value moves the cycle there. Only meaningful when mode == "keytimes".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub short_cc_receive: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub long_cc_receive: Option<u8>,
 }
 
 fn is_default_off_mode(mode: &OffMode) -> bool {
@@ -672,6 +682,26 @@ impl MidiCaptainConfig {
                 if let Some(val) = button.cc_off {
                     if val > 127 {
                         errors.push(format!("{}Button {} cc_off {} exceeds 127", pfx, i + 1, val));
+                    }
+                }
+                for (field, val) in [
+                    ("cc_receive", button.cc_receive),
+                    ("short_cc_receive", button.short_cc_receive),
+                    ("long_cc_receive", button.long_cc_receive),
+                ] {
+                    if let Some(v) = val {
+                        if v > 127 {
+                            errors.push(format!("{}Button {} {} {} exceeds 127", pfx, i + 1, field, v));
+                        }
+                    }
+                }
+                for (cycle, entries) in [("short", &button.short), ("long", &button.long)] {
+                    for (e, entry) in entries.iter().flatten().enumerate() {
+                        if let Some(v) = entry.rx_value {
+                            if v > 127 {
+                                errors.push(format!("{}Button {} {} entry {} rx_value {} exceeds 127", pfx, i + 1, cycle, e + 1, v));
+                            }
+                        }
                     }
                 }
                 if let Some(ms) = button.flash_ms {
@@ -1390,6 +1420,85 @@ mod tests {
 
     /// Fields that are intentionally stripped on serialize when they match
     /// their default value. (key_name, default_value_when_dropped)
+    // --- #216: schema/struct drift ---
+    // The shipped configs only exercise the fields they happen to use, so a schema
+    // field missing from these structs slipped through once (#215: keytimes host
+    // sync was dropped on every editor save). This builds a config that sets every
+    // property the schema defines, at every level, and round-trips it.
+
+    /// Sample values for a schema node: one per `oneOf` branch, otherwise one.
+    /// Enums and booleans avoid the declared default so `skip_serializing_if`
+    /// can't hide a missing field behind a default.
+    fn schema_samples(node: &serde_json::Value, defs: &serde_json::Value) -> Vec<serde_json::Value> {
+        use serde_json::{json, Value};
+        if let Some(r) = node.get("$ref").and_then(Value::as_str) {
+            return schema_samples(&defs[r.trim_start_matches("#/definitions/")], defs);
+        }
+        if let Some(c) = node.get("const") {
+            return vec![c.clone()];
+        }
+        let default = node.get("default");
+        if let Some(Value::Array(members)) = node.get("enum") {
+            let pick = members.iter().find(|m| Some(*m) != default).unwrap_or(&members[0]);
+            return vec![pick.clone()];
+        }
+        if let Some(Value::Array(branches)) = node.get("oneOf") {
+            return branches
+                .iter()
+                .map(|b| {
+                    let mut obj = schema_sample_object(node, defs);
+                    obj.extend(schema_sample_object(b, defs));
+                    Value::Object(obj)
+                })
+                .collect();
+        }
+        // ["integer", "null"] → integer
+        let ty = match node.get("type") {
+            Some(Value::Array(ts)) => ts.iter().find(|t| *t != "null").and_then(Value::as_str),
+            Some(t) => t.as_str(),
+            None => None,
+        };
+        let v = match ty {
+            Some("object") => Value::Object(schema_sample_object(node, defs)),
+            Some("array") => Value::Array(node.get("items").map(|i| schema_samples(i, defs)).unwrap_or_default()),
+            Some("boolean") => json!(!default.and_then(Value::as_bool).unwrap_or(false)),
+            Some("integer") => {
+                let min = node.get("minimum").and_then(Value::as_i64).unwrap_or(0);
+                let max = node.get("maximum").and_then(Value::as_i64).unwrap_or(i64::MAX);
+                let avoid_default = default.and_then(Value::as_i64) == Some(min) && min < max;
+                json!(if avoid_default { min + 1 } else { min })
+            }
+            Some("string") => json!("X"),
+            _ => panic!("schema node with unhandled type: {node}"),
+        };
+        vec![v]
+    }
+
+    fn schema_sample_object(
+        node: &serde_json::Value,
+        defs: &serde_json::Value,
+    ) -> serde_json::Map<String, serde_json::Value> {
+        let mut obj = serde_json::Map::new();
+        if let Some(serde_json::Value::Object(props)) = node.get("properties") {
+            for (k, p) in props {
+                obj.insert(k.clone(), schema_samples(p, defs).swap_remove(0));
+            }
+        }
+        obj
+    }
+
+    #[test]
+    fn test_every_schema_field_survives_round_trip() {
+        let schema: serde_json::Value =
+            serde_json::from_str(include_str!("../../../config.schema.json")).unwrap();
+        let sample = schema_samples(&schema, &schema["definitions"]).swap_remove(0);
+        let typed: MidiCaptainConfig = serde_json::from_value(sample.clone()).unwrap_or_else(|e| {
+            panic!("a config setting every schema field doesn't parse as MidiCaptainConfig: {e}\n{sample:#}")
+        });
+        let reserialized = serde_json::to_value(&typed).unwrap();
+        assert_no_keys_dropped(&sample, &reserialized, "schema sample", "");
+    }
+
     const ALLOWED_DEFAULT_DROPS: &[(&str, &str)] = &[
         ("type", "cc"),
         ("off_mode", "dim"),
@@ -1479,6 +1588,8 @@ mod tests {
                 hid_action: None, hid_key: None, hid_modifier: None, hid_delay_ms: None,
                 short: None, long: None, long_press_threshold_ms: None,
                 long_overlay: None,
+                short_cc_receive: None,
+                long_cc_receive: None,
             });
         }
         buttons

@@ -1129,6 +1129,8 @@ def _process_midi_msg(msg, source="USB"):
     global pending_page_target
     if not msg:
         return
+    if _spike_learn:  # SPIKE (#54)
+        _spike_report(msg, source)
 
     msg_channel = getattr(msg, 'channel', 0) or 0
 
@@ -1864,7 +1866,52 @@ if DEV_MODE:
 # Main Loop
 # =============================================================================
 
+# --- SPIKE (#54): command channel over the serial console. Not for merge. ---
+import supervisor
+import sys
+_spike_buf = ""
+_spike_learn = False
+_spike_loops = 0
+
+
+def _spike_report(msg, source):
+    ch = getattr(msg, "channel", 0) or 0
+    if isinstance(msg, ControlChange):
+        d = {"type": "cc", "channel": ch, "cc": msg.control, "value": msg.value}
+    elif isinstance(msg, NoteOn):
+        d = {"type": "note", "channel": ch, "note": msg.note, "value": msg.velocity}
+    elif isinstance(msg, ProgramChange):
+        d = {"type": "pc", "channel": ch, "program": msg.patch}
+    else:
+        return
+    d["source"] = source
+    print("[LEARN] " + json.dumps(d))
+
+
+def _spike_poll():
+    global _spike_buf, _spike_learn
+    for _ in range(64):
+        if not supervisor.runtime.serial_bytes_available:
+            break
+        _spike_buf += sys.stdin.read(1)
+    while "\n" in _spike_buf:
+        line, _spike_buf = _spike_buf.split("\n", 1)
+        line = line.strip()
+        if line == "PING":
+            print("[PONG] loops=" + str(_spike_loops) + " t=" + str(time.monotonic()))
+        elif line == "LEARN":
+            _spike_learn = True
+            print("[LEARN] on")
+        elif line == "LEARN STOP":
+            _spike_learn = False
+            print("[LEARN] off")
+        elif line:
+            print("[SPIKE] unknown " + line[:20])
+
+
 while True:
+    _spike_loops += 1
+    _spike_poll()
     handle_midi()
     handle_switches()
     flush_cc_step_updates()

@@ -103,6 +103,8 @@ cd config-editor && npm run check                # TypeScript / Svelte
 cd config-editor && npm run generate:types       # regenerate types from schema
 ```
 
+Hardware bench tests (real pedal, run before firmware releases): `tools/bench/run.sh`; setup and pass criteria in [`docs/bench-tests.md`](docs/bench-tests.md).
+
 ### Linting
 
 Lint is folded into `./tools/test-all.sh`, which runs `ruff` (Python) and `cargo clippy` (Rust) alongside the test suites. Run that script at the verification checkpoint — once before claiming completion or requesting review, not after every edit.

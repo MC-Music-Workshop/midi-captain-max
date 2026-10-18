@@ -87,16 +87,17 @@ Rescoped 2026-10-17: the suspected serial stall didn't reproduce on macOS, so pr
 1. Learn times out with no reason on older firmware: if `[LEARN] on` doesn't arrive within ~1 s, say the firmware doesn't support Learn.
 2. Learned the wrong CC because host feedback for other buttons arrived first: one-shot makes retrying cheap, the result shows as an unsaved change, and the docs say to pause host feedback while learning.
 3. A learned button stops following `global_channel`: leave `channel` out when it equals the global channel.
-4. Learning a page-control CC switches the page, or another button reacts. **Open decision**: should a captured message be consumed instead of acted on?
+4. Learning a page-control CC switches the page, or another button reacts. **Decided (Max, 2026-10-18): only report it.** The captured message goes to the editor and the pedal otherwise ignores it (no page switch, no LED change).
 5. "Sent program 5, learned 4": hosts count programs 1–128, the config 0–127. Show them consistently with the rest of the editor.
-6. Learn wrote the sending CC, but the user wanted the listening one (`cc_receive`). **Open decision**: what should learn write on a button whose listen CC differs from its send CC?
+6. Learn wrote the sending CC, but the user wanted the listening one (`cc_receive`). **Decided (Max, 2026-10-18): two Learn actions.** "Learn send" sets type, channel and number; "Learn listen" writes `cc_receive`. Design doc to settle where Learn listen is offered (`cc_receive` is CC-only) and what it does when a non-CC message arrives.
 7. Learn on keytimes or CC+/CC- buttons does nothing useful (no single type/number): hide or disable Learn on those modes for now.
 8. With two pedals connected, Learn opened the wrong pedal's console (same USB name; same volume ID until Phase 8): check how the editor maps a drive to its serial port; note the Phase 8 dependency.
 9. "Port busy" when another program holds the console or Save & Restart runs during learning: clear errors, and end learning automatically before Save.
 10. Rarer: 14-bit/NRPN controllers learn CC 99; a crashed `code.py` sits at the REPL. Both acceptable with a clear timeout message.
 
 - [x] Spike: serial command channel on CP 7.3.1
-- [ ] Design doc (protocol, capture rule, Save & Restart interplay, tests incl. an automated learn check in `tools/bench/`), answering the pre-mortem; decide 4 and 6 first
+- [x] Decide pre-mortem 4 and 6
+- [ ] Design doc (protocol, capture rule, Save & Restart interplay, tests incl. an automated learn check in `tools/bench/`), answering the pre-mortem
 - [ ] Rebase onto `main` (now with #202); keep both sides of the `lib.rs`, `api.ts` and `config-editor/AGENTS.md` conflicts
 - [ ] Replace console-print scraping with the command-and-reply protocol (keep `midiLearn.ts` form mapping and the `learn_midi` / `cancel_midi_learn` command shape; rewrite the serial reader; add the firmware learn handler)
 - [ ] Update `docs/user/midi-learn.md`
@@ -144,7 +145,5 @@ Flood tests use `tools/visibox-flood.sh "<port>" [seconds] [clip_secs]` (needs `
 
 ## Open decisions (owner: Max)
 
-- MIDI Learn: should a captured message be consumed instead of acted on (Phase 5 pre-mortem 4)?
-- MIDI Learn: what should learn write on a button whose listen CC (`cc_receive`) differs from its send CC (Phase 5 pre-mortem 6)?
 - Unique volume ID UX
 - Whether to file the fork-PR CI gap as an issue

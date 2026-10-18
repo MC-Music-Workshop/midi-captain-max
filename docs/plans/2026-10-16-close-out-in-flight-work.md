@@ -96,15 +96,15 @@ Rescoped 2026-10-17: the suspected serial stall didn't reproduce on macOS, so pr
 - [ ] #190: bring the worktree up to `main`; hardware check whether `boot.py` can set the drive label on CircuitPython 7.3.1; implement per plan
 - [ ] Unique volume ID: answer the UX question (auto banner + Fix button, plus a manual per-drive button); then design doc, plan, implementation. Starts after #190, since both touch device detection in `device.rs` and the device picker.
 
-### Phase 9: config schema housekeeping (after everything above ships)
+### Phase 9: config schema housekeeping
 
-Debt, not user-facing work, so it waits for the phases above. Do #215 first; #211 builds on it.
+Originally scheduled after everything above; the user pulled it forward on 2026-10-18 and all three landed together in PR #217.
 
-- [ ] #215: editor saves silently drop fields the Rust structs don't model. Today that deletes keytimes host-sync settings (`short_cc_receive`, `long_cc_receive`, `rx_value`) on **Save to Device** / **Save to File**. Fix: write the JSON the editor sent instead of re-serializing the struct, and add the missing Rust fields with validation.
-- [ ] #216: a Rust test that builds a config setting every schema property and fails if any key is lost in a round trip, so schema/Rust drift fails CI.
-- [ ] #211: editor fields for keytimes host sync (Listen CC per cycle, Receive value per entry, duplicate-value hint), plus the Keytimes user guide.
+- [x] #215: editor saves silently drop fields the Rust structs don't model. Today that deletes keytimes host-sync settings (`short_cc_receive`, `long_cc_receive`, `rx_value`) on **Save to Device** / **Save to File**. Fix: write the JSON the editor sent instead of re-serializing the struct, and add the missing Rust fields with validation.
+- [x] #216: a Rust test that builds a config setting every schema property and fails if any key is lost in a round trip, so schema/Rust drift fails CI.
+- [x] #211: editor fields for keytimes host sync (Listen CC per cycle, Receive value per entry, duplicate-value hint), plus the Keytimes user guide.
 
-Until #215 lands, host sync is configurable only by hand-editing `config.json`, and saving that config from the editor removes it. Call this out in the v1.15 release notes.
+`v1.15.0-alpha.1` predates #217: in that build, saving from the editor removes host-sync settings. Releases from #217 on are fine.
 
 ## Bench sessions
 
@@ -119,7 +119,7 @@ Flood tests use `tools/visibox-flood.sh "<port>" [seconds] [clip_secs]` (needs `
 - **macOS notarization fails in CI** (`HTTP 401 Invalid credentials`) on `main` and every branch since 2026-10-17, which also blocked the `v1.15.0-alpha.1` release. The org secret `APPLE_APP_PASSWORD` was regenerated on 2026-10-17, but runs after that still get 401: check `APPLE_APP_PASSWORD` (exact paste), `APPLE_ID`, `APPLE_TEAM_ID`, and the repo's access to the org secrets.
 - **Fork PRs get no CI**: `ci.yml` has no `pull_request` trigger. Consider adding one (or a maintainer-run workflow) before the next outside contribution.
 - **Editor e2e specs run nowhere automatically**: #209.
-- **Editor save drops unmodeled fields**: #215, #216 (Phase 9).
+- **Editor save drops unmodeled fields**: #215, #216, fixed in PR #217 (Phase 9).
 
 ## Open decisions (owner: Max)
 

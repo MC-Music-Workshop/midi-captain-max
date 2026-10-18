@@ -721,8 +721,10 @@ function normalizeButton(btn: ButtonConfig): ButtonConfig {
   }
 
   // Non-keytimes modes: keytimes/states are deprecated but still functional in v2.0.
-  // Strip the new-mode-only fields (short/long/long_press_threshold_ms) if they leaked in.
-  const { short: _short, long: _long, long_press_threshold_ms: _lpt, ...btnWithoutKeytimesFields } = btn;
+  // Strip the new-mode-only fields (short/long/long_press_threshold_ms and the
+  // host-sync listen CCs) if they leaked in.
+  const { short: _short, long: _long, long_press_threshold_ms: _lpt,
+          short_cc_receive: _scr, long_cc_receive: _lcr, ...btnWithoutKeytimesFields } = btn;
   const type = btnWithoutKeytimesFields.type ?? 'cc';
   const { cc, cc_on, cc_off, note, velocity_on, velocity_off, program, pc_step, flash_ms,
           cc_step, cc_slots, cc_min, cc_max, cc_wrap, cc_initial, cc_slot_colors, cc_slot_names,

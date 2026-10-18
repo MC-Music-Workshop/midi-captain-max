@@ -51,6 +51,30 @@
   }
 
   let thresholdError = $derived($validationErrors.get(`buttons[${index}].long_press_threshold_ms`));
+
+  // Host sync (#200): a cycle's Listen CC plus each entry's Receive value let the
+  // host move the cycle. Blank means "not set".
+  function optionalByte(e: Event): number | undefined {
+    const v = (e.target as HTMLInputElement).value;
+    return v === '' ? undefined : parseInt(v);
+  }
+
+  function setListenCc(cycle: 'short' | 'long', e: Event) {
+    updateField(`buttons[${index}].${cycle}_cc_receive`, optionalByte(e));
+  }
+
+  function setEntryRxValue(cycle: 'short' | 'long', entryIndex: number, e: Event) {
+    updateField(`buttons[${index}].${cycle}[${entryIndex}].rx_value`, optionalByte(e));
+  }
+
+  // 1-based number of an earlier entry in the cycle with the same receive value,
+  // or null. The firmware matches the first entry, so later duplicates are unreachable.
+  function duplicateOf(entries: KeytimesEntry[], entryIndex: number): number | null {
+    const v = entries[entryIndex].rx_value;
+    if (v === undefined) return null;
+    const first = entries.findIndex((en) => en.rx_value === v);
+    return first < entryIndex ? first + 1 : null;
+  }
 </script>
 
 <div class="keytimes-editor">
@@ -81,9 +105,23 @@
 
   {#each ['short', 'long'] as cycle (cycle)}
     {@const entries = (cycle === 'short' ? button.short : button.long) ?? []}
+    {@const listenCc = cycle === 'short' ? button.short_cc_receive : button.long_cc_receive}
+    {@const listenError = $validationErrors.get(`buttons[${index}].${cycle}_cc_receive`)}
     <section class="kt-cycle">
       <header class="kt-cycle-header">
         <h4>{cycle === 'short' ? 'Short Press Cycle' : 'Long Press Cycle'}</h4>
+        <label class="inline"
+               title="CC this cycle listens on, matched on the button's channel. When the host sends it with an entry's receive value, the cycle moves to that entry and repaints it; the entry's messages are not sent. Leave empty to ignore incoming MIDI.">
+          Listen CC:
+          <input type="number" min="0" max="127"
+                 value={listenCc ?? ''}
+                 placeholder="(none)"
+                 oninput={(e) => setListenCc(cycle as 'short' | 'long', e)}
+                 class:error={!!listenError} />
+        </label>
+        {#if listenError}
+          <span class="kt-error">{listenError}</span>
+        {/if}
         <span class="kt-cycle-hint">
           {#if cycle === 'short'}
             Cycles on every short tap. <code>short_down</code> fires on press, <code>short_up</code> fires on quick release (before threshold).
@@ -132,6 +170,24 @@
                      placeholder="(inherit)"
                      oninput={(e) => setEntryLabel(cycle as 'short' | 'long', ei, (e.target as HTMLInputElement).value)} />
             </label>
+            {#if listenCc !== undefined}
+              {@const rxError = $validationErrors.get(`buttons[${index}].${cycle}[${ei}].rx_value`)}
+              {@const dupOf = duplicateOf(entries, ei)}
+              <label class="inline"
+                     title="Value the host sends on this cycle's Listen CC to select this entry. Leave empty if the host never selects it.">
+                Receive value:
+                <input type="number" min="0" max="127"
+                       value={entry.rx_value ?? ''}
+                       placeholder="(none)"
+                       oninput={(e) => setEntryRxValue(cycle as 'short' | 'long', ei, e)}
+                       class:error={!!rxError} />
+              </label>
+              {#if rxError}
+                <span class="kt-error">{rxError}</span>
+              {:else if dupOf !== null}
+                <span class="kt-warn">Same value as #{dupOf}, which wins</span>
+              {/if}
+            {/if}
             <button type="button" class="kt-remove-entry"
                     onclick={() => removeKeytimesEntry(index, cycle as 'short' | 'long', ei)}
                     title="Remove this entry">
@@ -343,6 +399,11 @@
 
   .kt-error {
     color: #c00;
+    font-size: 0.75rem;
+  }
+
+  .kt-warn {
+    color: #a60;
     font-size: 0.75rem;
   }
 

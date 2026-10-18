@@ -247,3 +247,27 @@ describe('mode flip away from keytimes', () => {
     expect(r.errors.has('buttons[0].mode')).toBe(false);
   });
 });
+
+describe('keytimes host sync (#200)', () => {
+  function syncConfig(btn: Record<string, unknown>): MidiCaptainConfig {
+    return {
+      device: 'one1', active_page: 0,
+      pages: [{ buttons: [{ label: 'KT', color: 'green', mode: 'keytimes', ...btn }] as never }],
+    } as never;
+  }
+
+  it('accepts listen CCs and receive values in range', () => {
+    const cfg = syncConfig({ short_cc_receive: 20, long_cc_receive: 21, short: [{ rx_value: 0 }], long: [{ rx_value: 127 }] });
+    expect(validateConfig(cfg).isValid).toBe(true);
+  });
+
+  it('rejects a listen CC above 127', () => {
+    const result = validateConfig(syncConfig({ long_cc_receive: 128 }));
+    expect(result.errors.get('buttons[0].long_cc_receive')).toContain('between 0 and 127');
+  });
+
+  it('rejects a receive value above 127', () => {
+    const result = validateConfig(syncConfig({ short_cc_receive: 20, short: [{ rx_value: 0 }, { rx_value: 200 }] }));
+    expect(result.errors.get('buttons[0].short[1].rx_value')).toContain('between 0 and 127');
+  });
+});

@@ -4,8 +4,8 @@
 //! Like page templates, these take any picker-chosen path — the same accepted
 //! tradeoff recorded in `config-editor/AGENTS.md`.
 
-use crate::commands::ConfigError;
-use crate::config::{migrate_to_pages, DeviceType, MidiCaptainConfig};
+use crate::commands::{validate_config_json, ConfigError};
+use crate::config::{migrate_to_pages, DeviceType};
 use crate::installer::{bundled_firmware_dir, config_source_name, detect_device_type};
 use crate::templates::mcm_documents_root;
 use std::fs;
@@ -19,23 +19,17 @@ pub(crate) fn read_config_file(path: &Path) -> Result<String, ConfigError> {
     Ok(serde_json::to_string_pretty(&migrate_to_pages(value))?)
 }
 
-/// Validate `json` as a config and write it to `path` as pretty JSON. Writes to a
-/// temp file in the same folder and renames it into place, so a crash mid-save
-/// can't leave a half-written config. Invalid configs never touch the target.
+/// Validate `json` as a config and write it to `path` unchanged (see
+/// `validate_config_json`). Writes to a temp file in the same folder and renames
+/// it into place, so a crash mid-save can't leave a half-written config. Invalid
+/// configs never touch the target.
 pub(crate) fn write_config_file(path: &Path, json: &str) -> Result<(), ConfigError> {
-    let config: MidiCaptainConfig = serde_json::from_str(json)?;
-    if let Err(errors) = config.validate() {
-        return Err(ConfigError {
-            message: "Validation failed".to_string(),
-            details: Some(errors),
-        });
-    }
-    let pretty = serde_json::to_string_pretty(&config)?;
+    validate_config_json(json)?;
 
     let mut tmp_name = path.file_name().unwrap_or_default().to_os_string();
     tmp_name.push(".tmp");
     let tmp = path.with_file_name(tmp_name);
-    let result = fs::write(&tmp, pretty.as_bytes()).and_then(|_| fs::rename(&tmp, path));
+    let result = fs::write(&tmp, json.as_bytes()).and_then(|_| fs::rename(&tmp, path));
     if result.is_err() {
         let _ = fs::remove_file(&tmp);
     }
@@ -81,6 +75,7 @@ pub fn device_config_type(device_path: String) -> Result<Option<DeviceType>, Con
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::MidiCaptainConfig;
     use std::path::PathBuf;
 
     fn firmware_dev() -> PathBuf {
@@ -97,6 +92,26 @@ mod tests {
         let opened = read_config_file(&path).unwrap();
         write_config_file(&path, &opened).unwrap();
         assert_eq!(read_config_file(&path).unwrap(), opened);
+    }
+
+    #[test]
+    fn save_writes_the_json_it_was_given() {
+        // #215: saves used to write the parsed struct back out, so any field the
+        // Rust structs didn't model (keytimes host sync, at the time) was dropped.
+        let dir = tempfile::tempdir().unwrap();
+        let mut v: serde_json::Value =
+            serde_json::from_str(&read_default_config(&firmware_dev(), DeviceType::One1).unwrap()).unwrap();
+        v["pages"][0]["buttons"][0] = serde_json::json!({
+            "label": "KT", "color": "green", "mode": "keytimes",
+            "short_cc_receive": 20, "long_cc_receive": 21,
+            "short": [{"rx_value": 0, "down": [{"type": "cc", "cc": 20, "value": 0}]}],
+            "long": [{"rx_value": 127}],
+            "not_in_rust_structs": true
+        });
+        let json = serde_json::to_string_pretty(&v).unwrap();
+        let path = dir.path().join("mine.json");
+        write_config_file(&path, &json).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), json);
     }
 
     #[test]

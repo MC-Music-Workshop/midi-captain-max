@@ -87,14 +87,18 @@ function keytimesConfig() {
 test('keytimes: the short press cycle', async ({ page }) => {
   await loadApp(page, keytimesConfig());
   const cycle = page.locator('.kt-cycle').first();
-  await cycle.scrollIntoViewIfNeeded();
+  // Tall enough for the whole section, centered so the sticky toolbar doesn't cover its header.
+  await page.setViewportSize({ width: 1280, height: 1200 });
+  await cycle.evaluate((el) => el.scrollIntoView({ block: 'center' }));
   await cycle.screenshot({ path: `${KT}/short-cycle.png` });
 });
 
 test('keytimes: the long press cycle', async ({ page }) => {
   await loadApp(page, keytimesConfig());
   const cycle = page.locator('.kt-cycle').nth(1);
-  await cycle.scrollIntoViewIfNeeded();
+  // Tall enough for the whole section, centered so the sticky toolbar doesn't cover its header.
+  await page.setViewportSize({ width: 1280, height: 1200 });
+  await cycle.evaluate((el) => el.scrollIntoView({ block: 'center' }));
   await cycle.screenshot({ path: `${KT}/long-cycle.png` });
 });
 
@@ -111,6 +115,20 @@ test('keytimes: threshold and overlay settings', async ({ page }) => {
     path: `${KT}/threshold-overlay.png`,
     clip: { x: t!.x, y: t!.y, width: Math.max(t!.width, b!.width), height: b!.y + b!.height - t!.y },
   });
+});
+
+test('keytimes: following the host', async ({ page }) => {
+  // The same reverb button, with the host reporting the wet level back on CC 20.
+  const cfg: any = keytimesConfig();
+  const btn = cfg.pages[0].buttons[0];
+  btn.short_cc_receive = 20;
+  btn.short.forEach((entry: any, i: number) => { entry.rx_value = [64, 96, 127][i]; });
+  await loadApp(page, cfg);
+  const cycle = page.locator('.kt-cycle').first();
+  // Tall enough for the whole section, centered so the sticky toolbar doesn't cover its header.
+  await page.setViewportSize({ width: 1280, height: 1200 });
+  await cycle.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await cycle.screenshot({ path: `${KT}/host-sync.png` });
 });
 
 // --- MIDI Routing guide -----------------------------------------------------

@@ -549,3 +549,40 @@ class TestCallbackArgs:
         cfg = {"mode": "keytimes", "short": [{"down": [CC(20, 127)]}]}
         dispatch_keytimes_events(["short_down"], state, cfg, cb)
         assert captured == [CC(20, 127)]
+
+
+class TestRxSync:
+    """#200: host-driven cycle sync helpers used by code.py's RX branch."""
+
+    def test_sync_and_render_state_without_messages(self):
+        from core.button import apply_keytimes_entry_render
+        state = _make_state(2, 3)
+        entry = {"up": [CC(20, 127)], "color": "green", "dim": True, "label": "ON"}
+        state.long_cycle.sync_to(2)
+        apply_keytimes_entry_render(state, "long", entry)
+        assert state.long_cycle.index == 0  # next press wraps to entry 0
+        assert (state.long_color, state.long_dim, state.long_label) == ("green", True, "ON")
+        assert state.short_color is None
+
+    def test_sync_out_of_range_ignored(self):
+        state = _make_state(2, 2)
+        state.short_cycle.sync_to(5)
+        assert state.short_cycle.index == 0
+
+    def test_press_after_sync_fires_next_entry(self):
+        # Host says S-OFF (entry 1) is current: the next tap must move on to
+        # entry 0, not resend entry 1 (found on the NANO4 bench).
+        state = _make_state(2, 1)
+        cb, captured = _msg_collector()
+        cfg = {"mode": "keytimes",
+               "short": [{"up": [CC(20, 127)]}, {"up": [CC(20, 0)]}]}
+        state.short_cycle.sync_to(1)
+        dispatch_keytimes_events(["short_down", "short_up"], state, cfg, cb)
+        assert captured == [CC(20, 127)]
+
+    def test_missing_fields_clear_layer(self):
+        from core.button import apply_keytimes_entry_render
+        state = _make_state(1, 1)
+        state.short_color, state.short_dim, state.short_label = "red", True, "X"
+        apply_keytimes_entry_render(state, "short", {})
+        assert (state.short_color, state.short_dim, state.short_label) == (None, False, None)

@@ -247,6 +247,13 @@ class PressCycle:
         """Reset index to 0 (e.g. on power cycle or config reload)."""
         self.index = 0
 
+    def sync_to(self, entry):
+        """Host-driven RX sync: `entry` is now the current one, so the next press
+        fires the entry after it (index is always the *next* entry to fire).
+        Out-of-range is ignored."""
+        if 0 <= entry < self.length:
+            self.index = (entry + 1) % self.length
+
 
 class KeytimesButtonState:
     """All per-button runtime state for a mode: "keytimes" button.
@@ -288,6 +295,18 @@ _KEYTIMES_EVENT_MAP = {
     "long_down":  ("long",  "down"),
     "long_up":    ("long",  "up"),
 }
+
+
+def apply_keytimes_entry_render(state, cycle_name, entry):
+    """Copy an entry's color/dim/label onto the state's short_* or long_* layer.
+
+    color/dim/label are all per-entry with no carry-forward — a missing field
+    clears the layer's state so the render falls back to the button-level
+    color/label. Matches the UI's "(inherit)" reading.
+    """
+    setattr(state, cycle_name + "_color", entry.get("color"))
+    setattr(state, cycle_name + "_dim", bool(entry.get("dim", False)))
+    setattr(state, cycle_name + "_label", entry.get("label"))
 
 
 def dispatch_keytimes_events(events, state, btn_config, message_callback, callback_args=()):
@@ -348,39 +367,7 @@ def dispatch_keytimes_events(events, state, btn_config, message_callback, callba
                         state._fired_short = True
                     else:
                         state._fired_long = True
-                    # color/dim/label are all per-entry with no carry-forward — a missing
-                    # field clears the layer's state so the render falls back to the
-                    # button-level color/label. Matches the UI's "(inherit)" reading.
-                    if "color" in entry:
-                        if cycle_name == "short":
-                            state.short_color = entry["color"]
-                        else:
-                            state.long_color = entry["color"]
-                    else:
-                        if cycle_name == "short":
-                            state.short_color = None
-                        else:
-                            state.long_color = None
-                    if "dim" in entry:
-                        if cycle_name == "short":
-                            state.short_dim = bool(entry["dim"])
-                        else:
-                            state.long_dim = bool(entry["dim"])
-                    else:
-                        if cycle_name == "short":
-                            state.short_dim = False
-                        else:
-                            state.long_dim = False
-                    if "label" in entry:
-                        if cycle_name == "short":
-                            state.short_label = entry["label"]
-                        else:
-                            state.long_label = entry["label"]
-                    else:
-                        if cycle_name == "short":
-                            state.short_label = None
-                        else:
-                            state.long_label = None
+                    apply_keytimes_entry_render(state, cycle_name, entry)
 
         # On press-end, advance cycles whose events fired during this press, then reset flags.
         if event in ("short_up", "long_up"):

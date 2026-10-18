@@ -274,6 +274,21 @@ class TestValidateButton:
         assert btn["mode"] == "keytimes"
         assert "cc_receive" not in btn
 
+    def test_keytimes_listen_fields_validated(self, capsys):
+        """#200: per-press listen CCs and per-entry rx_value persist, clamped;
+        duplicate rx_value in one cycle warns at boot."""
+        btn = validate_button(
+            {"mode": "keytimes", "short_cc_receive": 20, "long_cc_receive": 999,
+             "short": [{"rx_value": 0}, {"rx_value": 0}, {"rx_value": "x"}, {}]}, index=0)
+        assert btn["short_cc_receive"] == 20
+        assert btn["long_cc_receive"] == 127
+        assert [e.get("rx_value") for e in btn["short"]] == [0, 0, None, None]
+        assert "rx_value 0" in capsys.readouterr().out
+
+    def test_keytimes_listen_absent_by_default(self):
+        btn = validate_button({"mode": "keytimes", "short": [{}]}, index=0)
+        assert "short_cc_receive" not in btn and "long_cc_receive" not in btn
+
     def test_off_color_absent_by_default(self):
         """No off_color means the off state keeps following off_mode."""
         assert "off_color" not in validate_button({}, index=0)

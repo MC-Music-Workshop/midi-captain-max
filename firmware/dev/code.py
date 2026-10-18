@@ -1867,8 +1867,7 @@ if DEV_MODE:
 # =============================================================================
 
 # --- SPIKE (#54): command channel over the serial console. Not for merge. ---
-import supervisor
-import sys
+import usb_cdc
 _spike_buf = ""
 _spike_learn = False
 _spike_loops = 0
@@ -1890,10 +1889,13 @@ def _spike_report(msg, source):
 
 def _spike_poll():
     global _spike_buf, _spike_learn
-    for _ in range(64):
-        if not supervisor.runtime.serial_bytes_available:
-            break
-        _spike_buf += sys.stdin.read(1)
+    # Variant B: bulk, non-blocking read via usb_cdc.console (in_waiting is an
+    # int; supervisor.runtime.serial_bytes_available is only a bool on CP 7 and
+    # sys.stdin.read(1) measured ~1 ms per byte).
+    con = usb_cdc.console
+    n = con.in_waiting if con else 0
+    if n:
+        _spike_buf += con.read(n).decode()
     while "\n" in _spike_buf:
         line, _spike_buf = _spike_buf.split("\n", 1)
         line = line.strip()

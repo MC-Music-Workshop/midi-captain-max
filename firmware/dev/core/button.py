@@ -247,10 +247,12 @@ class PressCycle:
         """Reset index to 0 (e.g. on power cycle or config reload)."""
         self.index = 0
 
-    def set_index(self, index):
-        """Jump to an entry (host-driven RX sync). Out-of-range is ignored."""
-        if 0 <= index < self.length:
-            self.index = index
+    def sync_to(self, entry):
+        """Host-driven RX sync: `entry` is now the current one, so the next press
+        fires the entry after it (index is always the *next* entry to fire).
+        Out-of-range is ignored."""
+        if 0 <= entry < self.length:
+            self.index = (entry + 1) % self.length
 
 
 class KeytimesButtonState:

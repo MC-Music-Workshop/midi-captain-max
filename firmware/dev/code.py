@@ -1179,7 +1179,7 @@ def _process_midi_msg(msg, source="USB"):
             kt_state = keytimes_states[i]
             press = extra["press"]
             cycle = kt_state.short_cycle if press == "short" else kt_state.long_cycle
-            cycle.set_index(extra["entry"])
+            cycle.sync_to(extra["entry"])
             apply_keytimes_entry_render(kt_state, press, buttons[i][press][extra["entry"]])
             kt_state.last_fired = press
             _render_keytimes_led(i + 1, kt_state, buttons[i])

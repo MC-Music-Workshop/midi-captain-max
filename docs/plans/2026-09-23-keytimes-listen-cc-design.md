@@ -91,12 +91,13 @@ move from `action, i = ...` to `action, i, extra = ...`.
 
 New branch in `_process_midi_msg` for `action == "keytimes"`:
 
-- Set `state.short_cycle`/`long_cycle`'s index to the matched entry (needs a
-  setter on `PressCycle`, `button.py:228` — it currently only advances).
+- Sync `state.short_cycle`/`long_cycle` to the matched entry with
+  `PressCycle.sync_to`. The cycle index is the *next* entry to fire, so it
+  lands one past the matched entry: a press after the host says "S-OFF" moves
+  on to the next entry instead of resending S-OFF (caught on the bench).
 - Apply that entry's `color`/`dim`/`label` to `state.short_color`/`dim`/`label`
   (or `long_*`) — via `apply_keytimes_entry_render` (button.py), extracted from
-  `dispatch_keytimes_events` so press and RX share it. `PressCycle.set_index`
-  is the new setter.
+  `dispatch_keytimes_events` so press and RX share it.
 - Set `state.last_fired` to the updated press, so the host's change is visible
   even when the last physical press was the other type (without
   `long_overlay`, a stale long color would otherwise hide a short update).

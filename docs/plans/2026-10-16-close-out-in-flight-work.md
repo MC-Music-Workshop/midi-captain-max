@@ -76,6 +76,27 @@ Rescoped 2026-10-17: the suspected serial stall didn't reproduce on macOS, so pr
 
 ### Phase 5: #54 MIDI Learn rework (editor + firmware)
 
+**Spike (2026-10-18, NANO4, throwaway branch `54-learn-spike`)**: a command channel over the serial console works on CircuitPython 7.3.1 with no `boot.py` change.
+- Read with `usb_cdc.console.in_waiting` and one `read(n)`. `supervisor.runtime.serial_bytes_available` is only a bool on CP 7, and `sys.stdin.read(1)` costs ~1 ms per byte (a 64-byte pass blocked the loop ~54 ms).
+- Measured: `PING` round trip ~8 ms median; idle loop ~410 passes/s; 4 KB of junk handled in 284 ms; `[LEARN] {json}` replies correct for CC, note and PC over USB and DIN.
+- Each reply line costs ~4 ms to print. The host must finish every write (non-blocking serial writes can be partial) and never send Ctrl-C/Ctrl-D except to restart the pedal.
+
+**Proposed rule: learning is one-shot.** `LEARN` → `[LEARN] on`; the pedal reports the first CC, note-on (velocity > 0) or PC from USB or DIN as one `[LEARN] {json}` line, then turns learning off and prints `[LEARN] off`. Note-offs, clock, SysEx and pitch bend are skipped. `LEARN STOP` cancels; the editor gives up after 30 s. The editor fills only the message identity (type, channel, number), as `midiLearn.ts` already does.
+
+**Pre-mortem (likely user reports) and how the design answers them:**
+1. Learn times out with no reason on older firmware: if `[LEARN] on` doesn't arrive within ~1 s, say the firmware doesn't support Learn.
+2. Learned the wrong CC because host feedback for other buttons arrived first: one-shot makes retrying cheap, the result shows as an unsaved change, and the docs say to pause host feedback while learning.
+3. A learned button stops following `global_channel`: leave `channel` out when it equals the global channel.
+4. Learning a page-control CC switches the page, or another button reacts. **Open decision**: should a captured message be consumed instead of acted on?
+5. "Sent program 5, learned 4": hosts count programs 1–128, the config 0–127. Show them consistently with the rest of the editor.
+6. Learn wrote the sending CC, but the user wanted the listening one (`cc_receive`). **Open decision**: what should learn write on a button whose listen CC differs from its send CC?
+7. Learn on keytimes or CC+/CC- buttons does nothing useful (no single type/number): hide or disable Learn on those modes for now.
+8. With two pedals connected, Learn opened the wrong pedal's console (same USB name; same volume ID until Phase 8): check how the editor maps a drive to its serial port; note the Phase 8 dependency.
+9. "Port busy" when another program holds the console or Save & Restart runs during learning: clear errors, and end learning automatically before Save.
+10. Rarer: 14-bit/NRPN controllers learn CC 99; a crashed `code.py` sits at the REPL. Both acceptable with a clear timeout message.
+
+- [x] Spike: serial command channel on CP 7.3.1
+- [ ] Design doc (protocol, capture rule, Save & Restart interplay, tests incl. an automated learn check in `tools/bench/`), answering the pre-mortem; decide 4 and 6 first
 - [ ] Rebase onto `main` (now with #202); keep both sides of the `lib.rs`, `api.ts` and `config-editor/AGENTS.md` conflicts
 - [ ] Replace console-print scraping with the command-and-reply protocol (keep `midiLearn.ts` form mapping and the `learn_midi` / `cancel_midi_learn` command shape; rewrite the serial reader; add the firmware learn handler)
 - [ ] Update `docs/user/midi-learn.md`
@@ -123,5 +144,7 @@ Flood tests use `tools/visibox-flood.sh "<port>" [seconds] [clip_secs]` (needs `
 
 ## Open decisions (owner: Max)
 
+- MIDI Learn: should a captured message be consumed instead of acted on (Phase 5 pre-mortem 4)?
+- MIDI Learn: what should learn write on a button whose listen CC (`cc_receive`) differs from its send CC (Phase 5 pre-mortem 6)?
 - Unique volume ID UX
 - Whether to file the fork-PR CI gap as an issue

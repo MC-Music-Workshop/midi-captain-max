@@ -1,7 +1,7 @@
 # Plan: close out in-flight work
 
 - **Date**: 2026-10-16
-- **Status**: In progress. Phases 0–3 done (2026-10-17); next is Phase 4, #207
+- **Status**: In progress. Phases 0–4 done (2026-10-18); next is Phase 5, #54 Learn
 - **Related**: [ADR 0001](../adr/0001-separate-midi-receive-from-rendering.md), #202, #206, #200, #207, #54, #208, #190
 
 ## Goal
@@ -15,7 +15,7 @@ Land every open branch on `main` in an order that keeps conflicts small, keeps e
 | #202 saved configs (#36) | `36-saved-configs` | Editor | Merged (`0286585`) |
 | #206 MIDI RX throughput (jjeff) | `fix/midi-rx-throughput` | Firmware | Merged (`804b48e`) |
 | #200 keytimes listen CC | `200-keytimes-listen-cc` | Firmware | Merged via #210 (`b8d20dd`); editor fields follow-up #211 |
-| #207 per-event prints in dev mode only | `207-quiet-serial` | Firmware | Branch created, stall bench done (see Phase 4) |
+| #207 per-event prints in dev mode only | none | Firmware | Deferred (see Phase 4); DIN buffer shipped separately in #212 |
 | #54 MIDI Learn | `54-midi-learn` | Editor + firmware | 1 commit (log-scraping design, now superseded), no PR |
 | #208 receive/render split (ADR 0001) | none yet | Firmware | ADR committed, issue filed |
 | #190 device rename | `190-device-rename` | Editor + firmware | Plan only |
@@ -65,15 +65,14 @@ Land every open branch on `main` in an order that keeps conflicts small, keeps e
 - [x] File a follow-up issue for the editor UI (new fields are JSON-only for now): #211
 - [x] Push, open the PR, merge: #210
 
-### Phase 4: #207 quiet serial + DIN buffer (firmware)
+### Phase 4: DIN buffer + bench suite (firmware); #207 deferred
 
-- [ ] Gate per-event prints behind dev mode
-- [ ] Raise `receiver_buffer_size` to 512
-- [ ] Bench check: open a serial terminal, suspend it with Ctrl-Z, and confirm footswitches and LEDs still respond
-  - Before the change (2026-10-17, macOS, console held open but unread, `[PAGE]` prints from paced CC page flips): no stall. macOS buffers about 44.9 KB of unread output, then drops the rest; the pedal kept switching pages and a footswitch press still worked. Linux and Windows untested.
-- [ ] Open the PR, merge
+Rescoped 2026-10-17: the suspected serial stall didn't reproduce on macOS, so print gating (#207) is deferred (findings on the issue). Only the DIN buffer shipped.
 
-Lands after #206 and #200 because it touches many lines in `code.py`.
+- [x] Bench check for the stall (macOS, console held open but unread, `[PAGE]` prints from paced CC page flips): no stall. macOS buffers about 44.9 KB of unread output, then drops the rest; the pedal kept switching pages and a footswitch press still worked. Linux and Windows untested.
+- [x] Raise `receiver_buffer_size` to 512: #212. A 100-message DIN burst lost about half at 64 bytes (52/53/52) and arrives complete at 512 (100/100).
+- [x] Hardware bench suite as a release step (`tools/bench/`, `docs/bench-tests.md`): #213
+- [ ] ~~Gate per-event prints behind dev mode~~ deferred (#207)
 
 ### Phase 5: #54 MIDI Learn rework (editor + firmware)
 
@@ -83,7 +82,7 @@ Lands after #206 and #200 because it touches many lines in `code.py`.
 - [ ] Bench test over USB and DIN
 - [ ] Open the PR, merge
 
-**Release point**: cut a firmware release here (#206, #200, #207, Learn).
+**Release point**: cut a firmware release here (#206, #200, #212, Learn). Run `tools/bench/run.sh` first and paste its table into the release notes.
 
 ### Phase 6: #208 receive/render split (firmware, ADR 0001)
 
@@ -110,10 +109,10 @@ Until #215 lands, host sync is configurable only by hand-editing `config.json`, 
 ## Bench sessions
 
 1. ~~#202 smoke test, #206 flood test (USB and DIN)~~ done; #190 drive-label check still open
-2. #200, #207 suspended-terminal check, Learn over USB and DIN
+2. ~~#200, DIN buffer, serial stall check~~ done; Learn over USB and DIN still to do
 3. Receive/render split, flood test on a TFT and a non-TFT device
 
-Flood tests use `tools/visibox-flood.sh "<port>" [seconds] [clip_secs]` (needs `sendmidi`). The NANO4 is on #206 firmware with buttons set to notes 60–63; its original config is in `~/Documents/MIDICaptainMAX/configs/nano4-before-206-test.json`.
+Flood tests use `tools/visibox-flood.sh "<port>" [seconds] [clip_secs]` (needs `sendmidi`). Automated checks: `tools/bench/run.sh` (see `docs/bench-tests.md`). The NANO4 is on `main` firmware with the `tools/bench/configs/nano4-207-serial-din-test.json` config; its original config is in `~/Documents/MIDICaptainMAX/configs/nano4-before-206-test.json`.
 
 ## Found along the way
 

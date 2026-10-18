@@ -1,0 +1,56 @@
+{
+  "device": "nano4",
+  "global_channel": 3,
+  "usb_drive_name": "NANO4",
+  "dev_mode": false,
+  "long_press_threshold_ms": 500,
+  "pages": [
+    {
+      "buttons": [
+        {
+          "label": "KT1",
+          "color": "blue",
+          "mode": "keytimes",
+          "short_cc_receive": 20,
+          "long_cc_receive": 21,
+          "short": [
+            {"up": [{"type": "cc", "cc": 20, "value": 127}], "color": "white", "label": "S-ON", "rx_value": 127},
+            {"up": [{"type": "cc", "cc": 20, "value": 0}], "color": "off", "label": "S-OFF", "rx_value": 0}
+          ],
+          "long": [
+            {"down": [{"type": "cc", "cc": 21, "value": 0}], "color": "red", "label": "L-A", "rx_value": 0},
+            {"down": [{"type": "cc", "cc": 21, "value": 64}], "color": "green", "label": "L-B", "rx_value": 64},
+            {"down": [{"type": "cc", "cc": 21, "value": 127}], "color": "yellow", "label": "L-C", "rx_value": 127}
+          ]
+        },
+        {
+          "label": "KT2",
+          "color": "purple",
+          "mode": "keytimes",
+          "short_cc_receive": 24,
+          "short": [
+            {"up": [{"type": "cc", "cc": 24, "value": 10}], "color": "cyan", "label": "P1", "rx_value": 10},
+            {"up": [{"type": "cc", "cc": 24, "value": 20}], "color": "orange", "label": "P2", "rx_value": 20},
+            {"up": [{"type": "cc", "cc": 24, "value": 30}], "color": "white", "label": "P3"}
+          ]
+        },
+        {
+          "label": "TGL",
+          "color": "yellow",
+          "mode": "toggle",
+          "off_mode": "off",
+          "cc": 22
+        },
+        {
+          "label": "NOTE",
+          "color": "red",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 63
+        }
+      ]
+    }
+  ],
+  "active_page": 0
+}

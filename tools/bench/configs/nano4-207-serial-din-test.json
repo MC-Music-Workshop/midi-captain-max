@@ -1,0 +1,89 @@
+{
+  "device": "nano4",
+  "global_channel": 3,
+  "usb_drive_name": "NANO4",
+  "dev_mode": false,
+  "page_control": {
+    "enabled": true,
+    "jump": {
+      "cc": 100
+    }
+  },
+  "pages": [
+    {
+      "name": "A",
+      "buttons": [
+        {
+          "label": "N60",
+          "color": "green",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 60
+        },
+        {
+          "label": "N61",
+          "color": "blue",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 61
+        },
+        {
+          "label": "N62",
+          "color": "yellow",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 62
+        },
+        {
+          "label": "N63",
+          "color": "red",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 63
+        }
+      ]
+    },
+    {
+      "name": "B",
+      "buttons": [
+        {
+          "label": "N60",
+          "color": "purple",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 60
+        },
+        {
+          "label": "N61",
+          "color": "cyan",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 61
+        },
+        {
+          "label": "N62",
+          "color": "orange",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 62
+        },
+        {
+          "label": "N63",
+          "color": "white",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 63
+        }
+      ]
+    }
+  ],
+  "active_page": 0
+}

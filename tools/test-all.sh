@@ -64,7 +64,7 @@ if ! git diff --quiet config-editor/src/lib/types.generated.ts; then
 fi
 
 step "ruff (Python lint)"
-ruff check firmware/ tests/
+ruff check firmware/ tests/ tools/bench/
 
 step "mpy-cross parse check (CircuitPython 7.x)"
 ./tools/check-circuitpython-parse.sh

@@ -54,10 +54,11 @@ git push origin v1.0.0-alpha.1
 
 ## Release Process
 
-1. Push tag `v1.x.0` (CI must trigger on tags so version is baked in correctly)
-2. CI builds artifacts with clean version
-3. Release workflow creates a **draft** release — download and test artifacts
-4. Publish via GitHub UI when satisfied; delete draft + tag if not
+1. Before tagging a firmware release, run `tools/bench/run.sh` on at least one device and paste its table into the release notes (setup in [docs/bench-tests.md](../docs/bench-tests.md))
+2. Push tag `v1.x.0` (CI must trigger on tags so version is baked in correctly)
+3. CI builds artifacts with clean version
+4. Release workflow creates a **draft** release — download and test artifacts
+5. Publish via GitHub UI when satisfied; delete draft + tag if not
 
 **Tauri binary versions are baked at build time.** They cannot be patched post-build due to code signing. This is why CI must run on the tag.
 

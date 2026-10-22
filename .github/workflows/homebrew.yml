@@ -1,23 +1,28 @@
 name: Homebrew
 
-# Bumps the cask in MC-Music-Workshop/homebrew-tap when a stable release is
-# published. Stable releases start as drafts (release.yml) and are published by
-# hand in the GitHub UI, which fires `release: published`. Releases published by
-# GITHUB_TOKEN (beta/rc auto-publish) don't trigger workflows, and are
-# prereleases anyway.
+# Bumps the casks in MC-Music-Workshop/homebrew-tap for a published release:
+#   - midi-captain-max@beta tracks every release (alpha, beta, rc, stable)
+#   - midi-captain-max tracks stable releases only
+# Stable releases start as drafts (release.yml) and are published by hand in
+# the GitHub UI, which fires `release: published`. Beta/rc releases are
+# published by GITHUB_TOKEN, which doesn't fire workflow events, so release.yml
+# dispatches this workflow for them instead.
 on:
   release:
     types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to publish to the tap (e.g. v1.14.0)"
+        description: "Release tag to publish to the tap (e.g. v1.14.0 or v1.15.0-beta.1)"
         required: true
 
+# Two releases published close together would otherwise race on the tap push.
+concurrency:
+  group: homebrew-tap
+
 jobs:
-  bump-cask:
-    name: Bump Homebrew cask
-    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+  bump-casks:
+    name: Bump Homebrew casks
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -29,18 +34,9 @@ jobs:
         run: |
           if [ -z "$TAP_TOKEN" ]; then
             echo "::warning::HOMEBREW_TAP_TOKEN not set; skipping cask bump"
-            echo "present=false" >> $GITHUB_OUTPUT
+            echo "present=false" >> "$GITHUB_OUTPUT"
           else
-            echo "present=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Reject prerelease tags
-        if: steps.token.outputs.present == 'true'
-        run: |
-          # Tag format is v{major}.{minor}.{patch}[-{prerelease}]; any "-" means prerelease.
-          if [[ "$TAG" == *-* ]]; then
-            echo "::error::$TAG is a prerelease tag; the tap only tracks stable releases"
-            exit 1
+            echo "present=true" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/checkout@v6
@@ -49,7 +45,7 @@ jobs:
           repository: MC-Music-Workshop/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
-      - name: Update cask version and sha256
+      - name: Update cask versions and sha256
         if: steps.token.outputs.present == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -60,14 +56,20 @@ jobs:
           SHA256=$(sha256sum cask.dmg | cut -d' ' -f1)
           rm cask.dmg
 
+          # Tag format is v{major}.{minor}.{patch}[-{prerelease}]; any "-" means prerelease.
+          CASKS=("Casks/midi-captain-max@beta.rb")
+          if [[ "$TAG" != *-* ]]; then
+            CASKS+=("Casks/midi-captain-max.rb")
+          fi
+
           sed -i -E \
             -e "s/^  version \".*\"/  version \"${VERSION}\"/" \
             -e "s/^  sha256 \".*\"/  sha256 \"${SHA256}\"/" \
-            Casks/midi-captain-max.rb
+            "${CASKS[@]}"
           git diff
 
           if git diff --quiet; then
-            echo "Cask already at ${VERSION}" >> $GITHUB_STEP_SUMMARY
+            echo "Casks already at ${VERSION}" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -75,4 +77,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "midi-captain-max ${VERSION}"
           git push
-          echo "✓ Homebrew cask bumped to ${VERSION} (sha256 ${SHA256})" >> $GITHUB_STEP_SUMMARY
+          echo "✓ Homebrew casks bumped to ${VERSION} (sha256 ${SHA256}): ${CASKS[*]}" >> "$GITHUB_STEP_SUMMARY"

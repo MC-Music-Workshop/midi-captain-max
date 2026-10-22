@@ -24,7 +24,15 @@ If you use [Homebrew](https://brew.sh), you can install the Config Editor withou
 brew install --cask mc-music-workshop/tap/midi-captain-max
 ```
 
-Get new versions with `brew upgrade --cask midi-captain-max`. Homebrew only carries stable releases; betas and release candidates are on the release page.
+Get new versions with `brew upgrade --cask midi-captain-max`. This cask only carries stable releases.
+
+To try betas and release candidates, install the beta cask instead. It follows the newest release of any kind, so it also picks up the stable release once that ships:
+
+```bash
+brew install --cask mc-music-workshop/tap/midi-captain-max@beta
+```
+
+The two casks can't be installed together. To switch, uninstall one first: `brew uninstall --cask midi-captain-max` (or `midi-captain-max@beta`), then install the other.
 
 ## Updating an Existing MIDI Captain MAX Install
 

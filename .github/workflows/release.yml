@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
-      actions: read
+      actions: write  # dispatch homebrew.yml for auto-published (beta/rc) releases
     env:
       VERSION: ""  # satisfies linter, is set dynamically from tag in first step
     steps:
@@ -258,6 +258,14 @@ jobs:
           body: ${{ steps.notes.outputs.BODY }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Releases published by GITHUB_TOKEN (beta/rc) don't fire `release: published`,
+      # so homebrew.yml never sees them. workflow_dispatch is exempt from that rule.
+      - name: Update Homebrew beta cask
+        if: steps.header.outputs.DRAFT == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run homebrew.yml -R "${{ github.repository }}" -f tag="$VERSION"
 
       - name: Print Release
         run: |

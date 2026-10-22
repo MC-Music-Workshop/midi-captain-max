@@ -49,7 +49,7 @@ Full walkthrough: **[Installation Guide](https://mc-music-workshop.github.io/mid
 The short version:
 
 1. **Back up your device.** Connect via USB (hold **Switch 1 / KEY0** while plugging in if no drive appears) and copy the entire drive somewhere safe.
-2. **Download the Config Editor** for your OS from the [latest release](https://github.com/MC-Music-Workshop/midi-captain-max/releases/latest) — `.dmg` (macOS), `.exe` / `.msi` (Windows), `.AppImage` / `.deb` (Linux). It bundles the firmware, so there's no separate firmware download.
+2. **Download the Config Editor** for your OS from the [latest release](https://github.com/MC-Music-Workshop/midi-captain-max/releases/latest) — `.dmg` (macOS), `.exe` / `.msi` (Windows), `.AppImage` / `.deb` (Linux). It bundles the firmware, so there's no separate firmware download. On macOS you can install it with Homebrew instead: `brew install --cask mc-music-workshop/tap/midi-captain-max`.
 3. **Install the firmware:** open the editor, scroll to **Firmware Installation** at the bottom of the window, and click **Install Firmware**. Your `config.json` is preserved unless you enable **Reset config.json to bundled defaults**.
 
 Devices still running the factory Paint Audio firmware need a one-time device-type step first, and 2026-batch devices (CircuitPython 9.2.7) need a **Reflash CircuitPython 7.3.1** first — both are covered in the guide.

@@ -3,26 +3,31 @@
   import { MESSAGE_TYPE_LABELS } from '$lib/types';
   import {
     config,
-    removeKeytimesMessage,
-    setKeytimesMessageType,
+    removeMessage,
+    setMessageType,
     updateField,
     validationErrors,
   } from '$lib/formStore';
 
   interface Props {
     buttonIndex: number;
-    cycle: 'short' | 'long';
-    entryIndex: number;
-    slot: 'down' | 'up';
+    // Button-relative path of the list this message lives in: "short[0].down", "messages_on".
+    listPath: string;
     msgIndex: number;
     message: KeytimesMessage;
     globalChannel: number;
+    // CC+/CC- step the button's shared CC value; only keytimes entries offer them.
+    allowCcStep?: boolean;
   }
 
-  let { buttonIndex, cycle, entryIndex, slot, msgIndex, message, globalChannel }: Props = $props();
+  let { buttonIndex, listPath, msgIndex, message, globalChannel, allowCcStep = true }: Props = $props();
 
   // Path prefix used for both updateField() and validation error lookups.
-  let pathPrefix = $derived(`buttons[${buttonIndex}].${cycle}[${entryIndex}].${slot}[${msgIndex}]`);
+  let pathPrefix = $derived(`buttons[${buttonIndex}].${listPath}[${msgIndex}]`);
+
+  let typeOptions = $derived(
+    Object.entries(MESSAGE_TYPE_LABELS).filter(([val]) => allowCcStep || (val !== 'cc_inc' && val !== 'cc_dec'))
+  );
 
   // Display the configured channel as 1-16, fall back to global if undefined.
   // HID messages have no channel field; the channel input is hidden for HID below.
@@ -38,7 +43,7 @@
 
   function handleTypeChange(e: Event) {
     const newType = (e.target as HTMLSelectElement).value as MessageType;
-    setKeytimesMessageType(buttonIndex, cycle, entryIndex, slot, msgIndex, newType);
+    setMessageType(buttonIndex, listPath, msgIndex, newType);
   }
 
   function handleChannelChange(e: Event) {
@@ -62,7 +67,7 @@
   }
 
   function handleRemove() {
-    removeKeytimesMessage(buttonIndex, cycle, entryIndex, slot, msgIndex);
+    removeMessage(buttonIndex, listPath, msgIndex);
   }
 
   // Page-switch messages carry no MIDI channel; hide the channel input for them.
@@ -95,11 +100,14 @@
     <label class="inline">
       Type:
       <select value={message.type} onchange={handleTypeChange}>
-        {#each Object.entries(MESSAGE_TYPE_LABELS) as [val, label]}
+        {#each typeOptions as [val, label]}
           <option value={val}>{label}</option>
         {/each}
       </select>
     </label>
+    {#if errFor('type')}
+      <span class="kt-error">{errFor('type')}</span>
+    {/if}
 
     {#if message.type === 'cc'}
       <label class="inline">
@@ -269,6 +277,11 @@
   input.error {
     border-color: #c00;
     background: #fef0f0;
+  }
+
+  .kt-error {
+    color: #c00;
+    font-size: 0.75rem;
   }
 
   .kt-remove {

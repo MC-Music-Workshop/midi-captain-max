@@ -311,6 +311,11 @@ pub struct ButtonConfig {
     pub hid_modifier: Option<HidModifier>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hid_delay_ms: Option<u16>,
+    // Extra messages sent after the button's own on/off message (non-keytimes modes)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages_on: Option<Vec<KeytimesMessage>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages_off: Option<Vec<KeytimesMessage>>,
     // Keytimes-mode fields (#48) — only meaningful when mode == "keytimes"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub short: Option<Vec<KeytimesEntry>>,
@@ -1586,6 +1591,7 @@ mod tests {
                 select_group: None, select_repress: None,
                 keytimes: None, states: None,
                 hid_action: None, hid_key: None, hid_modifier: None, hid_delay_ms: None,
+                messages_on: None, messages_off: None,
                 short: None, long: None, long_press_threshold_ms: None,
                 long_overlay: None,
                 short_cc_receive: None,

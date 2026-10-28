@@ -2,10 +2,11 @@
   import ColorSelect from './ColorSelect.svelte';
   import KeytimesEditor from './KeytimesEditor.svelte';
   import CcStepFields from './CcStepFields.svelte';
+  import MessageList from './MessageList.svelte';
   import type { ButtonConfig, ButtonColor, ButtonMode, OffMode, MessageType } from '$lib/types';
   import { MESSAGE_TYPE_LABELS, BUTTON_MODE_LABELS, BUTTON_COLORS } from '$lib/types';
   import { validationErrors, syncButtonStates, selectGroupNames, config } from '$lib/formStore';
-  import { keytimesUsesCcStep } from '$lib/validation';
+  import { keytimesUsesCcStep, buttonTurnsOff } from '$lib/validation';
 
   interface Props {
     button: ButtonConfig;
@@ -61,6 +62,15 @@
   let canSelectMode = $derived(isPC || isCC);
   let isSelectMode = $derived(button.mode === 'select');
   let isKeytimesMode = $derived(button.mode === 'keytimes');
+  // Extra messages (messages_on/messages_off): when each list fires, in the
+  // words of the button's mode. Off only exists where the button turns off.
+  let turnsOff = $derived(buttonTurnsOff(button));
+  let extraWhen = $derived.by(() => {
+    if (isSelectMode) return { on: 'when selected', off: 'when deselected' };
+    if (turnsOff && button.mode === 'momentary') return { on: 'on press', off: 'on release' };
+    if (turnsOff) return { on: 'when turned on', off: 'when turned off' };
+    return { on: 'on press', off: '' };
+  });
   let datalistId = $derived(`${idPrefix}-select-groups`);
 
   function handleLabelChange(e: Event) {
@@ -630,6 +640,33 @@
     </div>
   {/if}
 
+  {#if !isKeytimesMode && !disabled}
+    <div class="extra-messages">
+      <MessageList
+        buttonIndex={index}
+        listPath="messages_on"
+        label={`Also send ${extraWhen.on}:`}
+        messages={button.messages_on ?? []}
+        {globalChannel}
+        emptyHint="(none)"
+        title="Sent in order, right after this button's own message."
+        allowCcStep={false}
+      />
+      {#if turnsOff}
+        <MessageList
+          buttonIndex={index}
+          listPath="messages_off"
+          label={`Also send ${extraWhen.off}:`}
+          messages={button.messages_off ?? []}
+          {globalChannel}
+          emptyHint="(none)"
+          title="Sent in order, right after this button's own off message."
+          allowCcStep={false}
+        />
+      {/if}
+    </div>
+  {/if}
+
   {#if isKeytimesMode && keytimesUsesCcStep(button)}
     <!-- CC+/CC- entries are direction-only; these shared fields drive all of them (#11). -->
     <div class="cc-step-shared">
@@ -800,6 +837,10 @@
 </div>
 
 <style>
+  .extra-messages {
+    flex-basis: 100%;
+  }
+
   .button-row {
     display: flex;
     align-items: flex-start;

@@ -287,7 +287,7 @@
         "down": {
           "type": "array",
           "items": { "$ref": "#/definitions/KeytimesMessage" },
-          "description": "Messages fired when this entry's down event triggers (short_down for short cycle, long_down for long cycle). Strict array; single-element today, multi-element supported when #47 lands."
+          "description": "Messages fired when this entry's down event triggers (short_down for short cycle, long_down for long cycle). Strict array; any number of messages, sent in order."
         },
         "up": {
           "type": "array",
@@ -506,6 +506,16 @@
           "type": "array",
           "items": { "$ref": "#/definitions/StateOverride" },
           "description": "DEPRECATED on toggle/momentary/flash/select modes (firmware accepts with a deprecation warning at boot; will be removed in v3.0). Forbidden on mode='keytimes' — use short[]/long[] arrays instead."
+        },
+        "messages_on": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/KeytimesMessage" },
+          "description": "Extra messages sent right after the button's own message when it turns on: every press for flash/select/page/cc_inc/cc_dec buttons, the press that turns a toggle on, the press of a momentary. Same message shape as a keytimes entry's down/up, except cc_inc/cc_dec (those step the button's own CC). Ignored on mode='keytimes' — put messages in the cycle entries."
+        },
+        "messages_off": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/KeytimesMessage" },
+          "description": "Extra messages sent right after the button's own message when it turns off: the press that turns a toggle off, or the release of a momentary. Not used by flash/select/page/cc_inc/cc_dec buttons, or by HID momentary (those never turn off). Same message shape as messages_on."
         },
         "short": {
           "type": "array",

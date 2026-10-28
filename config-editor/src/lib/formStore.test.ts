@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage, deletePage, movePage, updatePageField, PAGE_CAP, addPageFromTemplate, markSaved, updateField } from './formStore';
+import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage, deletePage, movePage, updatePageField, PAGE_CAP, addPageFromTemplate, markSaved, updateField, addMessage, removeMessage, setMessageType } from './formStore';
 import type { MidiCaptainConfig, DeviceType, Page } from './types';
 
 // Minimal valid config: one1 = 1 button per page, so validation stays green.
@@ -349,5 +349,55 @@ describe('keytimes host sync normalization (#200)', () => {
     const out = normalizeConfig(get(formState).config).pages[0].buttons[0];
     expect(out.short_cc_receive).toBeUndefined();
     expect(out.long_cc_receive).toBeUndefined();
+  });
+});
+
+describe('extra messages (messages_on / messages_off)', () => {
+  function withButton(btn: Record<string, unknown>): MidiCaptainConfig {
+    return {
+      device: 'one1', active_page: 0,
+      pages: [{ buttons: [{ label: 'X', color: 'green', ...btn } as never] }],
+    };
+  }
+  const button = () => get(formState).config.pages[0].buttons[0];
+
+  it('addMessage / setMessageType / removeMessage edit a button-level list', () => {
+    loadConfig(withButton({ cc: 20 }));
+    addMessage(0, 'messages_on');
+    addMessage(0, 'messages_on', 'pc');
+    expect(button().messages_on?.map(m => m.type)).toEqual(['cc', 'pc']);
+    setMessageType(0, 'messages_on', 0, 'note');
+    expect(button().messages_on?.[0]).toMatchObject({ type: 'note', note: 60 });
+    removeMessage(0, 'messages_on', 0);
+    removeMessage(0, 'messages_on', 0);
+    expect(button().messages_on).toBeUndefined();
+  });
+
+  it('the same helpers edit a keytimes entry slot', () => {
+    loadConfig(withButton({ mode: 'keytimes', short: [{}] }));
+    addMessage(0, 'short[0].down', 'pc');
+    expect(button().short?.[0].down?.[0]).toMatchObject({ type: 'pc', program: 0 });
+  });
+
+  it('save keeps messages_on and messages_off on a toggle, without UI ids', () => {
+    loadConfig(withButton({ cc: 20, messages_on: [{ type: 'pc', program: 1 }], messages_off: [{ type: 'pc', program: 2 }] }));
+    const out = normalizeConfig(get(formState).config).pages[0].buttons[0];
+    expect(out.messages_on).toEqual([{ type: 'pc', program: 1 }]);
+    expect(out.messages_off).toEqual([{ type: 'pc', program: 2 }]);
+  });
+
+  it('save drops messages_off on a button that never turns off', () => {
+    loadConfig(withButton({ type: 'pc', program: 1, messages_on: [{ type: 'pc', program: 1 }], messages_off: [{ type: 'pc', program: 2 }] }));
+    const out = normalizeConfig(get(formState).config).pages[0].buttons[0];
+    expect(out.messages_on).toHaveLength(1);
+    expect(out.messages_off).toBeUndefined();
+  });
+
+  it('save drops both lists on a keytimes button', () => {
+    loadConfig(withButton({ mode: 'keytimes', short: [{ down: [{ type: 'cc', cc: 20, value: 127 }] }],
+                            messages_on: [{ type: 'pc', program: 1 }], messages_off: [{ type: 'pc', program: 2 }] }));
+    const out = normalizeConfig(get(formState).config).pages[0].buttons[0];
+    expect(out.messages_on).toBeUndefined();
+    expect(out.messages_off).toBeUndefined();
   });
 });

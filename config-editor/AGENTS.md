@@ -100,7 +100,7 @@ Also strips `display: {}` if no display fields were set.
 
 ## `cc_inc` / `cc_dec` editor (#11)
 
-`CcStepFields.svelte` renders the button-level cc-step fields (CC, Step/Slots radio, step or slot count, min/max, initial, wrap, and in Slots mode a per-slot color + name table). `ButtonRow` mounts it in the type branch for a plain `cc_inc`/`cc_dec` button, and again inside a "Shared CC settings" panel above `KeytimesEditor` when `keytimesUsesCcStep(button)`. Mode dropdown for these types offers only "Single press" (`flash`) and keytimes — the firmware coerces every other mode to `flash`. Slot tables are always kept exactly `cc_slots` long (colors default to the button color, names to `''`) because the schema arrays can't hold gaps; the whole array is rewritten on each edit via `onUpdate` rather than an indexed path. `KeytimesMessageEditor` shows a hint instead of fields for `cc_inc`/`cc_dec` entries and hides the channel input (channel is button-level).
+`CcStepFields.svelte` renders the button-level cc-step fields (CC, Step/Slots radio, step or slot count, min/max, initial, wrap, and in Slots mode a per-slot color + name table). `ButtonRow` mounts it in the type branch for a plain `cc_inc`/`cc_dec` button, and again inside a "Shared CC settings" panel above `KeytimesEditor` when `keytimesUsesCcStep(button)`. Mode dropdown for these types offers only "Single press" (`flash`) and keytimes — the firmware coerces every other mode to `flash`. Slot tables are always kept exactly `cc_slots` long (colors default to the button color, names to `''`) because the schema arrays can't hold gaps; the whole array is rewritten on each edit via `onUpdate` rather than an indexed path. `MessageEditor` shows a hint instead of fields for `cc_inc`/`cc_dec` entries and hides the channel input (channel is button-level).
 
 ## `setNestedValue` Path Format
 
@@ -135,7 +135,7 @@ Key constraints from `config.schema.json`:
 
 ## `mode: "keytimes"` (#48)
 
-The keytimes mode is rendered by `KeytimesEditor.svelte`, which composes per-cycle editors and `KeytimesMessageEditor.svelte` for individual Message entries. When a button is in keytimes mode:
+The keytimes mode is rendered by `KeytimesEditor.svelte`, which composes per-cycle editors; each down/up slot is a `MessageList.svelte` of `MessageEditor.svelte` rows (shared with the non-keytimes extra-message lists, see below). When a button is in keytimes mode:
 
 - The legacy CC/Note/PC/HID per-button fields are hidden in `ButtonRow.svelte` (they don't apply — message data lives inside `short[].down[]` / `up[]` Message objects)
 - The Type selector is still shown but has no effect (it's used by other modes)
@@ -144,9 +144,13 @@ The keytimes mode is rendered by `KeytimesEditor.svelte`, which composes per-cyc
 - `KeytimesEditor` renders threshold input, short cycle entries, long cycle entries
 - Host sync (#200, #211): each cycle header has a **Listen CC** (`short_cc_receive` / `long_cc_receive`); once it's set, each entry shows a **Receive value** (`rx_value`), and a later entry repeating an earlier value gets a warning (the firmware matches the first). `normalizeButton` strips the listen CCs from non-keytimes buttons
 
-Mutations on the nested structure (add/remove entry, add/remove message, change message type) go through dedicated `formStore` helpers (`addKeytimesEntry`, `removeKeytimesEntry`, `addKeytimesMessage`, `removeKeytimesMessage`, `setKeytimesMessageType`) because `updateField()` requires intermediate path components to already exist. Leaf-value edits (color, dim, label, individual message field values) use `updateField()`.
+Mutations on the nested structure (add/remove entry, add/remove message, change message type) go through dedicated `formStore` helpers (`addKeytimesEntry`, `removeKeytimesEntry`, and `addMessage` / `removeMessage` / `setMessageType`, which take a button-relative list path like `short[0].down` or `messages_on`) because `updateField()` requires intermediate path components to already exist. Leaf-value edits (color, dim, label, individual message field values) use `updateField()`.
 
 `normalizeButton` strips legacy per-type fields when `mode === 'keytimes'` so save output stays clean even if the button was toggled through other modes before settling on keytimes. For non-keytimes modes, it strips the `short`/`long`/`long_press_threshold_ms` fields.
+
+## Extra messages on non-keytimes buttons (`messages_on` / `messages_off`)
+
+Same `KeytimesMessage` items as a keytimes slot, rendered by `ButtonRow` with the same `MessageList` component and edited with the same list-path helpers. Labels follow the mode ("on press / on release", "when turned on / off", "when selected / deselected"). The off list only appears when `buttonTurnsOff(button)` (`validation.ts`): toggle, momentary except HID, or CC select with re-press **Deselect**. That rule mirrors where `handle_switches` in `firmware/dev/code.py` sends `messages_off`; change both together. `normalizeButton` drops `messages_off` when the button never turns off and both lists on keytimes buttons. CC+/CC- aren't offered (`allowCcStep={false}`); a hand-written one gets a `…messages_on[i].type` error that `MessageEditor` shows next to the Type select.
 
 ## Accessibility Conventions
 

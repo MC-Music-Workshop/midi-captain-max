@@ -596,7 +596,7 @@ cc_values = {}
 # main loop drains it via flush_cc_step_updates(). Repainting sets label.text, whose
 # PCF glyph loader is ~6 frames deep; doing that from the bottom of the keytimes
 # dispatch chain (handle_switches -> dispatch_keytimes_events -> lambda ->
-# _dispatch_keytimes_message -> send_cc_step -> refresh -> set_button_state) hit
+# _dispatch_message -> send_cc_step -> refresh -> set_button_state) hit
 # "RuntimeError: pystack exhausted" on the first slot name with uncached glyphs.
 pending_cc_step_updates = []
 pc_flash_timers = [0.0] * BUTTON_COUNT  # Expiry time (monotonic) for PC button flash; 0 = inactive
@@ -974,7 +974,7 @@ def handle_pc_select_press(btn_num, btn_config, channel):
     PC + select_repress="deselect" is preserved at config level but no-oped
     in firmware (falls through to the resend path here) — gated on #47
     multi-message support landing. Existing configs won't need migration
-    once it does.
+    once it does. Returns True when the PC was sent, None when suppressed.
     """
     btn_state = button_states[btn_num - 1]
     program = btn_config.get("program", 0)
@@ -982,13 +982,14 @@ def handle_pc_select_press(btn_num, btn_config, channel):
     repress = btn_config.get("select_repress", "resend")
 
     if btn_state.state and repress == "nothing":
-        return  # already active, suppress repeat
+        return None  # already active, suppress repeat
 
     # Note: PC + active + repress=="deselect" reaches here too (intentional V1 no-op).
     midi_send(ProgramChange(program), channel=channel)
     print(f"[MIDI TX] Ch{channel+1} PC{program} (switch {btn_num}, select)")
     update_status(f"TX PC{program}")
     update_select_group(btn_num, group)
+    return True
 
 
 def handle_cc_select_press(btn_num, btn_config, channel):
@@ -996,6 +997,7 @@ def handle_cc_select_press(btn_num, btn_config, channel):
 
     Sends CC (cc_on for activate, cc_off for self-deselect) and updates
     select-group LEDs. Honors select_repress for already-active presses.
+    Returns True (activated), False (deselected) or None (nothing sent).
     """
     btn_state = button_states[btn_num - 1]
     cc = btn_config.get("cc", 0)
@@ -1005,7 +1007,7 @@ def handle_cc_select_press(btn_num, btn_config, channel):
     repress = btn_config.get("select_repress", "resend")
 
     if btn_state.state and repress == "nothing":
-        return
+        return None
 
     if btn_state.state and repress == "deselect":
         # Self-toggle off: send cc_off, this button off, group has no active member.
@@ -1014,12 +1016,13 @@ def handle_cc_select_press(btn_num, btn_config, channel):
         update_status(f"TX CC{cc}={cc_off}")
         btn_state.state = False
         set_button_state(btn_num, False)
-        return
+        return False
 
     midi_send(ControlChange(cc, cc_on), channel=channel)
     print(f"[MIDI TX] Ch{channel+1} CC{cc}={cc_on} (switch {btn_num}, select)")
     update_status(f"TX CC{cc}={cc_on}")
     update_select_group(btn_num, group)
+    return True
 
 
 def get_cc_step_value(btn_config):
@@ -1327,8 +1330,8 @@ def _handle_midi_once():
     return got
 
 
-def _dispatch_keytimes_message(msg, default_channel, btn_num):
-    """Send a single Message dict (from a keytimes-mode entry) to MIDI or HID.
+def _dispatch_message(msg, default_channel, btn_num):
+    """Send a single Message dict (keytimes entry, or a button's messages_on/off) to MIDI or HID.
 
     Routes by msg["type"]. Falls back to default_channel for the button when the
     message itself doesn't specify a channel. Used by handle_switches() via the
@@ -1391,6 +1394,18 @@ def _dispatch_keytimes_message(msg, default_channel, btn_num):
         key_label = key if key else "?"
         print(f"[HID TX] {action} {key_label} (switch {btn_num}, keytimes)")
         update_status(f"HID {action}")
+
+
+def _send_extra_messages(btn_config, on, channel, btn_num):
+    """Send a button's messages_on (on=True) or messages_off (on=False); None sends nothing.
+
+    Called right after the button's own message, so the extras go out in the
+    order they're listed, after it.
+    """
+    if on is None:
+        return
+    for msg in btn_config.get("messages_on" if on else "messages_off", ()):
+        _dispatch_message(msg, channel, btn_num)
 
 
 def _render_keytimes_led(btn_num, state, btn_config):
@@ -1476,7 +1491,7 @@ def handle_switches():
                 # stack frame fewer under every keytimes message (pystack is small).
                 dispatch_keytimes_events(
                     events, kt_state, btn_config,
-                    _dispatch_keytimes_message, (default_channel, btn_num)
+                    _dispatch_message, (default_channel, btn_num)
                 )
                 _render_keytimes_led(btn_num, kt_state, btn_config)
             continue
@@ -1490,11 +1505,14 @@ def handle_switches():
             message_type = btn_config.get("type", "cc")
             mode = btn_config.get("mode", "toggle")
             channel = btn_config.get("channel", 0)
+            # True/False: send messages_on/messages_off after the button's own message.
+            extra = None
 
             if message_type == "cc":
                 if mode == "select":
                     if pressed:
-                        handle_cc_select_press(btn_num, btn_config, channel)
+                        _send_extra_messages(btn_config, handle_cc_select_press(btn_num, btn_config, channel),
+                                             channel, btn_num)
                     continue
                 if pressed:
                     btn_state.advance_keytime()
@@ -1514,6 +1532,7 @@ def handle_switches():
                     midi_send(ControlChange(cc, val), channel=channel)
                     print(f"[MIDI TX] Ch{channel+1} CC{cc}={val} (switch {btn_num}, momentary)")
                     update_status(f"TX CC{cc}={val}")
+                    extra = pressed
                 elif pressed:
                     # Keytimes cycling always stays on; standard toggle flips on/off.
                     # The flip still runs under host_led — RX writes the same state,
@@ -1526,6 +1545,7 @@ def handle_switches():
                     midi_send(ControlChange(cc, val), channel=channel)
                     print(f"[MIDI TX] Ch{channel+1} CC{cc}={val} (switch {btn_num}, toggle)")
                     update_status(f"TX CC{cc}={val}")
+                    extra = new_state
 
             elif message_type == "note":
                 if pressed:
@@ -1546,6 +1566,7 @@ def handle_switches():
                         btn_state.state = False
                         set_button_state(btn_num, False)
                         print(f"[MIDI TX] Ch{channel+1} NoteOff{note} (switch {btn_num})")
+                    extra = pressed
                 elif pressed:
                     # Keytimes cycling always stays on; standard toggle flips on/off
                     new_state = True if btn_state.keytimes > 1 else not btn_state.state
@@ -1559,11 +1580,13 @@ def handle_switches():
                         midi_send(NoteOff(note, vel_off), channel=channel)
                         print(f"[MIDI TX] Ch{channel+1} NoteOff{note} (switch {btn_num}, toggle off)")
                         update_status(f"TX Note{note} OFF")
+                    extra = new_state
 
             elif message_type == "pc":
                 if mode == "select":
                     if pressed:
-                        handle_pc_select_press(btn_num, btn_config, channel)
+                        _send_extra_messages(btn_config, handle_pc_select_press(btn_num, btn_config, channel),
+                                             channel, btn_num)
                     continue
                 if pressed:
                     btn_state.advance_keytime()
@@ -1581,9 +1604,11 @@ def handle_switches():
                         set_button_state(btn_num, True)
                     else:  # "flash" (default)
                         flash_pc_button(btn_num, btn_config.get("flash_ms", PC_FLASH_DURATION_MS))
+                    extra = btn_state.state if mode == "toggle" else True
                 elif mode == "momentary":
                     btn_state.state = False
                     set_button_state(btn_num, False)
+                    extra = False
 
             elif message_type == "pc_inc":
                 if pressed:
@@ -1603,9 +1628,11 @@ def handle_switches():
                         set_button_state(btn_num, True)
                     else:  # "flash" (default)
                         flash_pc_button(btn_num, btn_config.get("flash_ms", PC_FLASH_DURATION_MS))
+                    extra = btn_state.state if mode == "toggle" else True
                 elif mode == "momentary":
                     btn_state.state = False
                     set_button_state(btn_num, False)
+                    extra = False
 
             elif message_type == "pc_dec":
                 if pressed:
@@ -1625,15 +1652,18 @@ def handle_switches():
                         set_button_state(btn_num, True)
                     else:  # "flash" (default)
                         flash_pc_button(btn_num, btn_config.get("flash_ms", PC_FLASH_DURATION_MS))
+                    extra = btn_state.state if mode == "toggle" else True
                 elif mode == "momentary":
                     btn_state.state = False
                     set_button_state(btn_num, False)
+                    extra = False
 
             elif message_type in ("cc_inc", "cc_dec"):
                 # Shared-value stepper (#11). Mode is always "flash" here (validator);
                 # STEP flashes via _refresh_cc_step_buttons, SLOT repaints the slot color.
                 if pressed:
                     send_cc_step(btn_num, btn_config, 1 if message_type == "cc_inc" else -1, message_type)
+                    extra = True
 
             elif message_type in ("page_inc", "page_dec", "page_jump"):
                 if pressed:
@@ -1648,6 +1678,7 @@ def handle_switches():
                         config.get("active_page", 0), len(config.get("pages", [])), action, amount)
                     print(f"[PAGE] {message_type} -> page {pending_page_target} (switch {btn_num})")
                     update_status(f"PAGE {pending_page_target + 1}")
+                    extra = True
 
             elif message_type == "hid" and pressed:
                 btn_state.advance_keytime()
@@ -1667,10 +1698,15 @@ def handle_switches():
                 if mode == "toggle" and hid_action != "delay":
                     btn_state.state = not btn_state.state
                     set_button_state(btn_num, btn_state.state)
-                elif hid_action != "delay":
-                    # Flash LED briefly for press/send/release — delay doesn't need feedback
-                    set_button_state(btn_num, True)
-                    hid_flash_timers[btn_num - 1] = time.monotonic() + PC_FLASH_DURATION_MS / 1000.0
+                    extra = btn_state.state
+                else:
+                    if hid_action != "delay":
+                        # Flash LED briefly for press/send/release — delay doesn't need feedback
+                        set_button_state(btn_num, True)
+                        hid_flash_timers[btn_num - 1] = time.monotonic() + PC_FLASH_DURATION_MS / 1000.0
+                    extra = True
+
+            _send_extra_messages(btn_config, extra, channel, btn_num)
 
     # Drain a pending page switch once, after the scan loop has finished iterating —
     # switch_page() rebuilds buttons[]/button_states[]/keytimes_states[], so doing it

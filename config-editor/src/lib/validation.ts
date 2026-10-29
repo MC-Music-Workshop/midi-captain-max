@@ -1,4 +1,4 @@
-import type { MidiCaptainConfig, Page, ButtonConfig } from './types';
+import type { MidiCaptainConfig, Page, ButtonConfig, KeytimesMessage } from './types';
 
 // True when any short/long entry on a keytimes button fires cc_inc/cc_dec (#11).
 // Such a button carries the button-level cc-step fields (cc, cc_step | cc_slots,
@@ -12,6 +12,90 @@ export function keytimesUsesCcStep(btn: ButtonConfig): boolean {
     }
   }
   return false;
+}
+
+// True when a non-keytimes button has an "off" event that sends messages_off: a
+// toggle turning off, a momentary release (not HID, whose momentary only flashes),
+// or a CC select button deselecting itself. Mirrors handle_switches in code.py.
+export function buttonTurnsOff(btn: ButtonConfig): boolean {
+  const type = btn.type ?? 'cc';
+  if (!['cc', 'note', 'pc', 'pc_inc', 'pc_dec', 'hid'].includes(type)) return false;
+  const mode = btn.mode ?? (type.startsWith('pc') ? 'flash' : 'toggle');
+  if (mode === 'toggle') return true;
+  if (mode === 'momentary') return type !== 'hid';
+  return mode === 'select' && type === 'cc' && btn.select_repress === 'deselect';
+}
+
+// Validate a message list (a keytimes entry's down/up, or a button's
+// messages_on/messages_off). listPath is the list's error-key prefix.
+function validateMessages(messages: KeytimesMessage[], listPath: string, pageCount: number,
+                          errors: Map<string, string>) {
+  messages.forEach((msg, mi) => {
+    const mp = `${listPath}[${mi}]`;
+    switch (msg.type) {
+      case 'cc': {
+        const e = validators.cc(msg.cc);
+        if (e) errors.set(`${mp}.cc`, e);
+        const v = validators.withinRange(msg.value, 0, 127);
+        if (v) errors.set(`${mp}.value`, v);
+        break;
+      }
+      case 'note': {
+        const e = validators.note(msg.note);
+        if (e) errors.set(`${mp}.note`, e);
+        const v = validators.velocity(msg.velocity);
+        if (v) errors.set(`${mp}.velocity`, v);
+        break;
+      }
+      case 'pc': {
+        const e = validators.program(msg.program);
+        if (e) errors.set(`${mp}.program`, e);
+        break;
+      }
+      case 'pc_inc':
+      case 'pc_dec': {
+        if (msg.step !== undefined) {
+          const e = validators.pcStep(msg.step);
+          if (e) errors.set(`${mp}.step`, e);
+        }
+        break;
+      }
+      case 'cc_inc':
+      case 'cc_dec':
+        // No per-message fields; see validateCcStep on the button above.
+        break;
+      case 'page_inc':
+      case 'page_dec': {
+        if (msg.page_step !== undefined) {
+          const e = validators.pageStep(msg.page_step);
+          if (e) errors.set(`${mp}.page_step`, e);
+        }
+        break;
+      }
+      case 'page_jump': {
+        // Cross-field: 0-based target, max is pageCount - 1. Firmware
+        // clamps; the editor fails loud (P1 asymmetry rule).
+        if (msg.page !== undefined) {
+          if (!Number.isInteger(msg.page) || msg.page < 0 || msg.page >= pageCount) {
+            errors.set(`${mp}.page`, `Target page must be between 0 and ${pageCount - 1} (0-based)`);
+          }
+        }
+        break;
+      }
+      case 'hid': {
+        if (msg.delay_ms !== undefined) {
+          if (!Number.isInteger(msg.delay_ms) || msg.delay_ms < 1 || msg.delay_ms > 5000) {
+            errors.set(`${mp}.delay_ms`, 'Delay must be between 1 and 5000 ms');
+          }
+        }
+        break;
+      }
+    }
+    if (msg.type !== 'hid' && (msg as { channel?: number }).channel !== undefined) {
+      const cherr = validators.channel((msg as { channel?: number }).channel!);
+      if (cherr) errors.set(`${mp}.channel`, cherr);
+    }
+  });
 }
 
 export const CC_SLOTS_MIN = 2;
@@ -373,72 +457,23 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
           for (const slot of ['down', 'up'] as const) {
             const messages = entry[slot];
             if (!messages) continue;
-            messages.forEach((msg, mi) => {
-              const mp = `buttons[${idx}].${cycle}[${ei}].${slot}[${mi}]`;
-              switch (msg.type) {
-                case 'cc': {
-                  const e = validators.cc(msg.cc);
-                  if (e) errors.set(`${mp}.cc`, e);
-                  const v = validators.withinRange(msg.value, 0, 127);
-                  if (v) errors.set(`${mp}.value`, v);
-                  break;
-                }
-                case 'note': {
-                  const e = validators.note(msg.note);
-                  if (e) errors.set(`${mp}.note`, e);
-                  const v = validators.velocity(msg.velocity);
-                  if (v) errors.set(`${mp}.velocity`, v);
-                  break;
-                }
-                case 'pc': {
-                  const e = validators.program(msg.program);
-                  if (e) errors.set(`${mp}.program`, e);
-                  break;
-                }
-                case 'pc_inc':
-                case 'pc_dec': {
-                  if (msg.step !== undefined) {
-                    const e = validators.pcStep(msg.step);
-                    if (e) errors.set(`${mp}.step`, e);
-                  }
-                  break;
-                }
-                case 'cc_inc':
-                case 'cc_dec':
-                  // No per-message fields; see validateCcStep on the button above.
-                  break;
-                case 'page_inc':
-                case 'page_dec': {
-                  if (msg.page_step !== undefined) {
-                    const e = validators.pageStep(msg.page_step);
-                    if (e) errors.set(`${mp}.page_step`, e);
-                  }
-                  break;
-                }
-                case 'page_jump': {
-                  // Cross-field: 0-based target, max is pageCount - 1. Firmware
-                  // clamps; the editor fails loud (P1 asymmetry rule).
-                  if (msg.page !== undefined) {
-                    if (!Number.isInteger(msg.page) || msg.page < 0 || msg.page >= pageCount) {
-                      errors.set(`${mp}.page`, `Target page must be between 0 and ${pageCount - 1} (0-based)`);
-                    }
-                  }
-                  break;
-                }
-                case 'hid': {
-                  if (msg.delay_ms !== undefined) {
-                    if (!Number.isInteger(msg.delay_ms) || msg.delay_ms < 1 || msg.delay_ms > 5000) {
-                      errors.set(`${mp}.delay_ms`, 'Delay must be between 1 and 5000 ms');
-                    }
-                  }
-                  break;
-                }
-              }
-              if (msg.type !== 'hid' && (msg as { channel?: number }).channel !== undefined) {
-                const cherr = validators.channel((msg as { channel?: number }).channel!);
-                if (cherr) errors.set(`${mp}.channel`, cherr);
-              }
-            });
+            validateMessages(messages, `buttons[${idx}].${cycle}[${ei}].${slot}`, pageCount, errors);
+          }
+        });
+      }
+    }
+
+    // Extra messages on non-keytimes modes. messages_off only counts when the
+    // button turns off; otherwise it's stale form state that save strips.
+    // cc_inc/cc_dec step the button's own cc-step value, so they're not offered here.
+    if (btn.mode !== 'keytimes') {
+      for (const field of ['messages_on', 'messages_off'] as const) {
+        const messages = btn[field];
+        if (!messages || (field === 'messages_off' && !buttonTurnsOff(btn))) continue;
+        validateMessages(messages, `buttons[${idx}].${field}`, pageCount, errors);
+        messages.forEach((msg, mi) => {
+          if (msg.type === 'cc_inc' || msg.type === 'cc_dec') {
+            errors.set(`buttons[${idx}].${field}[${mi}].type`, 'CC+/CC- only work in keytimes mode or as the button type');
           }
         });
       }

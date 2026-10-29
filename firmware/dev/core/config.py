@@ -323,8 +323,8 @@ def _uses_cc_step(entries):
     return False
 
 
-def _validate_keytimes_message(msg):
-    """Validate a single Message object inside a keytimes-mode entry's down/up array.
+def _validate_message(msg):
+    """Validate a single Message object (keytimes entry down/up, or messages_on/off).
 
     Returns a sanitized dict, or None if msg is not a valid dict.
     Discriminated by 'type'. Unknown/missing type defaults to "cc".
@@ -378,13 +378,13 @@ def _validate_keytimes_message(msg):
     return out
 
 
-def _validate_keytimes_message_list(messages):
-    """Validate an array of messages (down or up slot). Returns a list (possibly empty)."""
+def _validate_message_list(messages):
+    """Validate an array of messages. Returns a list (possibly empty)."""
     if not isinstance(messages, list):
         return []
     validated = []
     for msg in messages:
-        v = _validate_keytimes_message(msg)
+        v = _validate_message(msg)
         if v is not None:
             validated.append(v)
     return validated
@@ -396,9 +396,9 @@ def _validate_keytimes_entry(entry):
         return {}
     out = {}
     if "down" in entry:
-        out["down"] = _validate_keytimes_message_list(entry["down"])
+        out["down"] = _validate_message_list(entry["down"])
     if "up" in entry:
-        out["up"] = _validate_keytimes_message_list(entry["up"])
+        out["up"] = _validate_message_list(entry["up"])
     if "color" in entry:
         color = entry["color"]
         if isinstance(color, str) and color.lower() in _CYCLE_ENTRY_COLORS:
@@ -644,6 +644,14 @@ def validate_button(btn, index=0, global_channel=None):
         hid_delay_ms = btn.get("hid_delay_ms")
         if isinstance(hid_delay_ms, int):
             validated["hid_delay_ms"] = max(1, min(5000, hid_delay_ms))
+
+    # Extra messages sent alongside the button's own on/off message. Same Message
+    # shape as keytimes entries, minus cc_inc/cc_dec: those step the button's own
+    # cc-step value, which only a cc_inc/cc_dec button has (and it already steps).
+    for key in ("messages_on", "messages_off"):
+        msgs = [m for m in _validate_message_list(btn.get(key)) if m["type"] not in CC_STEP_TYPES]
+        if msgs:
+            validated[key] = msgs
 
     # For keytimes > 1, validate and pass through states array
     if keytimes > 1:

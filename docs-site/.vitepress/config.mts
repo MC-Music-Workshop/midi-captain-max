@@ -48,6 +48,7 @@ export default defineConfig({
         items: [
           { text: 'Installation', link: '/installation' },
           { text: 'Saving and Loading Configs', link: '/configs' },
+          { text: 'Multiple Messages', link: '/multiple-messages' },
           { text: 'Keytimes', link: '/keytimes' },
           { text: 'Inbound MIDI', link: '/inbound-midi' },
           { text: 'Page Control (MIDI-IN)', link: '/page-control' },

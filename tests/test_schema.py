@@ -65,6 +65,17 @@ def test_schema_is_valid_draft7(schema):
   Draft7Validator.check_schema(schema)
 
 
+def test_extra_messages_accepted(validator):
+  """messages_on / messages_off take the same Message objects as keytimes entries."""
+  config = {"buttons": [{
+    "label": "AMP", "color": "red", "cc": 20,
+    "messages_on": [{"type": "pc", "program": 5}, {"type": "hid", "action": "send", "key": "A"}],
+    "messages_off": [{"type": "note", "note": 60, "velocity": 0}],
+  }]}
+  errors = list(validator.iter_errors(wrap(config)))
+  assert errors == [], f"extra messages rejected: {[e.message for e in errors]}"
+
+
 class TestKeytimesMode:
   """Schema acceptance of mode='keytimes' buttons with short/long cycle arrays."""
 

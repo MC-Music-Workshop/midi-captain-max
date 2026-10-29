@@ -1339,6 +1339,52 @@ class TestKeytimesMessageValidation:
         assert btn["short"][0]["down"] == []
 
 
+class TestExtraMessages:
+    """messages_on / messages_off on non-keytimes buttons reuse the keytimes Message validator."""
+
+    def test_lists_preserved_in_order(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "cc": 20,
+            "messages_on": [{"type": "pc", "program": 5}, {"type": "note", "note": 64, "velocity": 100}],
+            "messages_off": [{"type": "cc", "cc": 21, "value": 0, "channel": 3}],
+        }, index=0)
+        assert btn["messages_on"] == [
+            {"type": "pc", "program": 5},
+            {"type": "note", "note": 64, "velocity": 100},
+        ]
+        assert btn["messages_off"] == [{"type": "cc", "cc": 21, "value": 0, "channel": 3}]
+
+    def test_messages_are_clamped_like_keytimes(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "type": "pc", "program": 1,
+            "messages_on": [{"type": "cc", "cc": 200, "value": -5}],
+        }, index=0)
+        assert btn["messages_on"] == [{"type": "cc", "cc": 127, "value": 0}]
+
+    def test_cc_step_messages_dropped(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "cc": 20,
+            "messages_on": [{"type": "cc_inc"}, {"type": "pc", "program": 2}, {"type": "cc_dec"}],
+        }, index=0)
+        assert btn["messages_on"] == [{"type": "pc", "program": 2}]
+
+    def test_absent_empty_or_invalid_lists_omitted(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "cc": 20,
+            "messages_on": [], "messages_off": "not a list",
+        }, index=0)
+        assert "messages_on" not in btn
+        assert "messages_off" not in btn
+
+    def test_keytimes_mode_ignores_them(self):
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes",
+            "short": [{"down": [{"type": "cc", "cc": 20, "value": 127}]}],
+            "messages_on": [{"type": "pc", "program": 5}],
+        }, index=0)
+        assert "messages_on" not in btn
+
+
 class TestKeytimesThreshold:
     """Tests for long_press_threshold_ms resolution (button > top > default)."""
 

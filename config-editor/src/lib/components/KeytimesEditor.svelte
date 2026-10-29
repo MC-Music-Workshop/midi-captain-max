@@ -1,11 +1,10 @@
 <script lang="ts">
-  import KeytimesMessageEditor from './KeytimesMessageEditor.svelte';
+  import MessageList from './MessageList.svelte';
   import type { ButtonConfig, KeytimesEntry, CycleEntryColor } from '$lib/types';
   import { BUTTON_COLORS } from '$lib/types';
   import {
     addKeytimesEntry,
     removeKeytimesEntry,
-    addKeytimesMessage,
     updateField,
     validationErrors,
   } from '$lib/formStore';
@@ -196,31 +195,16 @@
           </div>
 
           {#each ['down', 'up'] as slot (slot)}
-            {@const messages = (slot === 'down' ? entry.down : entry.up) ?? []}
-            <div class="kt-slot">
-              <div class="kt-slot-header"
-                   title="An empty slot does nothing on this event — no MIDI fires and the LED color/label/dim do not update. Add at least one message to make this event take effect.">
-                <span class="kt-slot-label">{cycle}_{slot}:</span>
-                <button type="button" class="kt-add-msg"
-                        onclick={() => addKeytimesMessage(index, cycle as 'short' | 'long', ei, slot as 'down' | 'up')}>
-                  + message
-                </button>
-                {#if messages.length === 0}
-                  <span class="kt-slot-empty-hint">(empty — this event fires nothing)</span>
-                {/if}
-              </div>
-              {#each messages as msg, mi ((msg as { __uiId?: number }).__uiId ?? mi)}
-                <KeytimesMessageEditor
-                  buttonIndex={index}
-                  cycle={cycle as 'short' | 'long'}
-                  entryIndex={ei}
-                  slot={slot as 'down' | 'up'}
-                  msgIndex={mi}
-                  message={msg}
-                  globalChannel={globalChannel}
-                />
-              {/each}
-            </div>
+            <MessageList
+              buttonIndex={index}
+              listPath={`${cycle}[${ei}].${slot}`}
+              label={`${cycle}_${slot}:`}
+              mono
+              messages={(slot === 'down' ? entry.down : entry.up) ?? []}
+              {globalChannel}
+              emptyHint="(empty — this event fires nothing)"
+              title="An empty slot does nothing on this event — no MIDI fires and the LED color/label/dim do not update. Add at least one message to make this event take effect."
+            />
           {/each}
         </div>
       {/each}
@@ -319,45 +303,6 @@
   .kt-entry-num {
     font-weight: bold;
     color: #456;
-  }
-
-  .kt-slot {
-    margin: 0.25rem 0 0.25rem 0.5rem;
-    padding: 0.25rem;
-    border-left: 2px solid #cde;
-    padding-left: 0.5rem;
-  }
-
-  .kt-slot-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.25rem;
-  }
-
-  .kt-slot-label {
-    font-family: monospace;
-    font-size: 0.8125rem;
-    color: #555;
-  }
-
-  .kt-slot-empty-hint {
-    font-size: 0.75rem;
-    color: #999;
-    font-style: italic;
-  }
-
-  .kt-add-msg {
-    padding: 0.125rem 0.4rem;
-    background: #f0f0f0;
-    border: 1px solid #bbb;
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 0.75rem;
-  }
-
-  .kt-add-msg:hover {
-    background: #e0e0e0;
   }
 
   .kt-remove-entry {

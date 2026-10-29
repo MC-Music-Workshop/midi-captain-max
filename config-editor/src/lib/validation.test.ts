@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateConfig, validateAllPages, buttonTurnsOff } from './validation';
+import { validateConfig, validateAllPages, buttonTurnsOff, keytimesUsesCcStep } from './validation';
 import type { MidiCaptainConfig } from './types';
 
 function twoPageConfig(): MidiCaptainConfig {
@@ -299,9 +299,23 @@ describe('extra messages (messages_on / messages_off)', () => {
     expect(r.errors.get('buttons[0].messages_on[1].cc')).toBeDefined();
   });
 
-  it('flags CC+/CC- on a type error the message editor shows', () => {
+  it('requires a CC on a CC+/CC- extra (there are no shared settings to fall back on)', () => {
     const r = validateConfig(withButton({ cc: 20, messages_off: [{ type: 'cc_inc' }] }));
-    expect(r.errors.get('buttons[0].messages_off[0].type')).toContain('CC+/CC-');
+    expect(r.errors.get('buttons[0].messages_off[0].cc')).toContain('Set the CC');
+  });
+
+  it('validates a CC+/CC- with its own CC like a CC+ button', () => {
+    const ok = validateConfig(withButton({ cc: 20, messages_on: [{ type: 'cc_dec', cc: 30, cc_step: 5, cc_min: 10, cc_max: 90 }] }));
+    expect(ok.isValid).toBe(true);
+    const bad = validateConfig(withButton({ cc: 20, messages_on: [{ type: 'cc_inc', cc: 30, cc_min: 90, cc_max: 10 }] }));
+    expect(bad.errors.get('buttons[0].messages_on[0].cc_max')).toContain('greater than min');
+  });
+
+  it('a keytimes CC+/CC- with its own CC needs no shared settings', () => {
+    const btn = (msg: Record<string, unknown>) =>
+      ({ label: 'X', color: 'green', mode: 'keytimes', short: [{ down: [msg] }] }) as never;
+    expect(keytimesUsesCcStep(btn({ type: 'cc_inc' }))).toBe(true);
+    expect(keytimesUsesCcStep(btn({ type: 'cc_inc', cc: 30 }))).toBe(false);
   });
 
   it('ignores messages_off on a button that never turns off (save strips it)', () => {

@@ -373,6 +373,12 @@ describe('extra messages (messages_on / messages_off)', () => {
     expect(button().messages_on).toBeUndefined();
   });
 
+  it('setMessageType can seed starting fields (a CC+ extra starts with its own CC)', () => {
+    loadConfig(withButton({ cc: 20, messages_on: [{ type: 'pc', program: 1 }] }));
+    setMessageType(0, 'messages_on', 0, 'cc_inc', { cc: 20 });
+    expect(button().messages_on?.[0]).toEqual({ type: 'cc_inc', cc: 20 });
+  });
+
   it('the same helpers edit a keytimes entry slot', () => {
     loadConfig(withButton({ mode: 'keytimes', short: [{}] }));
     addMessage(0, 'short[0].down', 'pc');

@@ -146,10 +146,16 @@ class TestKeytimesMode:
                            "long": [{"down": [{"type": "cc_dec"}]}]}]}
     assert list(validator.iter_errors(wrap(config))) == []
 
-  def test_cc_inc_message_rejects_extra_fields(self, validator):
-    """cc/channel live on the button, not the entry."""
+  def test_cc_inc_message_with_own_cc_accepted(self, validator):
     config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
-                           "short": [{"down": [{"type": "cc_inc", "cc": 30}]}]}]}
+                           "short": [{"down": [{"type": "cc_inc", "cc": 30, "channel": 2, "cc_step": 5,
+                                                "cc_min": 10, "cc_max": 90, "cc_wrap": False}]}]}]}
+    assert list(validator.iter_errors(wrap(config))) == []
+
+  def test_cc_inc_message_rejects_slot_fields(self, validator):
+    """Slots (and their LED/name tables) stay button-level; a message steps in STEP mode only."""
+    config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
+                           "short": [{"down": [{"type": "cc_inc", "cc": 30, "cc_slots": 4}]}]}]}
     assert list(validator.iter_errors(wrap(config))) != []
 
   def test_cc_message_missing_value_rejected(self, validator):

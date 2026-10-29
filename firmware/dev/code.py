@@ -1370,8 +1370,11 @@ def _dispatch_message(msg, default_channel, btn_num):
         print(f"[MIDI TX] Ch{channel+1} PC{pc_values[channel]} (switch {btn_num}, keytimes {mtype})")
         update_status(f"TX PC{pc_values[channel]}")
     elif mtype in ("cc_inc", "cc_dec"):
-        # Direction only; cc/channel/range/slots are the button-level fields (#11).
-        send_cc_step(btn_num, buttons[btn_num - 1], 1 if mtype == "cc_inc" else -1, "keytimes " + mtype)
+        # With its own cc the message carries its own channel/step/range (validated
+        # into cc_inc button field names); without one it's direction only and
+        # steps the button-level fields (#11).
+        step_cfg = msg if "cc" in msg else buttons[btn_num - 1]
+        send_cc_step(btn_num, step_cfg, 1 if mtype == "cc_inc" else -1, "msg " + mtype)
     elif mtype in ("page_inc", "page_dec", "page_jump"):
         # Defer the actual switch — set the target; handle_switches() drains it after
         # its scan loop so buttons[]/state arrays aren't swapped mid-iteration.

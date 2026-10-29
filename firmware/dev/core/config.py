@@ -314,20 +314,23 @@ def _validate_cc_step_fields(btn, index, out):
 
 
 def _uses_cc_step(entries):
-    """True if any message in any entry's down/up list is cc_inc/cc_dec."""
+    """True if any entry's down/up list has a cc_inc/cc_dec that uses the button's
+    shared cc-step fields (one without its own cc)."""
     for entry in entries or []:
         for slot in ("down", "up"):
             for msg in entry.get(slot, []) or []:
-                if msg.get("type") in CC_STEP_TYPES:
+                if msg.get("type") in CC_STEP_TYPES and "cc" not in msg:
                     return True
     return False
 
 
-def _validate_message(msg):
+def _validate_message(msg, channel=0, index=0):
     """Validate a single Message object (keytimes entry down/up, or messages_on/off).
 
     Returns a sanitized dict, or None if msg is not a valid dict.
     Discriminated by 'type'. Unknown/missing type defaults to "cc".
+    channel/index are the owning button's: the default channel of a cc_inc/cc_dec
+    with its own cc, and the button number in warnings.
     """
     if not isinstance(msg, dict):
         return None
@@ -336,7 +339,18 @@ def _validate_message(msg):
         mtype = "cc"
     out = {"type": mtype}
     if mtype in CC_STEP_TYPES:
-        # Direction only (#11): cc/channel/range/slots come from the button-level fields.
+        # Without a cc it's direction only (#11): cc/channel/range/slots come from the
+        # button-level fields. With one it steps that CC by itself, using the same
+        # field names as a cc_inc button so send_cc_step() takes the message as-is
+        # (STEP mode only, starting at cc_min). The value is shared with any
+        # cc_inc/cc_dec button on the same channel and CC.
+        if _is_int(msg.get("cc")):
+            src = dict(msg)
+            src.pop("cc_slots", None)
+            src.pop("cc_initial", None)
+            _validate_cc_step_fields(src, index, out)
+            ch = msg.get("channel")
+            out["channel"] = ch if _is_int(ch) and 0 <= ch <= 15 else channel
         return out
     if "channel" in msg and isinstance(msg["channel"], int) and 0 <= msg["channel"] <= 15:
         out["channel"] = msg["channel"]
@@ -378,27 +392,27 @@ def _validate_message(msg):
     return out
 
 
-def _validate_message_list(messages):
+def _validate_message_list(messages, channel=0, index=0):
     """Validate an array of messages. Returns a list (possibly empty)."""
     if not isinstance(messages, list):
         return []
     validated = []
     for msg in messages:
-        v = _validate_message(msg)
+        v = _validate_message(msg, channel, index)
         if v is not None:
             validated.append(v)
     return validated
 
 
-def _validate_keytimes_entry(entry):
+def _validate_keytimes_entry(entry, channel=0, index=0):
     """Validate one cycle entry inside a keytimes-mode short[] or long[] array."""
     if not isinstance(entry, dict):
         return {}
     out = {}
     if "down" in entry:
-        out["down"] = _validate_message_list(entry["down"])
+        out["down"] = _validate_message_list(entry["down"], channel, index)
     if "up" in entry:
-        out["up"] = _validate_message_list(entry["up"])
+        out["up"] = _validate_message_list(entry["up"], channel, index)
     if "color" in entry:
         color = entry["color"]
         if isinstance(color, str) and color.lower() in _CYCLE_ENTRY_COLORS:
@@ -413,11 +427,11 @@ def _validate_keytimes_entry(entry):
     return out
 
 
-def _validate_keytimes_cycle(entries, name="", index=0):
+def _validate_keytimes_cycle(entries, name="", index=0, channel=0):
     """Validate a list of cycle entries. Returns a list (possibly empty)."""
     if not isinstance(entries, list):
         return []
-    validated = [_validate_keytimes_entry(e) for e in entries]
+    validated = [_validate_keytimes_entry(e, channel, index) for e in entries]
     seen = set()
     for e in validated:
         rx = e.get("rx_value")
@@ -463,10 +477,10 @@ def _validate_keytimes_button(btn, index, default_channel):
 
     short = btn.get("short")
     if short is not None:
-        validated["short"] = _validate_keytimes_cycle(short, "short", index)
+        validated["short"] = _validate_keytimes_cycle(short, "short", index, channel)
     long_ = btn.get("long")
     if long_ is not None:
-        validated["long"] = _validate_keytimes_cycle(long_, "long", index)
+        validated["long"] = _validate_keytimes_cycle(long_, "long", index, channel)
 
     # Per-press listen CCs (#200): host state drives the cycle position.
     for press in ("short", "long"):
@@ -474,8 +488,8 @@ def _validate_keytimes_button(btn, index, default_channel):
         if isinstance(rx_cc, int) and not isinstance(rx_cc, bool):
             validated[press + "_cc_receive"] = max(0, min(127, rx_cc))
 
-    # cc_inc/cc_dec entries (#11) only pick a direction; the CC, range, STEP/SLOT
-    # choice and slot tables are button-level and shared by short and long.
+    # cc_inc/cc_dec entries without their own cc (#11) only pick a direction; the CC,
+    # range, STEP/SLOT choice and slot tables are button-level and shared by short and long.
     if _uses_cc_step(validated.get("short")) or _uses_cc_step(validated.get("long")):
         _validate_cc_step_fields(btn, index, validated)
 
@@ -646,10 +660,11 @@ def validate_button(btn, index=0, global_channel=None):
             validated["hid_delay_ms"] = max(1, min(5000, hid_delay_ms))
 
     # Extra messages sent alongside the button's own on/off message. Same Message
-    # shape as keytimes entries, minus cc_inc/cc_dec: those step the button's own
-    # cc-step value, which only a cc_inc/cc_dec button has (and it already steps).
+    # shape as keytimes entries, except a cc_inc/cc_dec needs its own cc: these
+    # buttons have no shared cc-step fields for a direction-only one to use.
     for key in ("messages_on", "messages_off"):
-        msgs = [m for m in _validate_message_list(btn.get(key)) if m["type"] not in CC_STEP_TYPES]
+        msgs = [m for m in _validate_message_list(btn.get(key), validated["channel"], index)
+                if m["type"] not in CC_STEP_TYPES or "cc" in m]
         if msgs:
             validated[key] = msgs
 

@@ -245,11 +245,17 @@
         },
         {
           "properties": {
-            "type": { "enum": ["cc_inc", "cc_dec"] }
+            "type": { "enum": ["cc_inc", "cc_dec"] },
+            "cc": { "$ref": "#/definitions/MidiByte", "description": "CC to step. Set = this message steps that CC by itself, with the fields below. Absent = direction only: the button's shared cc/cc_step/cc_slots/cc_min/cc_max/cc_wrap and slot tables are used (keytimes entries only; required in messages_on/messages_off)." },
+            "channel": { "$ref": "#/definitions/MidiChannel", "description": "Only with cc. Default: the button's channel." },
+            "cc_step": { "type": "integer", "minimum": 1, "maximum": 127, "default": 1, "description": "Only with cc. How much the value moves per message." },
+            "cc_min": { "$ref": "#/definitions/MidiByte", "default": 0, "description": "Only with cc. Lower bound, and the starting value. Must be < cc_max." },
+            "cc_max": { "$ref": "#/definitions/MidiByte", "default": 127, "description": "Only with cc. Upper bound. Must be > cc_min." },
+            "cc_wrap": { "type": "boolean", "default": true, "description": "Only with cc. Past a bound, wrap to the other one (true) or stay at it (false)." }
           },
           "required": ["type"],
           "additionalProperties": false,
-          "description": "Step the button's shared CC value up/down. Carries no fields of its own: cc, channel, cc_step/cc_slots, cc_min/cc_max, cc_wrap and the slot color/name tables are configured once on the button (ButtonConfig) and shared by every entry — a keytimes entry only chooses the direction."
+          "description": "Step a CC value up/down. Without cc, steps the button's shared value (keytimes entries pick only the direction). With cc, steps that CC by itself; the value is shared with any cc_inc/cc_dec button on the same channel and CC."
         },
         {
           "properties": {
@@ -510,7 +516,7 @@
         "messages_on": {
           "type": "array",
           "items": { "$ref": "#/definitions/KeytimesMessage" },
-          "description": "Extra messages sent right after the button's own message when it turns on: every press for flash/select/page/cc_inc/cc_dec buttons, the press that turns a toggle on, the press of a momentary. Same message shape as a keytimes entry's down/up, except cc_inc/cc_dec (those step the button's own CC). Ignored on mode='keytimes' — put messages in the cycle entries."
+          "description": "Extra messages sent right after the button's own message when it turns on: every press for flash/select/page/cc_inc/cc_dec buttons, the press that turns a toggle on, the press of a momentary. Same message shape as a keytimes entry's down/up; a cc_inc/cc_dec here must set its own cc. Ignored on mode='keytimes' — put messages in the cycle entries."
         },
         "messages_off": {
           "type": "array",

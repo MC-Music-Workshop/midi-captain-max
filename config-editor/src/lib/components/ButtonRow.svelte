@@ -650,7 +650,7 @@
         {globalChannel}
         emptyHint="(none)"
         title="Sent in order, right after this button's own message."
-        allowCcStep={false}
+        sharedCcStep={false}
       />
       {#if turnsOff}
         <MessageList
@@ -661,7 +661,7 @@
           {globalChannel}
           emptyHint="(none)"
           title="Sent in order, right after this button's own off message."
-          allowCcStep={false}
+          sharedCcStep={false}
         />
       {/if}
     </div>

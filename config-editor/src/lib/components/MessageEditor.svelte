@@ -16,18 +16,15 @@
     msgIndex: number;
     message: KeytimesMessage;
     globalChannel: number;
-    // CC+/CC- step the button's shared CC value; only keytimes entries offer them.
-    allowCcStep?: boolean;
+    // CC+/CC- with no CC of its own steps the button's shared CC (keytimes only).
+    // Without shared settings (extra-message lists) the CC is required.
+    sharedCcStep?: boolean;
   }
 
-  let { buttonIndex, listPath, msgIndex, message, globalChannel, allowCcStep = true }: Props = $props();
+  let { buttonIndex, listPath, msgIndex, message, globalChannel, sharedCcStep = true }: Props = $props();
 
   // Path prefix used for both updateField() and validation error lookups.
   let pathPrefix = $derived(`buttons[${buttonIndex}].${listPath}[${msgIndex}]`);
-
-  let typeOptions = $derived(
-    Object.entries(MESSAGE_TYPE_LABELS).filter(([val]) => allowCcStep || (val !== 'cc_inc' && val !== 'cc_dec'))
-  );
 
   // Display the configured channel as 1-16, fall back to global if undefined.
   // HID messages have no channel field; the channel input is hidden for HID below.
@@ -43,7 +40,9 @@
 
   function handleTypeChange(e: Event) {
     const newType = (e.target as HTMLSelectElement).value as MessageType;
-    setMessageType(buttonIndex, listPath, msgIndex, newType);
+    // With no shared CC settings to fall back on, a CC+/CC- starts with its own CC.
+    const needsCc = !sharedCcStep && (newType === 'cc_inc' || newType === 'cc_dec');
+    setMessageType(buttonIndex, listPath, msgIndex, newType, needsCc ? { cc: 20 } : undefined);
   }
 
   function handleChannelChange(e: Event) {
@@ -61,6 +60,16 @@
     updateField(`${pathPrefix}.${field}`, parseInt(target.value));
   }
 
+  function handleOptionalIntField(field: string, e: Event) {
+    const target = e.target as HTMLInputElement;
+    updateField(`${pathPrefix}.${field}`, target.value === '' ? undefined : parseInt(target.value));
+  }
+
+  function handleWrapChange(e: Event) {
+    // Default is true; only persist the non-default (same as the button-level field).
+    updateField(`${pathPrefix}.cc_wrap`, (e.target as HTMLInputElement).checked ? undefined : false);
+  }
+
   function handleStringField(field: string, e: Event) {
     const target = e.target as HTMLInputElement;
     updateField(`${pathPrefix}.${field}`, target.value === '' ? undefined : target.value);
@@ -74,9 +83,13 @@
   let isPageType = $derived(
     message.type === 'page_inc' || message.type === 'page_dec' || message.type === 'page_jump'
   );
-  // cc_inc/cc_dec (#11) are direction-only: cc, channel, range and slots are the
-  // button-level "Shared CC" fields, so nothing per-message to edit here.
+  // cc_inc/cc_dec (#11): with its own CC the message carries channel/step/range;
+  // without one it's direction-only and uses the button-level "Shared CC" fields.
   let isCcStep = $derived(message.type === 'cc_inc' || message.type === 'cc_dec');
+  let ownCc = $derived(isCcStep && (message as { cc?: number }).cc !== undefined);
+  let ccStepError = $derived(
+    ['cc', 'cc_step', 'cc_min', 'cc_max'].map(errFor).find((e) => e !== undefined)
+  );
 
   // page_jump target is a 0-based index; name the page it lands on (mirrors
   // ButtonRow's hint). Null when out of range — the error text owns that case.
@@ -100,14 +113,11 @@
     <label class="inline">
       Type:
       <select value={message.type} onchange={handleTypeChange}>
-        {#each typeOptions as [val, label]}
+        {#each Object.entries(MESSAGE_TYPE_LABELS) as [val, label]}
           <option value={val}>{label}</option>
         {/each}
       </select>
     </label>
-    {#if errFor('type')}
-      <span class="kt-error">{errFor('type')}</span>
-    {/if}
 
     {#if message.type === 'cc'}
       <label class="inline">
@@ -155,10 +165,56 @@
                oninput={(e) => handleIntField('step', e)}
                class:error={!!errFor('step')} />
       </label>
-    {:else if isCcStep}
-      <span class="kt-hint" title="CC number, channel, step/slots, min/max, wrap and slot colors/names are set once on the button (Shared CC settings above) and used by every CC+/CC- entry.">
-        {message.type === 'cc_inc' ? 'steps the shared CC value up' : 'steps the shared CC value down'}
-      </span>
+    {:else if message.type === 'cc_inc' || message.type === 'cc_dec'}
+      <label class="inline">
+        CC:
+        <input type="number" min="0" max="127"
+               value={message.cc ?? ''}
+               placeholder={sharedCcStep ? '(shared)' : ''}
+               oninput={(e) => handleOptionalIntField('cc', e)}
+               title={sharedCcStep
+                 ? 'Leave empty to step the shared CC set on the button (Shared CC settings above). Set a CC to step that one with its own step and range.'
+                 : 'CC to step. The value is shared with any CC+/CC- button on the same CC and channel.'}
+               class:error={!!errFor('cc')} />
+      </label>
+      {#if message.cc !== undefined}
+        <label class="inline">
+          Step:
+          <input type="number" min="1" max="127"
+                 value={message.cc_step ?? ''}
+                 placeholder="1"
+                 oninput={(e) => handleOptionalIntField('cc_step', e)}
+                 class:error={!!errFor('cc_step')} />
+        </label>
+        <label class="inline">
+          Min:
+          <input type="number" min="0" max="127"
+                 value={message.cc_min ?? ''}
+                 placeholder="0"
+                 oninput={(e) => handleOptionalIntField('cc_min', e)}
+                 title="Lower bound, and the starting value."
+                 class:error={!!errFor('cc_min')} />
+        </label>
+        <label class="inline">
+          Max:
+          <input type="number" min="0" max="127"
+                 value={message.cc_max ?? ''}
+                 placeholder="127"
+                 oninput={(e) => handleOptionalIntField('cc_max', e)}
+                 class:error={!!errFor('cc_max')} />
+        </label>
+        <label class="inline" title="Past a bound, wrap to the other one. Off: stay at the bound.">
+          <input type="checkbox" checked={message.cc_wrap ?? true} onchange={handleWrapChange} />
+          wrap
+        </label>
+      {:else}
+        <span class="kt-hint" title="CC number, channel, step/slots, min/max, wrap and slot colors/names are set once on the button (Shared CC settings above) and used by every CC+/CC- entry without its own CC.">
+          {message.type === 'cc_inc' ? 'steps the shared CC value up' : 'steps the shared CC value down'}
+        </span>
+      {/if}
+      {#if ccStepError}
+        <span class="kt-error">{ccStepError}</span>
+      {/if}
     {:else if message.type === 'page_inc' || message.type === 'page_dec'}
       <label class="inline">
         Step:
@@ -218,7 +274,7 @@
       {/if}
     {/if}
 
-    {#if message.type !== 'hid' && !isPageType && !isCcStep}
+    {#if message.type !== 'hid' && !isPageType && (!isCcStep || ownCc)}
       <label class="inline">
         Ch:
         <input type="number" min="1" max="16"

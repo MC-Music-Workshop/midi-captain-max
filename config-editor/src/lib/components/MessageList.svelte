@@ -16,11 +16,11 @@
     title?: string;
     // Render the label as code (keytimes event names like short_down).
     mono?: boolean;
-    allowCcStep?: boolean;
+    sharedCcStep?: boolean;
   }
 
   let { buttonIndex, listPath, label, messages, globalChannel, emptyHint, title, mono = false,
-        allowCcStep = true }: Props = $props();
+        sharedCcStep = true }: Props = $props();
 </script>
 
 <div class="kt-slot">
@@ -40,7 +40,7 @@
       msgIndex={mi}
       message={msg}
       {globalChannel}
-      {allowCcStep}
+      {sharedCcStep}
     />
   {/each}
 </div>

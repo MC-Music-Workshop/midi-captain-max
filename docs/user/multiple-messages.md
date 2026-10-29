@@ -2,7 +2,9 @@
 
 Any button can send more than its own message. Under each button in the editor, **Also send** lists extra messages that go out right after the button's own one, in the order listed. Click **+ message** to add one.
 
-The extras take the same message types as a [keytimes](./keytimes.md) entry: **CC**, **Note**, **PC Fixed**, **PC+** / **PC-**, **HID**, and **Page+** / **Page-** / **Page Jump**, each with its own channel. **CC+** / **CC-** aren't offered here; they step the button's own CC value, so use them as the button's type or in keytimes mode.
+The extras take the same message types as a [keytimes](./keytimes.md) entry: **CC**, **Note**, **PC Fixed**, **PC+** / **PC-**, **CC+** / **CC-**, **HID**, and **Page+** / **Page-** / **Page Jump**, each with its own channel.
+
+**CC+** / **CC-** here step a CC of their own: set its **CC**, and optionally **Step** (default 1), **Min** / **Max** (default 0–127, starting at Min) and **wrap** (on by default). The value is shared with any CC+ / CC- button on the same CC and channel, so they stay in step.
 
 ## When they're sent
 
@@ -34,4 +36,5 @@ Turning it on sends CC20=127, then PC12, then CC30=127 on channel 2. Turning it 
 ## Things to know
 
 - Incoming MIDI only follows the button's own message. The extras don't change how the LED reacts to the host.
+- A CC+ / CC- extra only picks up a value the host sends if a CC+ / CC- button on the same CC and channel is on the current page.
 - In **keytimes** mode, these lists don't apply. Put the messages in the cycle entries instead.

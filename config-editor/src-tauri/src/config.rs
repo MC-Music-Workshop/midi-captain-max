@@ -111,8 +111,26 @@ pub enum HidModifier {
     Windows,
 }
 
-/// One MIDI/HID message fired from a keytimes-mode cycle entry's down or up slot.
-/// Discriminated by the `type` field (serde tagged union).
+/// Fields of a cc_inc/cc_dec message. Without `cc` it's direction-only (#11): the
+/// button-level cc-step fields are used. With `cc`, it steps that CC by itself.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct CcStepMessage {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_step: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_min: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_max: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_wrap: Option<bool>,
+}
+
+/// One MIDI/HID message fired from a keytimes-mode cycle entry's down or up slot,
+/// or a button's messages_on/messages_off. Discriminated by the `type` field (serde tagged union).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum KeytimesMessage {
@@ -145,10 +163,8 @@ pub enum KeytimesMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         channel: Option<u8>,
     },
-    /// Direction-only (#11): cc/channel/range/slot tables are the button-level
-    /// cc-step fields, shared by every entry on the button.
-    CcInc,
-    CcDec,
+    CcInc(CcStepMessage),
+    CcDec(CcStepMessage),
     PageInc {
         #[serde(skip_serializing_if = "Option::is_none")]
         page_step: Option<u8>,
@@ -1984,8 +2000,8 @@ mod tests {
         assert_eq!(btn.cc_slots, Some(4));
         let short_msg = &btn.short.as_ref().unwrap()[0].down.as_ref().unwrap()[0];
         let long_msg = &btn.long.as_ref().unwrap()[0].down.as_ref().unwrap()[0];
-        assert!(matches!(short_msg, KeytimesMessage::CcInc));
-        assert!(matches!(long_msg, KeytimesMessage::CcDec));
+        assert!(matches!(short_msg, KeytimesMessage::CcInc(CcStepMessage { cc: None, .. })));
+        assert!(matches!(long_msg, KeytimesMessage::CcDec(CcStepMessage { cc: None, .. })));
         let reserialized = serde_json::to_string(&config).unwrap();
         assert!(reserialized.contains(r#"{"type":"cc_inc"}"#));
     }

@@ -402,14 +402,16 @@ export function removeMessage(buttonIndex: number, listPath: string, msgIndex: n
   });
 }
 
-export function setMessageType(buttonIndex: number, listPath: string, msgIndex: number, newType: MessageType) {
-  // Replace the whole message with a default of the new type, since type-specific
-  // fields don't overlap across types (cc/value vs note/velocity vs program vs step vs key).
+export function setMessageType(buttonIndex: number, listPath: string, msgIndex: number, newType: MessageType,
+                               fields?: Record<string, unknown>) {
+  // Replace the whole message with a default of the new type (plus any starting
+  // fields), since type-specific fields don't overlap across types
+  // (cc/value vs note/velocity vs program vs step vs key).
   _updateButton(buttonIndex, btn => {
     const list = _messageList(btn, listPath);
     const messages = list?.holder[list.key];
     if (!Array.isArray(messages) || !messages[msgIndex]) return;
-    messages[msgIndex] = _defaultMessage(newType);
+    messages[msgIndex] = { ..._defaultMessage(newType), ...fields } as KeytimesMessage;
   });
 }
 

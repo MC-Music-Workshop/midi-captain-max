@@ -1361,12 +1361,28 @@ class TestExtraMessages:
         }, index=0)
         assert btn["messages_on"] == [{"type": "cc", "cc": 127, "value": 0}]
 
-    def test_cc_step_messages_dropped(self):
+    def test_cc_step_messages_need_their_own_cc(self):
         btn = validate_button({
-            "label": "X", "color": "red", "cc": 20,
-            "messages_on": [{"type": "cc_inc"}, {"type": "pc", "program": 2}, {"type": "cc_dec"}],
+            "label": "X", "color": "red", "cc": 20, "channel": 3,
+            "messages_on": [{"type": "cc_inc"}, {"type": "pc", "program": 2}, {"type": "cc_dec", "cc": 30}],
         }, index=0)
-        assert btn["messages_on"] == [{"type": "pc", "program": 2}]
+        assert btn["messages_on"] == [
+            {"type": "pc", "program": 2},
+            {"type": "cc_dec", "cc": 30, "channel": 3, "cc_step": 1, "cc_min": 0, "cc_max": 127, "cc_wrap": True},
+        ]
+        assert "cc_step" not in btn
+
+    def test_validated_cc_step_message_drives_the_step_math(self):
+        """code.py hands the message itself to send_cc_step(); core/cc_step.py must read it like a button."""
+        from core.cc_step import cc_step_key, cc_step_next, cc_step_initial
+        msg = validate_button({
+            "label": "X", "color": "red", "type": "pc", "channel": 1,
+            "messages_on": [{"type": "cc_inc", "cc": 30, "cc_step": 10, "cc_min": 20, "cc_max": 40, "cc_wrap": False}],
+        }, index=0)["messages_on"][0]
+        assert cc_step_key(msg) == (1, 30)
+        assert cc_step_initial(msg) == 20
+        assert cc_step_next(msg, 20, 1) == 30
+        assert cc_step_next(msg, 35, 1) == 40  # clamps, no wrap
 
     def test_absent_empty_or_invalid_lists_omitted(self):
         btn = validate_button({
@@ -1755,12 +1771,26 @@ class TestCcStepButtons:
         btn = validate_button({"type": "cc_dec", "flash_ms": 750}, index=0)
         assert btn["flash_ms"] == 750
 
-    def test_keytimes_entry_is_direction_only(self):
+    def test_keytimes_entry_without_cc_is_direction_only(self):
         btn = validate_button({
             "label": "X", "color": "red", "mode": "keytimes",
-            "short": [{"down": [{"type": "cc_inc", "cc": 99, "channel": 5}]}],
+            "short": [{"down": [{"type": "cc_inc", "channel": 5, "cc_step": 4}]}],
         }, index=0)
         assert btn["short"][0]["down"][0] == {"type": "cc_inc"}
+
+    def test_keytimes_entry_with_cc_is_self_contained(self):
+        """Own cc = own channel/step/range, in cc_inc button field names; the button
+        doesn't become a shared-value button."""
+        btn = validate_button({
+            "label": "X", "color": "red", "mode": "keytimes", "channel": 2,
+            "short": [{"down": [{"type": "cc_dec", "cc": 99, "cc_step": 8, "cc_min": 10, "cc_wrap": False,
+                                 "cc_slots": 4, "cc_initial": 50}]}],
+        }, index=0)
+        assert btn["short"][0]["down"][0] == {
+            "type": "cc_dec", "cc": 99, "channel": 2, "cc_step": 8,
+            "cc_min": 10, "cc_max": 127, "cc_wrap": False,
+        }
+        assert "cc_step" not in btn and "cc_slots" not in btn
 
     def test_keytimes_button_carries_cc_step_fields(self):
         btn = validate_button({

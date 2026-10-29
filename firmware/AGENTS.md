@@ -230,9 +230,13 @@ Per-loop flow for a keytimes-mode button:
 
 Cycle state lives in RAM only — resets on power cycle / config reload. Per-page persistence (when #15 lands) keys the state table on `(page_id, button_idx)`.
 
+### CC+/CC- messages with their own CC
+
+A `cc_inc`/`cc_dec` Message with a `cc` steps that CC by itself. `_validate_message` runs it through `_validate_cc_step_fields` (STEP only: `cc_slots`/`cc_initial` are dropped) and fills `channel` from the owning button, so the result uses cc_inc button field names and `_dispatch_message` hands the message itself to `send_cc_step()`. It shares the `cc_values` table key `(channel, cc)` with any cc_inc/cc_dec button on that CC, and the deferred repaint refreshes those buttons. Without a `cc` it's direction-only and uses the button-level fields; only those count for `_uses_cc_step`.
+
 ### Extra messages on the other modes (`messages_on` / `messages_off`)
 
-Non-keytimes buttons can list extra Messages (same shape and validator, `_validate_message`, as keytimes entries; `cc_inc`/`cc_dec` dropped). Each legacy branch of `handle_switches()` sets a local `extra` to `True` (button turned on / pressed), `False` (turned off / released) or leaves `None`, and one `_send_extra_messages(btn_config, extra, channel, btn_num)` after the type chain sends the matching list through `_dispatch_message`. Select branches `continue` early, so they call it directly with the select handler's return value (`handle_cc_select_press` returns `False` on a self-deselect). Called from `handle_switches` level, not inside the handlers, so the stack under `_dispatch_message` is no deeper than the keytimes path. Where the off list fires is mirrored in the editor's `buttonTurnsOff()` (`config-editor/src/lib/validation.ts`).
+Non-keytimes buttons can list extra Messages (same shape and validator, `_validate_message`, as keytimes entries; a `cc_inc`/`cc_dec` without its own `cc` is dropped). Each legacy branch of `handle_switches()` sets a local `extra` to `True` (button turned on / pressed), `False` (turned off / released) or leaves `None`, and one `_send_extra_messages(btn_config, extra, channel, btn_num)` after the type chain sends the matching list through `_dispatch_message`. Select branches `continue` early, so they call it directly with the select handler's return value (`handle_cc_select_press` returns `False` on a self-deselect). Called from `handle_switches` level, not inside the handlers, so the stack under `_dispatch_message` is no deeper than the keytimes path. Where the off list fires is mirrored in the editor's `buttonTurnsOff()` (`config-editor/src/lib/validation.ts`).
 
 See [docs/plans/2026-05-13-issue-48-press-timings.md](../docs/plans/2026-05-13-issue-48-press-timings.md) for the full design and rationale.
 

@@ -16,7 +16,7 @@ Land every open branch on `main` in an order that keeps conflicts small, keeps e
 | #206 MIDI RX throughput (jjeff) | `fix/midi-rx-throughput` | Firmware | Merged (`804b48e`) |
 | #200 keytimes listen CC | `200-keytimes-listen-cc` | Firmware | Merged via #210 (`b8d20dd`); editor fields follow-up #211 |
 | #207 per-event prints in dev mode only | none | Firmware | Deferred (see Phase 4); DIN buffer shipped separately in #212 |
-| #54 MIDI Learn | `54-midi-learn` | Editor + firmware | 1 commit (log-scraping design, now superseded), no PR |
+| #54 MIDI Learn | `54-learn-design` | Editor + firmware | Design doc + first attempt ported onto current `main` (old branch archived as `archive/54-midi-learn`), no PR |
 | #208 receive/render split (ADR 0001) | none yet | Firmware | ADR committed, issue filed |
 | #190 device rename | `190-device-rename` | Editor + firmware | Plan only |
 | Unique volume ID | none yet (`device-ambiguity` session) | Editor | Design only |
@@ -97,8 +97,8 @@ Rescoped 2026-10-17: the suspected serial stall didn't reproduce on macOS, so pr
 
 - [x] Spike: serial command channel on CP 7.3.1
 - [x] Decide pre-mortem 4 and 6
-- [ ] Design doc (protocol, capture rule, Save & Restart interplay, tests incl. an automated learn check in `tools/bench/`), answering the pre-mortem
-- [ ] Rebase onto `main` (now with #202); keep both sides of the `lib.rs`, `api.ts` and `config-editor/AGENTS.md` conflicts
+- [x] Design doc: `docs/plans/2026-10-21-issue-54-midi-learn-design.md` (protocol, capture rule, Save & Restart interplay, tests incl. an automated learn check in `tools/bench/`), answering the pre-mortem
+- [x] Bring the first attempt up to `main`: ported onto `54-learn-design` (`58bd453`), kept both sides of the `lib.rs`, `api.ts`, `ButtonRow.svelte` and `config-editor/AGENTS.md` conflicts; old branch archived as `archive/54-midi-learn`
 - [ ] Replace console-print scraping with the command-and-reply protocol (keep `midiLearn.ts` form mapping and the `learn_midi` / `cancel_midi_learn` command shape; rewrite the serial reader; add the firmware learn handler)
 - [ ] Update `docs/user/midi-learn.md`
 - [ ] Bench test over USB and DIN

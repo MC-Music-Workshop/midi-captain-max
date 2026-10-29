@@ -2,13 +2,13 @@
 
 - **Date**: 2026-10-21
 - **Status**: Design. Not implemented.
-- **Related**: #54, [close-out plan Phase 5](./2026-10-16-close-out-in-flight-work.md#phase-5-54-midi-learn-rework-editor--firmware), spike archived as tag `archive/54-learn-spike` (`c02815f`, `ea6a81a`), superseded first attempt on `54-midi-learn` (`174415b`)
+- **Related**: #54, [close-out plan Phase 5](./2026-10-16-close-out-in-flight-work.md#phase-5-54-midi-learn-rework-editor--firmware), spike archived as tag `archive/54-learn-spike` (`c02815f`, `ea6a81a`), superseded first attempt archived as tag `archive/54-midi-learn` (`174415b`), ported onto this branch in `58bd453`
 
 ## Problem
 
 Setting a button up to match a host means copying a type, channel and number from the host's MIDI settings into the editor by hand. Users want to click **Learn**, move a control on the host, and have the button fill itself in.
 
-The first attempt (`174415b` on `54-midi-learn`) read the `[MIDI RX ...]` lines that `code.py` printed for every incoming message. #206 turned those prints off by default (`MIDI_RX_LOG = False`), because each one costs several milliseconds over USB CDC and capped how much MIDI the pedal could absorb. So that approach no longer has anything to read, and turning the prints back on would undo #206.
+The first attempt (`174415b`, now on this branch) read the `[MIDI RX ...]` lines that `code.py` printed for every incoming message. #206 turned those prints off by default (`MIDI_RX_LOG = False`), because each one costs several milliseconds over USB CDC and capped how much MIDI the pedal could absorb. So that approach no longer has anything to read, and turning the prints back on would undo #206.
 
 ## Decisions already made
 
@@ -122,7 +122,7 @@ The spike's idle loop ran at about 410 passes per second with the poll in place,
 
 ### Rust: `midi_learn.rs`
 
-Keep the command shape from `54-midi-learn`, with a new argument and a rewritten reader:
+Keep the command shape from the first attempt, with a new argument and a rewritten reader:
 
 - `learn_midi(path, mode)`, where `mode` is `"send"` or `"listen"`. It returns the learned message, or `None` when cancelled.
 - `cancel_midi_learn()`.
@@ -157,7 +157,7 @@ Version checks against `VERSION.txt` were considered and rejected. Dev builds re
 
 ### Form mapping: `midiLearn.ts`
 
-Keep `learnedFieldUpdates()` from `54-midi-learn` for **Learn (send)**, with one change:
+Keep `learnedFieldUpdates()` from the first attempt for **Learn (send)**, with one change:
 
 | Learned | Writes |
 |---|---|
@@ -255,7 +255,7 @@ Same style as `serial-stall.py`: stdlib only, `sendmidi` for MIDI, raw serial, u
 
 ## Documentation
 
-- Rewrite `docs/user/midi-learn.md` (from `54-midi-learn`): add Learn listen, the global-channel behavior, the program numbering note, "pause host feedback while learning", and the routing and serial monitor troubleshooting.
+- Rewrite `docs/user/midi-learn.md`: add Learn listen, the global-channel behavior, the program numbering note, "pause host feedback while learning", and the routing and serial monitor troubleshooting.
 - `config-editor/AGENTS.md`: replace the first attempt's section with the protocol, the "serial users cancel Learn first" rule, and the handshake.
 - `firmware/AGENTS.md`: the console poll (why `in_waiting` + `read(n)`, the 64-byte caps), and that `[LEARN]` lines are a contract with `midi_learn.rs`.
 - `docs/bench-tests.md`: the new `learn.py` test.

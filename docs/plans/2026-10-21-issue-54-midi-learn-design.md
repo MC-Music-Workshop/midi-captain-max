@@ -2,7 +2,7 @@
 
 - **Date**: 2026-10-21
 - **Status**: Design. Not implemented.
-- **Related**: #54, [close-out plan Phase 5](./2026-10-16-close-out-in-flight-work.md#phase-5-54-midi-learn-rework-editor--firmware), spike branch `54-learn-spike` (`c02815f`, `ea6a81a`), superseded first attempt on `54-midi-learn` (`174415b`)
+- **Related**: #54, [close-out plan Phase 5](./2026-10-16-close-out-in-flight-work.md#phase-5-54-midi-learn-rework-editor--firmware), spike archived as tag `archive/54-learn-spike` (`c02815f`, `ea6a81a`), superseded first attempt on `54-midi-learn` (`174415b`)
 
 ## Problem
 

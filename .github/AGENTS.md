@@ -26,6 +26,14 @@
 - Creates a **draft** GitHub Release with artifacts
 - Auto-detects alpha/beta for pre-release flag
 
+### Homebrew (`homebrew.yml`) — Triggered on `release: published` (or manual dispatch with a tag)
+
+- Bumps `version` + `sha256` from the published DMG in [`MC-Music-Workshop/homebrew-tap`](https://github.com/MC-Music-Workshop/homebrew-tap): `Casks/midi-captain-max@beta.rb` on every release, `Casks/midi-captain-max.rb` on stable releases only (no `-` in the tag). The beta cask `conflicts_with` the stable one and ends up on the stable version after each stable release
+- Two entry points: stable (and alpha) releases are published by hand from the draft, which fires `release: published`. Beta/rc releases are published by `GITHUB_TOKEN`, which doesn't fire workflow events, so `release.yml` dispatches `homebrew.yml` for them (needs `actions: write`; `workflow_dispatch` is exempt from the `GITHUB_TOKEN` rule)
+- Needs `HOMEBREW_TAP_TOKEN`: fine-grained PAT with **Contents: read and write** on `homebrew-tap` only (`GITHUB_TOKEN` can't push to another repo). Unset → warning, no bump
+- Backfill or retry: `gh workflow run homebrew.yml -f tag=v1.14.0`
+- The cask references the DMG as `MIDI-Captain-MAX-Config-Editor-v{version}.dmg` and the app as `MIDI Captain MAX Config Editor.app` — renaming either in `release.yml` / `productName` breaks `brew install` until the cask is edited to match
+
 ---
 
 ## Versioning

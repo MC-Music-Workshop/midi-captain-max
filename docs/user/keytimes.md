@@ -69,7 +69,7 @@ Each slot takes any message the editor offers: **CC**, **Note**, **PC Fixed**, *
 
 Two worth calling out:
 
-- **CC+ / CC-** entries only pick a direction. The CC number, range, step size and slot names are set once on the button and shared by every entry, so one switch can tap the value up and hold to take it back down.
+- **CC+ / CC-** entries with the CC left empty only pick a direction. The CC number, range, step size and slot names are set once on the button and shared by every such entry, so one switch can tap the value up and hold to take it back down. Fill in an entry's **CC** to have it step that CC instead, with its own step, range and wrap.
 - **Page+ / Page- / Page Jump** in a long entry is the usual way to put page switching on a hold while taps do something musical.
 
 ## Following the host

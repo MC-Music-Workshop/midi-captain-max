@@ -1,17 +1,104 @@
-import type { MidiCaptainConfig, Page, ButtonConfig } from './types';
+import type { MidiCaptainConfig, Page, ButtonConfig, KeytimesMessage } from './types';
 
-// True when any short/long entry on a keytimes button fires cc_inc/cc_dec (#11).
-// Such a button carries the button-level cc-step fields (cc, cc_step | cc_slots,
-// cc_min/cc_max, cc_wrap, cc_initial, slot tables) shared by every entry.
+// True when any short/long entry on a keytimes button fires a direction-only
+// cc_inc/cc_dec (#11, no cc of its own). Such a button carries the button-level
+// cc-step fields (cc, cc_step | cc_slots, cc_min/cc_max, cc_wrap, cc_initial, slot
+// tables) shared by every such entry.
 export function keytimesUsesCcStep(btn: ButtonConfig): boolean {
   for (const cycle of [btn.short, btn.long]) {
     for (const entry of cycle ?? []) {
       for (const msg of [...(entry.down ?? []), ...(entry.up ?? [])]) {
-        if (msg.type === 'cc_inc' || msg.type === 'cc_dec') return true;
+        if ((msg.type === 'cc_inc' || msg.type === 'cc_dec') && msg.cc === undefined) return true;
       }
     }
   }
   return false;
+}
+
+// True when a non-keytimes button has an "off" event that sends messages_off: a
+// toggle turning off, a momentary release (not HID, whose momentary only flashes),
+// or a CC select button deselecting itself. Mirrors handle_switches in code.py.
+export function buttonTurnsOff(btn: ButtonConfig): boolean {
+  const type = btn.type ?? 'cc';
+  if (!['cc', 'note', 'pc', 'pc_inc', 'pc_dec', 'hid'].includes(type)) return false;
+  const mode = btn.mode ?? (type.startsWith('pc') ? 'flash' : 'toggle');
+  if (mode === 'toggle') return true;
+  if (mode === 'momentary') return type !== 'hid';
+  return mode === 'select' && type === 'cc' && btn.select_repress === 'deselect';
+}
+
+// Validate a message list (a keytimes entry's down/up, or a button's
+// messages_on/messages_off). listPath is the list's error-key prefix.
+function validateMessages(messages: KeytimesMessage[], listPath: string, pageCount: number,
+                          errors: Map<string, string>) {
+  messages.forEach((msg, mi) => {
+    const mp = `${listPath}[${mi}]`;
+    switch (msg.type) {
+      case 'cc': {
+        const e = validators.cc(msg.cc);
+        if (e) errors.set(`${mp}.cc`, e);
+        const v = validators.withinRange(msg.value, 0, 127);
+        if (v) errors.set(`${mp}.value`, v);
+        break;
+      }
+      case 'note': {
+        const e = validators.note(msg.note);
+        if (e) errors.set(`${mp}.note`, e);
+        const v = validators.velocity(msg.velocity);
+        if (v) errors.set(`${mp}.velocity`, v);
+        break;
+      }
+      case 'pc': {
+        const e = validators.program(msg.program);
+        if (e) errors.set(`${mp}.program`, e);
+        break;
+      }
+      case 'pc_inc':
+      case 'pc_dec': {
+        if (msg.step !== undefined) {
+          const e = validators.pcStep(msg.step);
+          if (e) errors.set(`${mp}.step`, e);
+        }
+        break;
+      }
+      case 'cc_inc':
+      case 'cc_dec':
+        // With its own cc the message carries the cc-step fields itself; without
+        // one it's direction only (see validateCcStep on the button).
+        if (msg.cc !== undefined) validateCcStep(msg, mp, errors);
+        break;
+      case 'page_inc':
+      case 'page_dec': {
+        if (msg.page_step !== undefined) {
+          const e = validators.pageStep(msg.page_step);
+          if (e) errors.set(`${mp}.page_step`, e);
+        }
+        break;
+      }
+      case 'page_jump': {
+        // Cross-field: 0-based target, max is pageCount - 1. Firmware
+        // clamps; the editor fails loud (P1 asymmetry rule).
+        if (msg.page !== undefined) {
+          if (!Number.isInteger(msg.page) || msg.page < 0 || msg.page >= pageCount) {
+            errors.set(`${mp}.page`, `Target page must be between 0 and ${pageCount - 1} (0-based)`);
+          }
+        }
+        break;
+      }
+      case 'hid': {
+        if (msg.delay_ms !== undefined) {
+          if (!Number.isInteger(msg.delay_ms) || msg.delay_ms < 1 || msg.delay_ms > 5000) {
+            errors.set(`${mp}.delay_ms`, 'Delay must be between 1 and 5000 ms');
+          }
+        }
+        break;
+      }
+    }
+    if (msg.type !== 'hid' && (msg as { channel?: number }).channel !== undefined) {
+      const cherr = validators.channel((msg as { channel?: number }).channel!);
+      if (cherr) errors.set(`${mp}.channel`, cherr);
+    }
+  });
 }
 
 export const CC_SLOTS_MIN = 2;
@@ -136,8 +223,11 @@ export const validators = {
 // cc_inc/cc_dec (#11) button-level fields. Called for plain cc_inc/cc_dec buttons
 // and for keytimes buttons whose entries fire cc_inc/cc_dec (the fields ride on
 // the button). Mirrors the Rust ranges in config.rs so bad values fail inline.
-function validateCcStep(btn: ButtonConfig, idx: number, errors: Map<string, string>) {
-  const p = `buttons[${idx}]`;
+// Shared by cc_inc/cc_dec buttons (p = "buttons[i]") and CC+/CC- messages with
+// their own cc (p = the message path); messages just lack the slot/initial fields.
+type CcStepFields = Pick<ButtonConfig, 'cc' | 'cc_step' | 'cc_slots' | 'cc_min' | 'cc_max' | 'cc_initial' | 'cc_slot_names'>;
+
+function validateCcStep(btn: CcStepFields, p: string, errors: Map<string, string>) {
   if (btn.cc !== undefined) {
     const e = validators.cc(btn.cc);
     if (e) errors.set(`${p}.cc`, e);
@@ -285,7 +375,7 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
         if (stepError) errors.set(`buttons[${idx}].pc_step`, stepError);
       }
     } else if ((msgType === 'cc_inc' || msgType === 'cc_dec') && btn.mode !== 'keytimes') {
-      validateCcStep(btn, idx, errors);
+      validateCcStep(btn, `buttons[${idx}]`, errors);
     } else if (msgType === 'page_inc' || msgType === 'page_dec') {
       if (btn.page_step !== undefined) {
         const stepError = validators.pageStep(btn.page_step);
@@ -353,7 +443,7 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
     if (btn.mode === 'keytimes') {
       // cc_inc/cc_dec entries (#11) are direction-only; their cc/range/slot fields
       // ride on the button and validate like a plain cc_inc button.
-      if (keytimesUsesCcStep(btn)) validateCcStep(btn, idx, errors);
+      if (keytimesUsesCcStep(btn)) validateCcStep(btn, `buttons[${idx}]`, errors);
       // Host sync (#200): per-cycle listen CC and per-entry receive value.
       for (const field of ['short_cc_receive', 'long_cc_receive'] as const) {
         if (btn[field] !== undefined) {
@@ -373,72 +463,23 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
           for (const slot of ['down', 'up'] as const) {
             const messages = entry[slot];
             if (!messages) continue;
-            messages.forEach((msg, mi) => {
-              const mp = `buttons[${idx}].${cycle}[${ei}].${slot}[${mi}]`;
-              switch (msg.type) {
-                case 'cc': {
-                  const e = validators.cc(msg.cc);
-                  if (e) errors.set(`${mp}.cc`, e);
-                  const v = validators.withinRange(msg.value, 0, 127);
-                  if (v) errors.set(`${mp}.value`, v);
-                  break;
-                }
-                case 'note': {
-                  const e = validators.note(msg.note);
-                  if (e) errors.set(`${mp}.note`, e);
-                  const v = validators.velocity(msg.velocity);
-                  if (v) errors.set(`${mp}.velocity`, v);
-                  break;
-                }
-                case 'pc': {
-                  const e = validators.program(msg.program);
-                  if (e) errors.set(`${mp}.program`, e);
-                  break;
-                }
-                case 'pc_inc':
-                case 'pc_dec': {
-                  if (msg.step !== undefined) {
-                    const e = validators.pcStep(msg.step);
-                    if (e) errors.set(`${mp}.step`, e);
-                  }
-                  break;
-                }
-                case 'cc_inc':
-                case 'cc_dec':
-                  // No per-message fields; see validateCcStep on the button above.
-                  break;
-                case 'page_inc':
-                case 'page_dec': {
-                  if (msg.page_step !== undefined) {
-                    const e = validators.pageStep(msg.page_step);
-                    if (e) errors.set(`${mp}.page_step`, e);
-                  }
-                  break;
-                }
-                case 'page_jump': {
-                  // Cross-field: 0-based target, max is pageCount - 1. Firmware
-                  // clamps; the editor fails loud (P1 asymmetry rule).
-                  if (msg.page !== undefined) {
-                    if (!Number.isInteger(msg.page) || msg.page < 0 || msg.page >= pageCount) {
-                      errors.set(`${mp}.page`, `Target page must be between 0 and ${pageCount - 1} (0-based)`);
-                    }
-                  }
-                  break;
-                }
-                case 'hid': {
-                  if (msg.delay_ms !== undefined) {
-                    if (!Number.isInteger(msg.delay_ms) || msg.delay_ms < 1 || msg.delay_ms > 5000) {
-                      errors.set(`${mp}.delay_ms`, 'Delay must be between 1 and 5000 ms');
-                    }
-                  }
-                  break;
-                }
-              }
-              if (msg.type !== 'hid' && (msg as { channel?: number }).channel !== undefined) {
-                const cherr = validators.channel((msg as { channel?: number }).channel!);
-                if (cherr) errors.set(`${mp}.channel`, cherr);
-              }
-            });
+            validateMessages(messages, `buttons[${idx}].${cycle}[${ei}].${slot}`, pageCount, errors);
+          }
+        });
+      }
+    }
+
+    // Extra messages on non-keytimes modes. messages_off only counts when the
+    // button turns off; otherwise it's stale form state that save strips.
+    // A cc_inc/cc_dec here needs its own cc: these buttons have no shared cc-step fields.
+    if (btn.mode !== 'keytimes') {
+      for (const field of ['messages_on', 'messages_off'] as const) {
+        const messages = btn[field];
+        if (!messages || (field === 'messages_off' && !buttonTurnsOff(btn))) continue;
+        validateMessages(messages, `buttons[${idx}].${field}`, pageCount, errors);
+        messages.forEach((msg, mi) => {
+          if ((msg.type === 'cc_inc' || msg.type === 'cc_dec') && msg.cc === undefined) {
+            errors.set(`buttons[${idx}].${field}[${mi}].cc`, 'Set the CC to step');
           }
         });
       }

@@ -45,6 +45,30 @@ export type KeytimesMessage =
     }
   | {
       type: "cc_inc" | "cc_dec";
+      /**
+       * Standard MIDI byte value (0-127).
+       */
+      cc?: number;
+      /**
+       * MIDI channel. Stored as 0-15, displayed as 1-16 in UI.
+       */
+      channel?: number;
+      /**
+       * Only with cc. How much the value moves per message.
+       */
+      cc_step?: number;
+      /**
+       * Standard MIDI byte value (0-127).
+       */
+      cc_min?: number;
+      /**
+       * Standard MIDI byte value (0-127).
+       */
+      cc_max?: number;
+      /**
+       * Only with cc. Past a bound, wrap to the other one (true) or stay at it (false).
+       */
+      cc_wrap?: boolean;
     }
   | {
       type: "page_inc" | "page_dec";
@@ -299,6 +323,14 @@ export interface ButtonConfig {
    */
   states?: StateOverride[];
   /**
+   * Extra messages sent right after the button's own message when it turns on: every press for flash/select/page/cc_inc/cc_dec buttons, the press that turns a toggle on, the press of a momentary. Same message shape as a keytimes entry's down/up; a cc_inc/cc_dec here must set its own cc. Ignored on mode='keytimes' — put messages in the cycle entries.
+   */
+  messages_on?: KeytimesMessage[];
+  /**
+   * Extra messages sent right after the button's own message when it turns off: the press that turns a toggle off, or the release of a momentary. Not used by flash/select/page/cc_inc/cc_dec buttons, or by HID momentary (those never turn off). Same message shape as messages_on.
+   */
+  messages_off?: KeytimesMessage[];
+  /**
    * Short-press cycle entries. Only valid when mode='keytimes'. Each entry can fire messages on down (short_down event), up (short_up event), and carries optional color/dim/label.
    */
   short?: KeytimesEntry[];
@@ -366,7 +398,7 @@ export interface StateOverride {
  */
 export interface KeytimesEntry {
   /**
-   * Messages fired when this entry's down event triggers (short_down for short cycle, long_down for long cycle). Strict array; single-element today, multi-element supported when #47 lands.
+   * Messages fired when this entry's down event triggers (short_down for short cycle, long_down for long cycle). Strict array; any number of messages, sent in order.
    */
   down?: KeytimesMessage[];
   /**

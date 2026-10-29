@@ -16,6 +16,24 @@ Everything is on the [latest release](https://github.com/MC-Music-Workshop/midi-
 - The Config Editor installer for your OS: `.dmg` for macOS, `.exe` or `.msi` for Windows, `.AppImage` (portable) or `.deb` (Debian/Ubuntu) for Linux. **The Config Editor includes the bundled firmware, so you don't need to download it separately**, or
 - The `MIDI-Captain-MAX-<version>-complete.zip` package if you want the GUI and the firmware as separate packages.<br>For example, if you prefer the deploy script, or are on an unsupported OS, this package includes everything you need. (The GUI still includes the bundled firmware; the zip is just for convenience if you want to use the deploy script instead of the GUI installer.)
 
+### macOS: Install with Homebrew
+
+If you use [Homebrew](https://brew.sh), you can install the Config Editor without visiting the release page:
+
+```bash
+brew install --cask mc-music-workshop/tap/midi-captain-max
+```
+
+Get new versions with `brew upgrade --cask midi-captain-max`. This cask only carries stable releases.
+
+To try betas and release candidates, install the beta cask instead. It follows the newest release of any kind, so it also picks up the stable release once that ships:
+
+```bash
+brew install --cask mc-music-workshop/tap/midi-captain-max@beta
+```
+
+The two casks can't be installed together. To switch, uninstall one first: `brew uninstall --cask midi-captain-max` (or `midi-captain-max@beta`), then install the other.
+
 ## Updating an Existing MIDI Captain MAX Install
 
 1. Connect your MIDI Captain via USB and power it on.

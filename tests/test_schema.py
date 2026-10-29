@@ -65,6 +65,17 @@ def test_schema_is_valid_draft7(schema):
   Draft7Validator.check_schema(schema)
 
 
+def test_extra_messages_accepted(validator):
+  """messages_on / messages_off take the same Message objects as keytimes entries."""
+  config = {"buttons": [{
+    "label": "AMP", "color": "red", "cc": 20,
+    "messages_on": [{"type": "pc", "program": 5}, {"type": "hid", "action": "send", "key": "A"}],
+    "messages_off": [{"type": "note", "note": 60, "velocity": 0}],
+  }]}
+  errors = list(validator.iter_errors(wrap(config)))
+  assert errors == [], f"extra messages rejected: {[e.message for e in errors]}"
+
+
 class TestKeytimesMode:
   """Schema acceptance of mode='keytimes' buttons with short/long cycle arrays."""
 
@@ -135,10 +146,16 @@ class TestKeytimesMode:
                            "long": [{"down": [{"type": "cc_dec"}]}]}]}
     assert list(validator.iter_errors(wrap(config))) == []
 
-  def test_cc_inc_message_rejects_extra_fields(self, validator):
-    """cc/channel live on the button, not the entry."""
+  def test_cc_inc_message_with_own_cc_accepted(self, validator):
     config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
-                           "short": [{"down": [{"type": "cc_inc", "cc": 30}]}]}]}
+                           "short": [{"down": [{"type": "cc_inc", "cc": 30, "channel": 2, "cc_step": 5,
+                                                "cc_min": 10, "cc_max": 90, "cc_wrap": False}]}]}]}
+    assert list(validator.iter_errors(wrap(config))) == []
+
+  def test_cc_inc_message_rejects_slot_fields(self, validator):
+    """Slots (and their LED/name tables) stay button-level; a message steps in STEP mode only."""
+    config = {"buttons": [{"label": "X", "color": "red", "mode": "keytimes",
+                           "short": [{"down": [{"type": "cc_inc", "cc": 30, "cc_slots": 4}]}]}]}
     assert list(validator.iter_errors(wrap(config))) != []
 
   def test_cc_message_missing_value_rejected(self, validator):

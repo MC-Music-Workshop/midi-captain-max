@@ -1,6 +1,6 @@
 import { writable, derived, get } from 'svelte/store';
 import type { MidiCaptainConfig, ButtonConfig, EncoderConfig, DeviceType, KeytimesEntry, KeytimesMessage, MessageType, Page } from './types';
-import { validateConfig, keytimesUsesCcStep } from './validation';
+import { validateConfig, keytimesUsesCcStep, buttonTurnsOff } from './validation';
 
 interface FormState {
   config: MidiCaptainConfig;
@@ -108,21 +108,23 @@ function _nextUiId(): number {
 // Walk a config and assign `__uiId` to any page / keytimes entry / message that lacks one.
 // Mutates in place; safe to call on a freshly structuredCloned config.
 function _attachUiIds(cfg: MidiCaptainConfig): void {
+  const attach = (items: unknown) => {
+    if (!Array.isArray(items)) return;
+    for (const item of items as Array<Record<string, unknown>>) {
+      if (typeof item.__uiId !== 'number') item.__uiId = _nextUiId();
+    }
+  };
   for (const page of cfg.pages ?? []) {
     if (typeof (page as Page).__uiId !== 'number') (page as Page).__uiId = _nextUiId();
     for (const btn of page.buttons) {
+      attach(btn.messages_on);
+      attach(btn.messages_off);
       for (const cycle of ['short', 'long'] as const) {
-        const entries = (btn as unknown as Record<string, unknown>)[cycle];
-        if (!Array.isArray(entries)) continue;
-        for (const entry of entries as Array<Record<string, unknown>>) {
-          if (typeof entry.__uiId !== 'number') entry.__uiId = _nextUiId();
-          for (const slot of ['down', 'up'] as const) {
-            const messages = entry[slot];
-            if (!Array.isArray(messages)) continue;
-            for (const msg of messages as Array<Record<string, unknown>>) {
-              if (typeof msg.__uiId !== 'number') msg.__uiId = _nextUiId();
-            }
-          }
+        const entries = btn[cycle];
+        attach(entries);
+        for (const entry of entries ?? []) {
+          attach(entry.down);
+          attach(entry.up);
         }
       }
     }
@@ -308,11 +310,12 @@ export function updatePageField(path: string, value: any) {
   _updateAtPath(`pages[${activePageIndex(cfg)}].${path}`, value);
 }
 
-// --- Keytimes-mode helpers (mode: "keytimes" cycle/message mutations) ---
+// --- Keytimes-entry and message-list helpers ---
 //
-// These wrap formState updates that change the *structure* of a keytimes-mode
-// button (adding/removing entries or messages). For leaf-value edits (color,
-// dim, label, individual message fields), use updateField() with a dotted path.
+// These wrap formState updates that change the *structure* of a button: keytimes
+// cycle entries, and message lists (a keytimes entry's down/up, or a button's
+// messages_on/messages_off). For leaf-value edits (color, dim, label, individual
+// message fields), use updateField() with a dotted path.
 
 function _defaultMessage(type: MessageType): KeytimesMessage {
   switch (type) {
@@ -365,62 +368,50 @@ export function removeKeytimesEntry(buttonIndex: number, cycle: 'short' | 'long'
   });
 }
 
-export function addKeytimesMessage(
-  buttonIndex: number,
-  cycle: 'short' | 'long',
-  entryIndex: number,
-  slot: 'down' | 'up',
-  msgType: MessageType = 'cc',
-) {
+// Resolve a button-relative message-list path ("messages_on", "short[2].down") to
+// the object holding the list and the list's key on it. Null when the holder is missing.
+function _messageList(btn: ButtonConfig, listPath: string): { holder: Record<string, unknown>; key: string } | null {
+  const parts = listPath.split('.');
+  const key = parts.pop()!;
+  let holder: any = btn;
+  for (const part of parts) {
+    const m = part.match(/^(\w+)\[(\d+)\]$/);
+    holder = m ? holder?.[m[1]]?.[parseInt(m[2])] : holder?.[part];
+    if (!holder) return null;
+  }
+  return { holder, key };
+}
+
+export function addMessage(buttonIndex: number, listPath: string, msgType: MessageType = 'cc') {
   _updateButton(buttonIndex, btn => {
-    const arr = btn[cycle];
-    if (!Array.isArray(arr) || !arr[entryIndex]) return;
-    const entry = arr[entryIndex] as KeytimesEntry;
-    const messages = (entry[slot] ?? []) as KeytimesMessage[];
+    const list = _messageList(btn, listPath);
+    if (!list) return;
+    const messages = (list.holder[list.key] ?? []) as KeytimesMessage[];
     messages.push({ ..._defaultMessage(msgType), __uiId: _nextUiId() } as KeytimesMessage);
-    entry[slot] = messages;
+    list.holder[list.key] = messages;
   });
 }
 
-export function removeKeytimesMessage(
-  buttonIndex: number,
-  cycle: 'short' | 'long',
-  entryIndex: number,
-  slot: 'down' | 'up',
-  msgIndex: number,
-) {
+export function removeMessage(buttonIndex: number, listPath: string, msgIndex: number) {
   _updateButton(buttonIndex, btn => {
-    const arr = btn[cycle];
-    if (!Array.isArray(arr) || !arr[entryIndex]) return;
-    const entry = arr[entryIndex] as KeytimesEntry;
-    const messages = entry[slot];
-    if (!Array.isArray(messages)) return;
+    const list = _messageList(btn, listPath);
+    const messages = list?.holder[list.key];
+    if (!list || !Array.isArray(messages)) return;
     messages.splice(msgIndex, 1);
-    if (messages.length === 0) {
-      delete entry[slot];
-    } else {
-      entry[slot] = messages;
-    }
+    if (messages.length === 0) delete list.holder[list.key];
   });
 }
 
-export function setKeytimesMessageType(
-  buttonIndex: number,
-  cycle: 'short' | 'long',
-  entryIndex: number,
-  slot: 'down' | 'up',
-  msgIndex: number,
-  newType: MessageType,
-) {
-  // Replace the whole message with a default of the new type, since type-specific
-  // fields don't overlap across types (cc/value vs note/velocity vs program vs step vs key).
+export function setMessageType(buttonIndex: number, listPath: string, msgIndex: number, newType: MessageType,
+                               fields?: Record<string, unknown>) {
+  // Replace the whole message with a default of the new type (plus any starting
+  // fields), since type-specific fields don't overlap across types
+  // (cc/value vs note/velocity vs program vs step vs key).
   _updateButton(buttonIndex, btn => {
-    const arr = btn[cycle];
-    if (!Array.isArray(arr) || !arr[entryIndex]) return;
-    const entry = arr[entryIndex] as KeytimesEntry;
-    const messages = entry[slot];
+    const list = _messageList(btn, listPath);
+    const messages = list?.holder[list.key];
     if (!Array.isArray(messages) || !messages[msgIndex]) return;
-    messages[msgIndex] = _defaultMessage(newType);
+    messages[msgIndex] = { ..._defaultMessage(newType), ...fields } as KeytimesMessage;
   });
 }
 
@@ -709,7 +700,7 @@ function normalizeButton(btn: ButtonConfig): ButtonConfig {
   if (btn.mode === 'keytimes') {
     const { cc, cc_on, cc_off, note, velocity_on, velocity_off, program, pc_step, flash_ms,
             cc_step, cc_slots, cc_min, cc_max, cc_wrap, cc_initial, cc_slot_colors, cc_slot_names,
-            hid_action, hid_key, hid_modifier, hid_delay_ms,
+            hid_action, hid_key, hid_modifier, hid_delay_ms, messages_on, messages_off,
             select_group, select_repress, keytimes, states, type, ...common } = btn;
     return {
       ...common,
@@ -722,9 +713,14 @@ function normalizeButton(btn: ButtonConfig): ButtonConfig {
 
   // Non-keytimes modes: keytimes/states are deprecated but still functional in v2.0.
   // Strip the new-mode-only fields (short/long/long_press_threshold_ms and the
-  // host-sync listen CCs) if they leaked in.
+  // host-sync listen CCs) if they leaked in, and messages_off when the button
+  // never turns off (the form keeps it across a mode flip, like select_group).
   const { short: _short, long: _long, long_press_threshold_ms: _lpt,
-          short_cc_receive: _scr, long_cc_receive: _lcr, ...btnWithoutKeytimesFields } = btn;
+          short_cc_receive: _scr, long_cc_receive: _lcr, messages_off, ...rest } = btn;
+  const btnWithoutKeytimesFields: ButtonConfig = {
+    ...rest,
+    ...(messages_off !== undefined && buttonTurnsOff(btn) && { messages_off }),
+  };
   const type = btnWithoutKeytimesFields.type ?? 'cc';
   const { cc, cc_on, cc_off, note, velocity_on, velocity_off, program, pc_step, flash_ms,
           cc_step, cc_slots, cc_min, cc_max, cc_wrap, cc_initial, cc_slot_colors, cc_slot_names,

@@ -191,7 +191,7 @@ while True:
 
 No sleep — runs as fast as possible. Timing-sensitive code must use `time.monotonic()`.
 
-**Keep `label.text =` off deep call chains (pystack).** CircuitPython's Python stack is small, and setting a displayio label's text can descend ~6 more frames into `adafruit_display_text` → `adafruit_bitmap_font/pcf.py::load_glyphs` when the text contains a glyph not yet cached. Doing that from the bottom of the keytimes dispatch chain (`handle_switches` → `dispatch_keytimes_events` → lambda → `_dispatch_keytimes_message` → handler → repaint → `set_button_state`) raised `RuntimeError: pystack exhausted` on a real STD10 — on the *second* press, once a slot name needed a letter the button label hadn't already loaded (#11). Pattern: handlers send MIDI inline but queue display/LED work (`pending_cc_step_updates`, drained by `flush_cc_step_updates()` in the main loop), so the repaint starts from the same shallow depth as `update_pc_flash_timers()`. Same shape as the deferred `pending_page_target` switch.
+**Keep `label.text =` off deep call chains (pystack).** CircuitPython's Python stack is small, and setting a displayio label's text can descend ~6 more frames into `adafruit_display_text` → `adafruit_bitmap_font/pcf.py::load_glyphs` when the text contains a glyph not yet cached. Doing that from the bottom of the keytimes dispatch chain (`handle_switches` → `dispatch_keytimes_events` → lambda → `_dispatch_message` → handler → repaint → `set_button_state`) raised `RuntimeError: pystack exhausted` on a real STD10 — on the *second* press, once a slot name needed a letter the button label hadn't already loaded (#11). Pattern: handlers send MIDI inline but queue display/LED work (`pending_cc_step_updates`, drained by `flush_cc_step_updates()` in the main loop), so the repaint starts from the same shallow depth as `update_pc_flash_timers()`. Same shape as the deferred `pending_page_target` switch.
 
 ### MIDI Output Pattern
 
@@ -224,11 +224,19 @@ The `mode: "keytimes"` dispatch path is a parallel branch in `handle_switches()`
 
 Per-loop flow for a keytimes-mode button:
 1. `state.tracker.update(sw.pressed, time.monotonic())` returns timing events (`short_down`/`short_up`/`long_down`/`long_up`)
-2. `dispatch_keytimes_events(events, state, btn_config, callback, callback_args)` — pure function in `core/button.py`, calls `callback(msg, *callback_args)` for each Message to dispatch, updates state's inherited color/dim/label, advances cycles on press-end. `code.py` passes `_dispatch_keytimes_message` and `(default_channel, btn_num)` directly — not a lambda adapter — to keep one frame off the pystack (see "Keep `label.text =` off deep call chains")
-3. `_dispatch_keytimes_message(msg, default_channel, btn_num)` routes by `msg["type"]` to ControlChange/ProgramChange/NoteOn/NoteOff/dispatch_hid
+2. `dispatch_keytimes_events(events, state, btn_config, callback, callback_args)` — pure function in `core/button.py`, calls `callback(msg, *callback_args)` for each Message to dispatch, updates state's inherited color/dim/label, advances cycles on press-end. `code.py` passes `_dispatch_message` and `(default_channel, btn_num)` directly — not a lambda adapter — to keep one frame off the pystack (see "Keep `label.text =` off deep call chains")
+3. `_dispatch_message(msg, default_channel, btn_num)` routes by `msg["type"]` to ControlChange/ProgramChange/NoteOn/NoteOff/dispatch_hid
 4. `_render_keytimes_led(btn_num, state, btn_config)` resolves both the LED and the label color via `resolve_keytimes_render_color()` (in `core/colors.py`), which wraps `compute_keytimes_led_color()`'s two-layer rule (short.color == "off" kills; else long.color if set; else short.color; else off)
 
 Cycle state lives in RAM only — resets on power cycle / config reload. Per-page persistence (when #15 lands) keys the state table on `(page_id, button_idx)`.
+
+### CC+/CC- messages with their own CC
+
+A `cc_inc`/`cc_dec` Message with a `cc` steps that CC by itself. `_validate_message` runs it through `_validate_cc_step_fields` (STEP only: `cc_slots`/`cc_initial` are dropped) and fills `channel` from the owning button, so the result uses cc_inc button field names and `_dispatch_message` hands the message itself to `send_cc_step()`. It shares the `cc_values` table key `(channel, cc)` with any cc_inc/cc_dec button on that CC, and the deferred repaint refreshes those buttons. Without a `cc` it's direction-only and uses the button-level fields; only those count for `_uses_cc_step`.
+
+### Extra messages on the other modes (`messages_on` / `messages_off`)
+
+Non-keytimes buttons can list extra Messages (same shape and validator, `_validate_message`, as keytimes entries; a `cc_inc`/`cc_dec` without its own `cc` is dropped). Each legacy branch of `handle_switches()` sets a local `extra` to `True` (button turned on / pressed), `False` (turned off / released) or leaves `None`, and one `_send_extra_messages(btn_config, extra, channel, btn_num)` after the type chain sends the matching list through `_dispatch_message`. Select branches `continue` early, so they call it directly with the select handler's return value (`handle_cc_select_press` returns `False` on a self-deselect). Called from `handle_switches` level, not inside the handlers, so the stack under `_dispatch_message` is no deeper than the keytimes path. Where the off list fires is mirrored in the editor's `buttonTurnsOff()` (`config-editor/src/lib/validation.ts`).
 
 See [docs/plans/2026-05-13-issue-48-press-timings.md](../docs/plans/2026-05-13-issue-48-press-timings.md) for the full design and rationale.
 
@@ -246,7 +254,7 @@ Three message types change the active page, usable as a whole-button `type` **an
 
 Pure index math lives in `core/config.py::resolve_page_target(current, num_pages, action, amount)` (`"inc"`/`"dec"` wrap via Python modulo; `"jump"` clamps). Unit-tested; the dispatch wiring is the only on-device part.
 
-**Deferred-switch invariant:** triggers never call `switch_page()` inline — they set the `pending_page_target` global (a page **index** int, distinct from the `active_page` global which is the page **dict**). `handle_switches()` drains it **once after** its scan loop, because `switch_page()` rebuilds `buttons[]`/`button_states[]`/`keytimes_states[]` and swapping them mid-iteration would corrupt the loop. Both dispatch sites (`_dispatch_keytimes_message` and the legacy branch in `handle_switches`) declare `global pending_page_target` and read the current index via `config.get("active_page", 0)`.
+**Deferred-switch invariant:** triggers never call `switch_page()` inline — they set the `pending_page_target` global (a page **index** int, distinct from the `active_page` global which is the page **dict**). `handle_switches()` drains it **once after** its scan loop, because `switch_page()` rebuilds `buttons[]`/`button_states[]`/`keytimes_states[]` and swapping them mid-iteration would corrupt the loop. Both dispatch sites (`_dispatch_message` and the legacy branch in `handle_switches`) declare `global pending_page_target` and read the current index via `config.get("active_page", 0)`.
 
 Modes (`toggle`/`momentary`/`flash`) are accepted on page buttons but cosmetically irrelevant — `switch_page()` repaints every button immediately, so the trigger button shows whatever the *new* page defines for its position (build matching nav buttons on every page for a stable UI). `select` mode stays restricted to `pc`/`cc`, so page types are naturally excluded.
 

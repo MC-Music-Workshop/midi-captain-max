@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateConfig, validateAllPages } from './validation';
+import { validateConfig, validateAllPages, buttonTurnsOff, keytimesUsesCcStep } from './validation';
 import type { MidiCaptainConfig } from './types';
 
 function twoPageConfig(): MidiCaptainConfig {
@@ -269,5 +269,57 @@ describe('keytimes host sync (#200)', () => {
   it('rejects a receive value above 127', () => {
     const result = validateConfig(syncConfig({ short_cc_receive: 20, short: [{ rx_value: 0 }, { rx_value: 200 }] }));
     expect(result.errors.get('buttons[0].short[1].rx_value')).toContain('between 0 and 127');
+  });
+});
+
+describe('extra messages (messages_on / messages_off)', () => {
+  function withButton(btn: Record<string, unknown>): MidiCaptainConfig {
+    return {
+      device: 'one1', active_page: 0,
+      pages: [{ buttons: [{ label: 'X', color: 'green', ...btn }] as never }],
+    } as never;
+  }
+
+  it('buttonTurnsOff follows the firmware: toggle, momentary (not HID), CC select deselect', () => {
+    const turnsOff = (btn: Record<string, unknown>) => buttonTurnsOff({ label: 'X', color: 'green', ...btn } as never);
+    expect(turnsOff({})).toBe(true);                                  // cc, default toggle
+    expect(turnsOff({ type: 'note', mode: 'momentary' })).toBe(true);
+    expect(turnsOff({ type: 'pc' })).toBe(false);                     // pc defaults to flash
+    expect(turnsOff({ type: 'pc', mode: 'momentary' })).toBe(true);
+    expect(turnsOff({ type: 'hid', mode: 'momentary' })).toBe(false);
+    expect(turnsOff({ type: 'hid', mode: 'toggle' })).toBe(true);
+    expect(turnsOff({ type: 'page_inc', mode: 'toggle' })).toBe(false);
+    expect(turnsOff({ type: 'cc', mode: 'select', select_repress: 'resend' })).toBe(false);
+    expect(turnsOff({ type: 'cc', mode: 'select', select_repress: 'deselect' })).toBe(true);
+  });
+
+  it('validates each message like a keytimes entry', () => {
+    const r = validateConfig(withButton({ cc: 20, messages_on: [{ type: 'pc', program: 5 }, { type: 'cc', cc: 200, value: 0 }] }));
+    expect(r.errors.has('buttons[0].messages_on[0].program')).toBe(false);
+    expect(r.errors.get('buttons[0].messages_on[1].cc')).toBeDefined();
+  });
+
+  it('requires a CC on a CC+/CC- extra (there are no shared settings to fall back on)', () => {
+    const r = validateConfig(withButton({ cc: 20, messages_off: [{ type: 'cc_inc' }] }));
+    expect(r.errors.get('buttons[0].messages_off[0].cc')).toContain('Set the CC');
+  });
+
+  it('validates a CC+/CC- with its own CC like a CC+ button', () => {
+    const ok = validateConfig(withButton({ cc: 20, messages_on: [{ type: 'cc_dec', cc: 30, cc_step: 5, cc_min: 10, cc_max: 90 }] }));
+    expect(ok.isValid).toBe(true);
+    const bad = validateConfig(withButton({ cc: 20, messages_on: [{ type: 'cc_inc', cc: 30, cc_min: 90, cc_max: 10 }] }));
+    expect(bad.errors.get('buttons[0].messages_on[0].cc_max')).toContain('greater than min');
+  });
+
+  it('a keytimes CC+/CC- with its own CC needs no shared settings', () => {
+    const btn = (msg: Record<string, unknown>) =>
+      ({ label: 'X', color: 'green', mode: 'keytimes', short: [{ down: [msg] }] }) as never;
+    expect(keytimesUsesCcStep(btn({ type: 'cc_inc' }))).toBe(true);
+    expect(keytimesUsesCcStep(btn({ type: 'cc_inc', cc: 30 }))).toBe(false);
+  });
+
+  it('ignores messages_off on a button that never turns off (save strips it)', () => {
+    const r = validateConfig(withButton({ type: 'pc', program: 1, messages_off: [{ type: 'cc', cc: 200, value: 0 }] }));
+    expect(r.isValid).toBe(true);
   });
 });

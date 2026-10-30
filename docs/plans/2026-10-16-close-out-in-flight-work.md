@@ -115,7 +115,7 @@ Rescoped 2026-10-17: the suspected serial stall didn't reproduce on macOS, so pr
 
 ### Phases 7–8: #190 device rename, then unique volume ID (independent of firmware track)
 
-- [ ] #190: bring the worktree up to `main`; hardware check whether `boot.py` can set the drive label on CircuitPython 7.3.1; implement per plan
+- [ ] #190: plan posted on the issue (2026-10-30; stale worktree removed), start a fresh branch from `main`; hardware check whether `boot.py` can set the drive label on CircuitPython 7.3.1; implement per plan
 - [ ] Unique volume ID: answer the UX question (auto banner + Fix button, plus a manual per-drive button); then design doc, plan, implementation. Starts after #190, since both touch device detection in `device.rs` and the device picker.
 
 ### Phase 9: config schema housekeeping

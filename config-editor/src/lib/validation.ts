@@ -574,6 +574,9 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
         const e = validators.cc(encoder.push.cc_off);
         if (e) errors.set('encoder.push.cc_off', e);
       }
+      if (encoder.push.type === 'cc_inc' || encoder.push.type === 'cc_dec') {
+        validateCcStep(encoder.push, 'encoder.push', errors);
+      }
     }
   }
   

@@ -359,12 +359,28 @@ fn is_default_message_type(t: &MessageType) -> bool {
     *t == MessageType::Cc
 }
 
+/// Encoder push message type: plain CC (cc_on/cc_off) or a CC+/CC- step.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum EncoderPushType {
+    #[default]
+    Cc,
+    CcInc,
+    CcDec,
+}
+
+fn is_default_push_type(t: &EncoderPushType) -> bool {
+    *t == EncoderPushType::Cc
+}
+
 /// Encoder push button configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncoderPush {
     pub enabled: bool,
     pub cc: u8,
     pub label: String,
+    #[serde(rename = "type", default, skip_serializing_if = "is_default_push_type")]
+    pub push_type: EncoderPushType,
     #[serde(default)]
     pub mode: ButtonMode,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -373,6 +389,15 @@ pub struct EncoderPush {
     pub cc_on: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cc_off: Option<u8>,
+    /// cc_inc/cc_dec only: STEP-mode fields, same meaning as on a cc_inc button.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_step: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_min: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_max: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_wrap: Option<bool>,
 }
 
 /// Rotary encoder configuration (STD10 only)
@@ -852,6 +877,21 @@ impl MidiCaptainConfig {
                     if let Some(val) = push.cc_off {
                         if val > 127 {
                             errors.push(format!("{}Encoder push cc_off {} exceeds 127", pfx, val));
+                        }
+                    }
+                    if push.push_type != EncoderPushType::Cc {
+                        if let Some(step) = push.cc_step {
+                            if !(1..=127).contains(&step) {
+                                errors.push(format!("{}Encoder push cc_step {} out of range (1-127)", pfx, step));
+                            }
+                        }
+                        let lo = push.cc_min.unwrap_or(0);
+                        let hi = push.cc_max.unwrap_or(127);
+                        if hi > 127 {
+                            errors.push(format!("{}Encoder push cc_max {} exceeds 127", pfx, hi));
+                        }
+                        if lo >= hi {
+                            errors.push(format!("{}Encoder push cc_min ({}) must be less than cc_max ({})", pfx, lo, hi));
                         }
                     }
                 }
@@ -2022,6 +2062,29 @@ mod tests {
         assert!(errs.iter().any(|e| e.contains("cc_min") && e.contains("less than")), "{errs:?}");
         assert!(errs.iter().any(|e| e.contains("cc_initial")), "{errs:?}");
         assert!(errs.iter().any(|e| e.contains("exceeds 6 chars")), "{errs:?}");
+    }
+
+    #[test]
+    fn test_encoder_push_cc_inc_round_trip_and_range() {
+        let json = r#"{
+            "device": "std10",
+            "pages": [{"buttons": [{"label": "X", "color": "green"}],
+              "encoder": {"enabled": true, "cc": 11, "label": "ENC",
+                "push": {"enabled": true, "cc": 14, "label": "P", "type": "cc_inc",
+                         "cc_step": 0, "cc_min": 90, "cc_max": 20, "cc_wrap": false}}}],
+            "active_page": 0
+        }"#;
+        let config = parse_migrated(json);
+        let push = config.pages[0].encoder.as_ref().unwrap().push.as_ref().unwrap();
+        assert_eq!(push.push_type, EncoderPushType::CcInc);
+        assert!(serde_json::to_string(push).unwrap().contains(r#""type":"cc_inc""#));
+        let errs = config.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("Encoder push cc_step")), "{errs:?}");
+        assert!(errs.iter().any(|e| e.contains("Encoder push cc_min") && e.contains("less than")), "{errs:?}");
+
+        // Default type isn't written back out, so existing configs round-trip unchanged.
+        let plain: EncoderPush = serde_json::from_str(r#"{"enabled": true, "cc": 14, "label": "P"}"#).unwrap();
+        assert!(!serde_json::to_string(&plain).unwrap().contains("type"));
     }
 
     #[test]

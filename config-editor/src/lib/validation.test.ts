@@ -171,6 +171,30 @@ describe('per-page global_channel (P4d)', () => {
   });
 });
 
+describe('encoder push CC+/CC-', () => {
+  function pushConfig(push: Record<string, unknown>): MidiCaptainConfig {
+    return {
+      device: 'std10', active_page: 0,
+      pages: [{ buttons: [{ label: 'OK', cc: 20, color: 'green' }],
+        encoder: { enabled: true, cc: 11, label: 'ENC', push: { enabled: true, cc: 14, label: 'P', ...push } as never } }],
+    };
+  }
+
+  it('accepts a cc_inc push with step fields', () => {
+    expect(validateConfig(pushConfig({ type: 'cc_inc', cc_step: 8, cc_min: 0, cc_max: 64 })).isValid).toBe(true);
+  });
+
+  it('rejects a bad step and range on a cc_dec push', () => {
+    const r = validateConfig(pushConfig({ type: 'cc_dec', cc_step: 0, cc_min: 90, cc_max: 20 }));
+    expect(r.errors.get('encoder.push.cc_step')).toContain('between 1 and 127');
+    expect(r.errors.get('encoder.push.cc_max')).toContain('greater than min');
+  });
+
+  it('ignores step fields on a plain cc push', () => {
+    expect(validateConfig(pushConfig({ cc_step: 0 })).isValid).toBe(true);
+  });
+});
+
 describe('cc_inc / cc_dec fields (#11)', () => {
   function ccStepConfig(btn: Record<string, unknown>): MidiCaptainConfig {
     return {

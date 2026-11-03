@@ -592,6 +592,12 @@
           "default": "PUSH",
           "description": "Display label. Max 8 chars."
         },
+        "type": {
+          "type": "string",
+          "enum": ["cc", "cc_inc", "cc_dec"],
+          "default": "cc",
+          "description": "'cc' = send cc_on/cc_off per mode. 'cc_inc'/'cc_dec' = each press steps the CC value up/down by cc_step within cc_min..cc_max (mode, cc_on and cc_off are ignored). The value is shared with any cc_inc/cc_dec button on the same channel and CC."
+        },
         "mode": {
           "$ref": "#/definitions/ButtonMode",
           "description": "Button behavior. Default: 'momentary'."
@@ -607,7 +613,11 @@
         "cc_off": {
           "$ref": "#/definitions/MidiByte",
           "description": "CC value when button OFF. Default: 0."
-        }
+        },
+        "cc_step": { "type": "integer", "minimum": 1, "maximum": 127, "default": 1, "description": "Only with type cc_inc/cc_dec. How much the value moves per press." },
+        "cc_min": { "$ref": "#/definitions/MidiByte", "default": 0, "description": "Only with type cc_inc/cc_dec. Lower bound, and the starting value. Must be < cc_max." },
+        "cc_max": { "$ref": "#/definitions/MidiByte", "default": 127, "description": "Only with type cc_inc/cc_dec. Upper bound. Must be > cc_min." },
+        "cc_wrap": { "type": "boolean", "default": true, "description": "Only with type cc_inc/cc_dec. Past a bound, wrap to the other one (true) or stay at it (false)." }
       },
       "additionalProperties": false
     },

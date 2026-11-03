@@ -392,6 +392,27 @@ def _validate_message(msg, channel=0, index=0):
     return out
 
 
+def _validate_encoder_push(push, channel):
+    """Sanitize an encoder push dict. With type cc_inc/cc_dec it steps its CC like
+    a cc_inc button (STEP only, starting at cc_min) and the channel is resolved
+    here, so send_cc_step() takes the push config as-is. Any other type is 'cc'
+    (the original cc_on/cc_off push); its fields are left untouched.
+    """
+    out = dict(push)
+    if push.get("type") not in CC_STEP_TYPES:
+        out["type"] = "cc"
+        return out
+    out.pop("cc_slots", None)
+    out.pop("cc_initial", None)
+    src = dict(out)
+    if not _is_int(src.get("cc")):
+        src["cc"] = 14
+    _validate_cc_step_fields(src, 0, out)
+    ch = push.get("channel")
+    out["channel"] = ch if _is_int(ch) and 0 <= ch <= 15 else channel
+    return out
+
+
 def _validate_message_list(messages, channel=0, index=0):
     """Validate an array of messages. Returns a list (possibly empty)."""
     if not isinstance(messages, list):
@@ -741,6 +762,11 @@ def validate_config(cfg, button_count=10):
         for k, v in page.items():
             new_page[k] = v
         new_page["buttons"] = validated_buttons
+        enc = page.get("encoder")
+        if isinstance(enc, dict) and isinstance(enc.get("push"), dict):
+            enc = dict(enc)
+            enc["push"] = _validate_encoder_push(enc["push"], page_channel)
+            new_page["encoder"] = enc
         validated_pages.append(new_page)
 
     # Top-level long-press threshold (used by keytimes-mode buttons; per-button override allowed).

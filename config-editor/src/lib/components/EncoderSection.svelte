@@ -54,6 +54,23 @@
   
   let ccError = $derived($validationErrors.get('encoder.cc'));
   let pushCCError = $derived($validationErrors.get('encoder.push.cc'));
+  let pushStepError = $derived($validationErrors.get('encoder.push.cc_step'));
+  let pushMinError = $derived($validationErrors.get('encoder.push.cc_min'));
+  let pushMaxError = $derived($validationErrors.get('encoder.push.cc_max'));
+
+  // CC+/CC- push: each press steps the CC value; mode and ON/OFF values don't apply.
+  let pushIsCcStep = $derived(encoder?.push?.type === 'cc_inc' || encoder?.push?.type === 'cc_dec');
+
+  function handlePushType(e: Event) {
+    const value = (e.target as HTMLSelectElement).value;
+    // 'cc' is the default; only persist the non-default.
+    updateField('encoder.push.type', value === 'cc' ? undefined : value);
+  }
+
+  function handlePushWrap(e: Event) {
+    // Default is true; only persist the non-default.
+    updateField('encoder.push.cc_wrap', (e.target as HTMLInputElement).checked ? undefined : false);
+  }
 </script>
 
 <Accordion 
@@ -219,6 +236,89 @@
           </div>
 
           <div class="field-row">
+            <label for="encoder-push-type">Type:</label>
+            <select
+              id="encoder-push-type"
+              value={encoder.push.type || 'cc'}
+              onchange={handlePushType}
+              disabled={isDisabled}
+              title="CC+/CC-: each press steps the CC value up/down. The value is shared with any CC+/CC- button on the same CC and channel."
+            >
+              <option value="cc">CC</option>
+              <option value="cc_inc">CC+</option>
+              <option value="cc_dec">CC-</option>
+            </select>
+          </div>
+
+          {#if pushIsCcStep}
+          <div class="field-row">
+            <label for="encoder-push-cc-step">Step:</label>
+            <input
+              id="encoder-push-cc-step"
+              type="number"
+              class:error={!!pushStepError}
+              value={encoder.push.cc_step ?? ''}
+              onblur={(e) => handleField('push.cc_step', e)}
+              min="1"
+              max="127"
+              placeholder="1"
+              disabled={isDisabled}
+            />
+            {#if pushStepError}
+              <span class="error-text">{pushStepError}</span>
+            {/if}
+          </div>
+
+          <div class="field-row">
+            <label for="encoder-push-cc-min">Min:</label>
+            <input
+              id="encoder-push-cc-min"
+              type="number"
+              class:error={!!pushMinError}
+              value={encoder.push.cc_min ?? ''}
+              onblur={(e) => handleField('push.cc_min', e)}
+              min="0"
+              max="127"
+              placeholder="0"
+              title="Lower bound, and the starting value."
+              disabled={isDisabled}
+            />
+            {#if pushMinError}
+              <span class="error-text">{pushMinError}</span>
+            {/if}
+          </div>
+
+          <div class="field-row">
+            <label for="encoder-push-cc-max">Max:</label>
+            <input
+              id="encoder-push-cc-max"
+              type="number"
+              class:error={!!pushMaxError}
+              value={encoder.push.cc_max ?? ''}
+              onblur={(e) => handleField('push.cc_max', e)}
+              min="0"
+              max="127"
+              placeholder="127"
+              disabled={isDisabled}
+            />
+            {#if pushMaxError}
+              <span class="error-text">{pushMaxError}</span>
+            {/if}
+          </div>
+
+          <div class="field-row">
+            <label>
+              <input
+                type="checkbox"
+                checked={encoder.push.cc_wrap ?? true}
+                onchange={handlePushWrap}
+                disabled={isDisabled}
+              />
+              Wrap
+            </label>
+          </div>
+          {:else}
+          <div class="field-row">
             <label for="encoder-push-mode">Mode:</label>
             <select
               id="encoder-push-mode"
@@ -258,6 +358,7 @@
               disabled={isDisabled}
             />
           </div>
+          {/if}
         {/if}
       {/if}
     </div>

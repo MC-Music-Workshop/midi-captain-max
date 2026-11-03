@@ -317,6 +317,27 @@ class TestEncoderValidation:
     }
     assert not validator.is_valid(wrap(config))
 
+  def test_encoder_push_cc_inc(self, validator):
+    config = {
+      "buttons": [{"label": "OK", "color": "red"}],
+      "encoder": {
+        "enabled": True, "cc": 11, "label": "ENC",
+        "push": {"enabled": True, "cc": 14, "label": "P", "type": "cc_inc",
+                 "cc_step": 8, "cc_min": 0, "cc_max": 64, "cc_wrap": False},
+      },
+    }
+    assert validator.is_valid(wrap(config))
+
+  def test_encoder_push_rejects_other_types(self, validator):
+    config = {
+      "buttons": [{"label": "OK", "color": "red"}],
+      "encoder": {
+        "enabled": True, "cc": 11, "label": "ENC",
+        "push": {"enabled": True, "cc": 14, "label": "P", "type": "pc"},
+      },
+    }
+    assert not validator.is_valid(wrap(config))
+
 
 class TestExpressionValidation:
   def test_valid_expression(self, validator):

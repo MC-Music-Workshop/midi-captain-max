@@ -895,6 +895,40 @@ class TestEncoderConfig:
         assert enc["push"]["cc_on"] == 127
         assert enc["push"]["cc_off"] == 0
 
+    def _push(self, push, page_channel=None):
+        page = {"buttons": [], "encoder": {"enabled": True, "cc": 11, "label": "ENC", "push": push}}
+        if page_channel is not None:
+            page["global_channel"] = page_channel
+        return validate_config({"pages": [page]})["pages"][0]["encoder"]["push"]
+
+    def test_encoder_push_cc_inc_fills_step_defaults(self):
+        """A cc_inc push gets STEP fields and its page channel, ready for send_cc_step()."""
+        push = self._push({"enabled": True, "cc": 30, "label": "P", "type": "cc_inc"}, page_channel=3)
+        assert push["type"] == "cc_inc"
+        assert push["cc"] == 30
+        assert push["channel"] == 3
+        assert push["cc_step"] == 1
+        assert (push["cc_min"], push["cc_max"], push["cc_wrap"]) == (0, 127, True)
+
+    def test_encoder_push_cc_dec_keeps_fields_drops_slots(self):
+        push = self._push({"enabled": True, "cc": 30, "label": "P", "type": "cc_dec", "channel": 5,
+                           "cc_step": 10, "cc_min": 20, "cc_max": 90, "cc_wrap": False,
+                           "cc_slots": 4, "cc_initial": 50})
+        assert push["channel"] == 5
+        assert (push["cc_step"], push["cc_min"], push["cc_max"], push["cc_wrap"]) == (10, 20, 90, False)
+        assert "cc_slots" not in push
+        assert "cc_initial" not in push
+
+    def test_encoder_push_cc_inc_bad_range_falls_back(self):
+        push = self._push({"enabled": True, "cc": 30, "label": "P", "type": "cc_inc", "cc_min": 90, "cc_max": 20})
+        assert (push["cc_min"], push["cc_max"]) == (0, 127)
+
+    def test_encoder_push_unknown_type_is_cc(self):
+        push = self._push({"enabled": True, "cc": 30, "label": "P", "type": "pc", "mode": "toggle"})
+        assert push["type"] == "cc"
+        assert push["mode"] == "toggle"
+        assert "cc_step" not in push
+
 
 class TestGetButtonStateConfig:
     def test_no_states_returns_base_cc_config(self):

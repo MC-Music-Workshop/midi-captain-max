@@ -66,7 +66,7 @@ from core.display_model import build_screen, button_visual, keytimes_visual
 from core.encoder import EncoderState
 from core.midi_rx import find_cc_rx_action, find_note_rx_target
 from core.cc_step import (
-    is_cc_step_button, cc_step_key, cc_step_initial, cc_step_clamp, cc_step_next,
+    CC_STEP_TYPES, is_cc_step_button, cc_step_key, cc_step_initial, cc_step_clamp, cc_step_next,
     cc_slot_index, cc_slot_color, cc_slot_name, cc_slot_text,
 )
 from core.hid import dispatch_hid
@@ -1729,7 +1729,12 @@ def handle_encoder_button():
     sw = switches[0]  # Encoder push is switch index 0
     changed, pressed = sw.changed()
     if changed:
-        if ENC_PUSH_MODE == "toggle":
+        push_type = enc_push_config.get("type", "cc")
+        if push_type in CC_STEP_TYPES:
+            # CC+/CC- push: step the shared value on press; mode/cc_on/cc_off unused.
+            if pressed:
+                send_cc_step(0, enc_push_config, 1 if push_type == "cc_inc" else -1, "encoder push")
+        elif ENC_PUSH_MODE == "toggle":
             # Toggle mode: flip state on press only
             if pressed:
                 encoder_push_state = not encoder_push_state

@@ -477,6 +477,10 @@ export interface EncoderPush {
    */
   label: string;
   /**
+   * 'cc' = send cc_on/cc_off per mode. 'cc_inc'/'cc_dec' = each press steps the CC value up/down by cc_step within cc_min..cc_max (mode, cc_on and cc_off are ignored). The value is shared with any cc_inc/cc_dec button on the same channel and CC.
+   */
+  type?: "cc" | "cc_inc" | "cc_dec";
+  /**
    * Button behavior. Default: 'momentary'.
    */
   mode?: "toggle" | "momentary" | "flash" | "select" | "keytimes";
@@ -492,6 +496,22 @@ export interface EncoderPush {
    * Standard MIDI byte value (0-127).
    */
   cc_off?: number;
+  /**
+   * Only with type cc_inc/cc_dec. How much the value moves per press.
+   */
+  cc_step?: number;
+  /**
+   * Standard MIDI byte value (0-127).
+   */
+  cc_min?: number;
+  /**
+   * Standard MIDI byte value (0-127).
+   */
+  cc_max?: number;
+  /**
+   * Only with type cc_inc/cc_dec. Past a bound, wrap to the other one (true) or stay at it (false).
+   */
+  cc_wrap?: boolean;
 }
 /**
  * Per-page expression pedal configurations. Only supported on STD10.

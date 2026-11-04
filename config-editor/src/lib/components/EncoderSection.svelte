@@ -2,6 +2,7 @@
   import Accordion from './Accordion.svelte';
   import { config, currentPage, updateField } from '$lib/formStore';
   import { validationErrors } from '$lib/formStore';
+  import { MESSAGE_TYPE_LABELS } from '$lib/types';
 
   let deviceType = $derived($config.device);
   let encoder = $derived($currentPage.encoder);
@@ -58,13 +59,19 @@
   let pushMinError = $derived($validationErrors.get('encoder.push.cc_min'));
   let pushMaxError = $derived($validationErrors.get('encoder.push.cc_max'));
 
-  // CC+/CC- push: each press steps the CC value; mode and ON/OFF values don't apply.
+  // CC+/CC- push: each press steps the CC value; ON/OFF values don't apply.
   let pushIsCcStep = $derived(encoder?.push?.type === 'cc_inc' || encoder?.push?.type === 'cc_dec');
 
-  function handlePushType(e: Event) {
+  // One Mode dropdown for the user; CC+/CC- are stored as `type` (like a CC+/CC- button),
+  // toggle/momentary as `mode` with the default `type: "cc"` left unset.
+  function handlePushMode(e: Event) {
     const value = (e.target as HTMLSelectElement).value;
-    // 'cc' is the default; only persist the non-default.
-    updateField('encoder.push.type', value === 'cc' ? undefined : value);
+    if (value === 'cc_inc' || value === 'cc_dec') {
+      updateField('encoder.push.type', value);
+    } else {
+      updateField('encoder.push.type', undefined);
+      updateField('encoder.push.mode', value);
+    }
   }
 
   function handlePushWrap(e: Event) {
@@ -236,17 +243,18 @@
           </div>
 
           <div class="field-row">
-            <label for="encoder-push-type">Type:</label>
+            <label for="encoder-push-mode">Mode:</label>
             <select
-              id="encoder-push-type"
-              value={encoder.push.type || 'cc'}
-              onchange={handlePushType}
+              id="encoder-push-mode"
+              value={pushIsCcStep ? encoder.push.type : (encoder.push.mode || 'momentary')}
+              onchange={handlePushMode}
               disabled={isDisabled}
               title="CC+/CC-: each press steps the CC value up/down. The value is shared with any CC+/CC- button on the same CC and channel."
             >
-              <option value="cc">CC</option>
-              <option value="cc_inc">CC+</option>
-              <option value="cc_dec">CC-</option>
+              <option value="toggle">Toggle</option>
+              <option value="momentary">Momentary</option>
+              <option value="cc_inc">{MESSAGE_TYPE_LABELS.cc_inc}</option>
+              <option value="cc_dec">{MESSAGE_TYPE_LABELS.cc_dec}</option>
             </select>
           </div>
 
@@ -318,19 +326,6 @@
             </label>
           </div>
           {:else}
-          <div class="field-row">
-            <label for="encoder-push-mode">Mode:</label>
-            <select
-              id="encoder-push-mode"
-              value={encoder.push.mode || 'momentary'}
-              onchange={(e) => handleField('push.mode', e)}
-              disabled={isDisabled}
-            >
-              <option value="toggle">Toggle</option>
-              <option value="momentary">Momentary</option>
-            </select>
-          </div>
-
           <div class="field-row">
             <label for="encoder-push-cc-on">ON Value:</label>
             <input

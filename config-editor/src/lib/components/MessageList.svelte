@@ -6,7 +6,8 @@
   // One editable list of messages: a keytimes entry's down/up slot, or a
   // button's messages_on/messages_off.
   interface Props {
-    buttonIndex: number;
+    // Page-relative path of the owning button: "buttons[3]" or "encoder.push".
+    buttonPath: string;
     // Button-relative path of the list: "short[0].down", "messages_on".
     listPath: string;
     label: string;
@@ -19,14 +20,14 @@
     sharedCcStep?: boolean;
   }
 
-  let { buttonIndex, listPath, label, messages, globalChannel, emptyHint, title, mono = false,
+  let { buttonPath, listPath, label, messages, globalChannel, emptyHint, title, mono = false,
         sharedCcStep = true }: Props = $props();
 </script>
 
 <div class="kt-slot">
   <div class="kt-slot-header" {title}>
     <span class="kt-slot-label" class:mono>{label}</span>
-    <button type="button" class="kt-add-msg" onclick={() => addMessage(buttonIndex, listPath)}>
+    <button type="button" class="kt-add-msg" onclick={() => addMessage(buttonPath, listPath)}>
       + message
     </button>
     {#if messages.length === 0}
@@ -35,7 +36,7 @@
   </div>
   {#each messages as msg, mi ((msg as { __uiId?: number }).__uiId ?? mi)}
     <MessageEditor
-      {buttonIndex}
+      {buttonPath}
       {listPath}
       msgIndex={mi}
       message={msg}

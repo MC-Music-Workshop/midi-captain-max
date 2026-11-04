@@ -392,27 +392,6 @@ def _validate_message(msg, channel=0, index=0):
     return out
 
 
-def _validate_encoder_push(push, channel):
-    """Sanitize an encoder push dict. With type cc_inc/cc_dec it steps its CC like
-    a cc_inc button (STEP only, starting at cc_min) and the channel is resolved
-    here, so send_cc_step() takes the push config as-is. Any other type is 'cc'
-    (the original cc_on/cc_off push); its fields are left untouched.
-    """
-    out = dict(push)
-    if push.get("type") not in CC_STEP_TYPES:
-        out["type"] = "cc"
-        return out
-    out.pop("cc_slots", None)
-    out.pop("cc_initial", None)
-    src = dict(out)
-    if not _is_int(src.get("cc")):
-        src["cc"] = 14
-    _validate_cc_step_fields(src, 0, out)
-    ch = push.get("channel")
-    out["channel"] = ch if _is_int(ch) and 0 <= ch <= 15 else channel
-    return out
-
-
 def _validate_message_list(messages, channel=0, index=0):
     """Validate an array of messages. Returns a list (possibly empty)."""
     if not isinstance(messages, list):
@@ -721,6 +700,26 @@ def validate_button(btn, index=0, global_channel=None):
     return validated
 
 
+def validate_encoder_push(push, index, channel):
+    """Validate an STD10 encoder push: it's a button without an LED, so it goes
+    through validate_button (every type, mode, messages_on/off, keytimes, select).
+
+    Only the legacy push defaults differ from a footswitch: CC 14, label "PUSH"
+    (max 8 chars, buttons have 6), and a CC push with no mode is momentary.
+    `index` is its logical button index (one past the footswitches), which is
+    also where code.py puts it in the page's button list.
+    """
+    src = dict(push) if isinstance(push, dict) else {}
+    src.setdefault("cc", 14)
+    src.setdefault("label", "PUSH")
+    if "mode" not in src and src.get("type", "cc") == "cc":
+        src["mode"] = "momentary"
+    out = validate_button(src, index, channel)
+    out["enabled"] = src.get("enabled", True) is not False
+    out["label"] = str(src["label"])[:8]
+    return out
+
+
 def validate_config(cfg, button_count=10):
     """Validate entire config, filling in defaults.
 
@@ -763,9 +762,9 @@ def validate_config(cfg, button_count=10):
             new_page[k] = v
         new_page["buttons"] = validated_buttons
         enc = page.get("encoder")
-        if isinstance(enc, dict) and isinstance(enc.get("push"), dict):
+        if isinstance(enc, dict) and "push" in enc:
             enc = dict(enc)
-            enc["push"] = _validate_encoder_push(enc["push"], page_channel)
+            enc["push"] = validate_encoder_push(enc.get("push"), button_count, page_channel)
             new_page["encoder"] = enc
         validated_pages.append(new_page)
 

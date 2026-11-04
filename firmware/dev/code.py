@@ -45,6 +45,7 @@ from core.colors import COLORS, get_color, dim_color, rgb_to_hex, get_off_color,
 from core.config import (
     load_config as _load_config_from_file,
     validate_config,
+    validate_encoder_push,
     get_active_page,
     resolve_page_target,
     resolve_page_control,
@@ -66,7 +67,7 @@ from core.display_model import build_screen, button_visual, keytimes_visual
 from core.encoder import EncoderState
 from core.midi_rx import find_cc_rx_action, find_note_rx_target
 from core.cc_step import (
-    CC_STEP_TYPES, is_cc_step_button, cc_step_key, cc_step_initial, cc_step_clamp, cc_step_next,
+    is_cc_step_button, cc_step_key, cc_step_initial, cc_step_clamp, cc_step_next,
     cc_slot_index, cc_slot_color, cc_slot_name, cc_slot_text,
 )
 from core.hid import dispatch_hid
@@ -468,7 +469,6 @@ else:
 
 # EncoderState (value/slot logic) built per-page in switch_page(); None until then.
 encoder_state = None
-encoder_push_state = False  # For toggle mode
 
 # Expression pedals (STD10 only)
 if HAS_EXPRESSION:
@@ -557,17 +557,11 @@ except Exception:
 enc_config = {}
 enc_push_config = {}
 CC_ENCODER = 11
-CC_ENCODER_PUSH = 14
 ENC_MIN = 0
 ENC_MAX = 127
 ENC_INITIAL = 64
 ENC_ENABLED = False
-ENC_PUSH_ENABLED = False
-ENC_PUSH_MODE = "momentary"
 ENC_CHANNEL = 0
-ENC_PUSH_CHANNEL = 0
-ENC_PUSH_CC_ON = 127
-ENC_PUSH_CC_OFF = 0
 ENC_STEPS = None
 
 exp_config = {}
@@ -599,8 +593,12 @@ cc_values = {}
 # _dispatch_message -> send_cc_step -> refresh -> set_button_state) hit
 # "RuntimeError: pystack exhausted" on the first slot name with uncached glyphs.
 pending_cc_step_updates = []
-pc_flash_timers = [0.0] * BUTTON_COUNT  # Expiry time (monotonic) for PC button flash; 0 = inactive
-hid_flash_timers = [0.0] * BUTTON_COUNT  # Same for HID buttons
+# The STD10 encoder push is logical button BUTTON_COUNT + 1: a full button (appended to
+# buttons[] by switch_page) with no LED or screen tile — set_button_state() and
+# _render_keytimes_led() skip indexes >= BUTTON_COUNT. Per-button arrays size to this.
+BUTTON_SLOTS = BUTTON_COUNT + (1 if HAS_ENCODER else 0)
+pc_flash_timers = [0.0] * BUTTON_SLOTS  # Expiry time (monotonic) for PC button flash; 0 = inactive
+hid_flash_timers = [0.0] * BUTTON_SLOTS  # Same for HID buttons
 PC_FLASH_DURATION_MS = 200              # Default PC/HID button flash duration in ms
 
 
@@ -885,34 +883,38 @@ def switch_page(n):
     (shared inc/dec CC values, #11) are NOT reset.
     """
     global active_page, buttons
-    global CC_ENCODER, CC_ENCODER_PUSH, ENC_MIN, ENC_MAX, ENC_INITIAL
-    global ENC_ENABLED, ENC_PUSH_ENABLED, ENC_PUSH_MODE, ENC_CHANNEL
-    global ENC_PUSH_CHANNEL, ENC_PUSH_CC_ON, ENC_PUSH_CC_OFF, ENC_STEPS
+    global CC_ENCODER, ENC_MIN, ENC_MAX, ENC_INITIAL
+    global ENC_ENABLED, ENC_CHANNEL, ENC_STEPS
     global enc_config, enc_push_config
     global exp_config, exp1_config, exp2_config, CC_EXP1, CC_EXP2, EXP1_CHANNEL, EXP2_CHANNEL
     global button_states, keytimes_states, encoder_state
 
     config["active_page"] = _clamp_page(n)
     active_page = get_active_page(config)
-    buttons = active_page.get("buttons", [])
+    # Copy: the encoder push is appended below. Pad so the push always lands at
+    # index BUTTON_COUNT (validate_config already pads; this is belt and braces).
+    buttons = list(active_page.get("buttons", []))[:BUTTON_COUNT]
+    while len(buttons) < BUTTON_COUNT:
+        buttons.append({"label": str(len(buttons) + 1), "cc": 20 + len(buttons), "color": "white"})
+
+    _page_channel = active_page.get("global_channel", config.get("global_channel", 0))
+    if not isinstance(_page_channel, int) or _page_channel < 0 or _page_channel > 15:
+        _page_channel = config.get("global_channel", 0)
 
     enc_config = active_page.get("encoder", {"enabled": True, "cc": 11, "label": "ENC", "min": 0, "max": 127, "initial": 64})
-    enc_push_config = enc_config.get("push", {"enabled": True, "cc": 14, "label": "PUSH", "mode": "momentary"})
+    # validate_config validated any push the config has; a page without one still
+    # gets the default push (CC 14 momentary), same as before.
+    enc_push_config = enc_config.get("push")
+    if not isinstance(enc_push_config, dict):
+        enc_push_config = validate_encoder_push(None, BUTTON_COUNT, _page_channel)
+    if HAS_ENCODER and enc_push_config.get("enabled", True):
+        buttons.append(enc_push_config)
     CC_ENCODER = enc_config.get("cc", 11)
-    CC_ENCODER_PUSH = enc_push_config.get("cc", 14)
     ENC_MIN = enc_config.get("min", 0)
     ENC_MAX = enc_config.get("max", 127)
     ENC_INITIAL = enc_config.get("initial", 64)
     ENC_ENABLED = enc_config.get("enabled", True) and HAS_ENCODER
-    ENC_PUSH_ENABLED = enc_push_config.get("enabled", True) and HAS_ENCODER
-    ENC_PUSH_MODE = enc_push_config.get("mode", "momentary")
-    _page_channel = active_page.get("global_channel", config.get("global_channel", 0))
-    if not isinstance(_page_channel, int) or _page_channel < 0 or _page_channel > 15:
-        _page_channel = config.get("global_channel", 0)
     ENC_CHANNEL = enc_config.get("channel", _page_channel)
-    ENC_PUSH_CHANNEL = enc_push_config.get("channel", _page_channel)
-    ENC_PUSH_CC_ON = enc_push_config.get("cc_on", 127)
-    ENC_PUSH_CC_OFF = enc_push_config.get("cc_off", 0)
     ENC_STEPS = enc_config.get("steps", None)
 
     exp_config = active_page.get("expression", {})
@@ -924,23 +926,23 @@ def switch_page(n):
     EXP2_CHANNEL = exp2_config.get("channel", _page_channel)
 
     button_states = []
-    for i in range(BUTTON_COUNT):
-        _btn_cfg = buttons[i] if i < len(buttons) else {}
+    for i in range(len(buttons)):
+        _btn_cfg = buttons[i]
         button_states.append(ButtonState(
             cc=_btn_cfg.get("cc", 0),
             mode=_btn_cfg.get("mode", "toggle"),
             keytimes=_btn_cfg.get("keytimes", 1),
         ))
 
-    keytimes_states = [None] * BUTTON_COUNT
-    for i in range(BUTTON_COUNT):
-        _kt_cfg = buttons[i] if i < len(buttons) else {}
+    keytimes_states = [None] * len(buttons)
+    for i in range(len(buttons)):
+        _kt_cfg = buttons[i]
         if _kt_cfg.get("mode") == "keytimes":
             _kt_threshold = get_long_press_threshold_ms(config, _kt_cfg)
             keytimes_states[i] = KeytimesButtonState(
                 _kt_threshold, len(_kt_cfg.get("short", [])), len(_kt_cfg.get("long", [])))
 
-    for i in range(BUTTON_COUNT):
+    for i in range(BUTTON_SLOTS):
         pc_flash_timers[i] = 0.0
         hid_flash_timers[i] = 0.0
     encoder_state = EncoderState(CC_ENCODER, ENC_INITIAL, ENC_STEPS)
@@ -1109,7 +1111,7 @@ def send_cc_step(btn_num, btn_config, direction, origin):
 
 def _expire_flash_timers(timers, now):
     """Turn off LEDs for a single flash-timer array whose expiry has passed."""
-    for i in range(BUTTON_COUNT):
+    for i in range(BUTTON_SLOTS):
         if timers[i] > 0 and now >= timers[i]:
             timers[i] = 0.0
             set_button_state(i + 1, False)
@@ -1467,15 +1469,19 @@ def _render_keytimes_led(btn_num, state, btn_config):
 def handle_switches():
     """Handle footswitch presses with keytimes support."""
     global pending_page_target
-    # STD10: index 0 is encoder push, 1-10 are footswitches
-    # Mini6: indices 0-5 are footswitches (no encoder)
-    start_idx = 1 if HAS_ENCODER else 0
+    # STD10: switch 0 is the encoder push (logical button BUTTON_COUNT + 1, no LED),
+    # 1-10 are footswitches. Other devices: indices 0..N-1 are footswitches.
     now = time.monotonic()
-    for i in range(start_idx, len(switches)):
+    for i in range(len(switches)):
         sw = switches[i]
-        btn_num = i if HAS_ENCODER else i + 1
+        if HAS_ENCODER:
+            btn_num = i if i else BUTTON_COUNT + 1
+        else:
+            btn_num = i + 1
         idx = btn_num - 1
-        btn_config = buttons[idx] if idx < len(buttons) else {"cc": 20 + idx}
+        if idx >= len(buttons):
+            continue  # encoder push disabled on this page
+        btn_config = buttons[idx]
 
         # Keytimes mode (#48): poll-driven dispatch via PressTracker. Runs every loop iteration
         # so the long-press threshold timer fires even when the switch state is steady.
@@ -1719,37 +1725,6 @@ def handle_switches():
         pending_page_target = None
 
 
-def handle_encoder_button():
-    """Handle encoder push button."""
-    global encoder_push_state
-    
-    if not ENC_PUSH_ENABLED:
-        return
-    
-    sw = switches[0]  # Encoder push is switch index 0
-    changed, pressed = sw.changed()
-    if changed:
-        push_type = enc_push_config.get("type", "cc")
-        if push_type in CC_STEP_TYPES:
-            # CC+/CC- push: step the shared value on press; mode/cc_on/cc_off unused.
-            if pressed:
-                send_cc_step(0, enc_push_config, 1 if push_type == "cc_inc" else -1, "encoder push")
-        elif ENC_PUSH_MODE == "toggle":
-            # Toggle mode: flip state on press only
-            if pressed:
-                encoder_push_state = not encoder_push_state
-                cc_val = ENC_PUSH_CC_ON if encoder_push_state else ENC_PUSH_CC_OFF
-                midi_send(ControlChange(CC_ENCODER_PUSH, cc_val), channel=ENC_PUSH_CHANNEL)
-                print(f"[MIDI TX] Ch{ENC_PUSH_CHANNEL+1} CC{CC_ENCODER_PUSH}={cc_val} (encoder push, toggle)")
-                update_status(f"TX CC{CC_ENCODER_PUSH}={cc_val}")
-        else:
-            # Momentary mode: send on press and release
-            cc_val = ENC_PUSH_CC_ON if pressed else ENC_PUSH_CC_OFF
-            midi_send(ControlChange(CC_ENCODER_PUSH, cc_val), channel=ENC_PUSH_CHANNEL)
-            print(f"[MIDI TX] Ch{ENC_PUSH_CHANNEL+1} CC{CC_ENCODER_PUSH}={cc_val} (encoder push, momentary)")
-            update_status(f"TX CC{CC_ENCODER_PUSH}={cc_val}")
-
-
 def handle_encoder():
     """Handle rotary encoder."""
     global encoder_last_pos
@@ -1870,7 +1845,7 @@ if HAS_ENCODER:
         print(f"Encoder: Ch{ENC_CHANNEL+1} CC{CC_ENCODER} ({ENC_STEPS} slots, outputs 0-{ENC_STEPS-1})")
     else:
         print(f"Encoder: Ch{ENC_CHANNEL+1} CC{CC_ENCODER} (range {ENC_MIN}-{ENC_MAX}, init={ENC_INITIAL})")
-    print(f"Encoder Push: Ch{ENC_PUSH_CHANNEL+1} CC{CC_ENCODER_PUSH} ({ENC_PUSH_MODE})")
+    print(f"Encoder Push: {enc_push_config.get('type', 'cc')} Ch{enc_push_config.get('channel', 0)+1} ({enc_push_config.get('mode', '')}){'' if enc_push_config.get('enabled', True) else ' disabled'}")
 if HAS_EXPRESSION:
     print(f"Expression 1: Ch{EXP1_CHANNEL+1} CC{CC_EXP1}")
     print(f"Expression 2: Ch{EXP2_CHANNEL+1} CC{CC_EXP2}")
@@ -1914,7 +1889,6 @@ while True:
     flush_cc_step_updates()
     update_pc_flash_timers()
     if HAS_ENCODER:
-        handle_encoder_button()
         handle_encoder()
     if HAS_EXPRESSION:
         handle_expression()

@@ -6,6 +6,14 @@
 
 export type ButtonColor = "red" | "green" | "blue" | "yellow" | "cyan" | "magenta" | "orange" | "purple" | "white";
 /**
+ * SLOT mode: LED color per slot (index 0 = first slot). Slots without an entry use the button's color. The LED stays lit at the current slot's color.
+ */
+export type CcSlotColors = ButtonColor[];
+/**
+ * SLOT mode: display name per slot (index 0 = first slot), max 6 chars. Slots without a name display '<label> n/N' on the status line and keep the button label.
+ */
+export type CcSlotNames = string[];
+/**
  * Standard MIDI byte value (0-127).
  */
 export type MidiByte = number;
@@ -17,6 +25,10 @@ export type HidAction = "send" | "press" | "release" | "delay";
  * Modifier key held during the HID action. 'option' is macOS Alt; 'windows' is the Windows/Meta key.
  */
 export type HidModifier = "ctrl" | "shift" | "alt" | "option" | "windows";
+/**
+ * DEPRECATED on toggle/momentary/flash/select modes (firmware accepts with a deprecation warning at boot; will be removed in v3.0). Forbidden on mode='keytimes' — use short[]/long[] arrays instead.
+ */
+export type States = StateOverride[];
 /**
  * One MIDI/HID message fired from a keytimes-mode cycle entry's down or up slot. Discriminated by 'type'.
  */
@@ -98,6 +110,22 @@ export type KeytimesMessage =
  * MIDI channel. Stored as 0-15, displayed as 1-16 in UI.
  */
 export type MidiChannel = number;
+/**
+ * Extra messages sent right after the button's own message when it turns on: every press for flash/select/page/cc_inc/cc_dec buttons, the press that turns a toggle on, the press of a momentary. Same message shape as a keytimes entry's down/up; a cc_inc/cc_dec here must set its own cc. Ignored on mode='keytimes' — put messages in the cycle entries.
+ */
+export type MessagesOn = KeytimesMessage[];
+/**
+ * Extra messages sent right after the button's own message when it turns off: the press that turns a toggle off, or the release of a momentary. Not used by flash/select/page/cc_inc/cc_dec buttons, or by HID momentary (those never turn off). Same message shape as messages_on.
+ */
+export type MessagesOff = KeytimesMessage[];
+/**
+ * Short-press cycle entries. Only valid when mode='keytimes'. Each entry can fire messages on down (short_down event), up (short_up event), and carries optional color/dim/label.
+ */
+export type Short = KeytimesEntry[];
+/**
+ * Long-press cycle entries. Only valid when mode='keytimes'. Independent counter from short. Each entry can fire messages on down (long_down event, when threshold reached) and up (long_up event, on release after threshold).
+ */
+export type Long = KeytimesEntry[];
 
 /**
  * Configuration for Paint Audio MIDI Captain MAX custom firmware. This schema is the single source of truth for the config format — TypeScript types are generated from it, Rust structs are validated against it, and Python firmware uses it as reference. Note: the title field drives the generated TypeScript interface name, so keep it short and stable.
@@ -262,14 +290,8 @@ export interface ButtonConfig {
    * Starting value of the shared CC value at boot (before any press or incoming CC). Must be within cc_min..cc_max. Default: cc_min. Used when type='cc_inc' or 'cc_dec'.
    */
   cc_initial?: number;
-  /**
-   * SLOT mode: LED color per slot (index 0 = first slot). Slots without an entry use the button's color. The LED stays lit at the current slot's color.
-   */
-  cc_slot_colors?: ButtonColor[];
-  /**
-   * SLOT mode: display name per slot (index 0 = first slot), max 6 chars. Slots without a name display '<label> n/N' on the status line and keep the button label.
-   */
-  cc_slot_names?: string[];
+  cc_slot_colors?: CcSlotColors;
+  cc_slot_names?: CcSlotNames;
   /**
    * CC value sent when button is pressed (ON). Default: 127.
    */
@@ -318,26 +340,11 @@ export interface ButtonConfig {
    * DEPRECATED on toggle/momentary/flash/select modes (firmware accepts with a deprecation warning at boot; will be removed in v3.0). Forbidden on mode='keytimes' — use short[]/long[] arrays instead.
    */
   keytimes?: number;
-  /**
-   * DEPRECATED on toggle/momentary/flash/select modes (firmware accepts with a deprecation warning at boot; will be removed in v3.0). Forbidden on mode='keytimes' — use short[]/long[] arrays instead.
-   */
-  states?: StateOverride[];
-  /**
-   * Extra messages sent right after the button's own message when it turns on: every press for flash/select/page/cc_inc/cc_dec buttons, the press that turns a toggle on, the press of a momentary. Same message shape as a keytimes entry's down/up; a cc_inc/cc_dec here must set its own cc. Ignored on mode='keytimes' — put messages in the cycle entries.
-   */
-  messages_on?: KeytimesMessage[];
-  /**
-   * Extra messages sent right after the button's own message when it turns off: the press that turns a toggle off, or the release of a momentary. Not used by flash/select/page/cc_inc/cc_dec buttons, or by HID momentary (those never turn off). Same message shape as messages_on.
-   */
-  messages_off?: KeytimesMessage[];
-  /**
-   * Short-press cycle entries. Only valid when mode='keytimes'. Each entry can fire messages on down (short_down event), up (short_up event), and carries optional color/dim/label.
-   */
-  short?: KeytimesEntry[];
-  /**
-   * Long-press cycle entries. Only valid when mode='keytimes'. Independent counter from short. Each entry can fire messages on down (long_down event, when threshold reached) and up (long_up event, on release after threshold).
-   */
-  long?: KeytimesEntry[];
+  states?: States;
+  messages_on?: MessagesOn;
+  messages_off?: MessagesOff;
+  short?: Short;
+  long?: Long;
   /**
    * Standard MIDI byte value (0-127).
    */
@@ -469,49 +476,167 @@ export interface EncoderPush {
    */
   enabled: boolean;
   /**
-   * Standard MIDI byte value (0-127).
-   */
-  cc: number;
-  /**
-   * Display label. Max 8 chars.
+   * Name for the push button. Max 8 chars.
    */
   label: string;
   /**
-   * 'cc' = send cc_on/cc_off per mode. 'cc_inc'/'cc_dec' = each press steps the CC value up/down by cc_step within cc_min..cc_max (mode, cc_on and cc_off are ignored). The value is shared with any cc_inc/cc_dec button on the same channel and CC.
+   * Optional: the push has no LED. Kept for parity with ButtonConfig.
    */
-  type?: "cc" | "cc_inc" | "cc_dec";
+  color?: "red" | "green" | "blue" | "yellow" | "cyan" | "magenta" | "orange" | "purple" | "white";
   /**
-   * Button behavior. Default: 'momentary'.
+   * Same as a button's mode, except a CC push (type 'cc' or no type) defaults to 'momentary'.
    */
   mode?: "toggle" | "momentary" | "flash" | "select" | "keytimes";
   /**
-   * MIDI channel. Stored as 0-15, displayed as 1-16 in UI.
+   * MIDI message type. Determines which fields apply. Default: 'cc'.
+   */
+  type?:
+    | "cc"
+    | "note"
+    | "pc"
+    | "pc_inc"
+    | "pc_dec"
+    | "cc_inc"
+    | "cc_dec"
+    | "hid"
+    | "page_inc"
+    | "page_dec"
+    | "page_jump";
+  /**
+   * Radio-group identifier. Required when mode='select'. Pressing a select-mode button activates it and deactivates all sibling buttons sharing the same select_group. PC and CC types only.
+   */
+  select_group?: string;
+  /**
+   * Behavior when re-pressing the already-active select-group member. Default: 'resend'.
+   */
+  select_repress?: "resend" | "nothing" | "deselect";
+  /**
+   * LED behavior when button is off. Default: 'dim'.
+   */
+  off_mode?: "dim" | "off";
+  /**
+   * Distinct LED color for the off state (e.g. green when on, blue when off). Overrides off_mode: when set, the off state renders this color at full brightness instead of a dimmed/extinguished 'color'. Omit for the off_mode behavior. Ignored on mode='keytimes' buttons — their cycle entries own the LED.
+   */
+  off_color?: "red" | "green" | "blue" | "yellow" | "cyan" | "magenta" | "orange" | "purple" | "white";
+  /**
+   * Per-button MIDI channel override. Inherits global_channel if omitted.
    */
   channel?: number;
   /**
-   * Standard MIDI byte value (0-127).
+   * CC number. Used when type='cc', 'cc_inc' or 'cc_dec' (and by keytimes-mode buttons whose entries fire cc_inc/cc_dec). Default: 20 + button index.
    */
-  cc_on?: number;
+  cc?: number;
   /**
-   * Standard MIDI byte value (0-127).
-   */
-  cc_off?: number;
-  /**
-   * Only with type cc_inc/cc_dec. How much the value moves per press.
+   * STEP mode: how much the shared CC value moves per press. Used when type='cc_inc' or 'cc_dec' and cc_slots is absent. Default: 1.
    */
   cc_step?: number;
   /**
-   * Standard MIDI byte value (0-127).
+   * SLOT mode: divide cc_min..cc_max into this many equal slots; each press moves one slot and sends the value in the middle of the slot. Present = SLOT mode (cc_step is ignored). Absent = STEP mode. Used when type='cc_inc' or 'cc_dec'.
+   */
+  cc_slots?: number;
+  /**
+   * Lower bound of the shared CC value range. Used when type='cc_inc' or 'cc_dec'. Default: 0. Must be < cc_max.
    */
   cc_min?: number;
   /**
-   * Standard MIDI byte value (0-127).
+   * Upper bound of the shared CC value range. Used when type='cc_inc' or 'cc_dec'. Default: 127. Must be > cc_min.
    */
   cc_max?: number;
   /**
-   * Only with type cc_inc/cc_dec. Past a bound, wrap to the other one (true) or stay at it (false).
+   * When true (default), stepping past cc_max lands on cc_min and stepping below cc_min lands on cc_max. When false, the value clamps at the bound and that bound is sent. Used when type='cc_inc' or 'cc_dec'.
    */
   cc_wrap?: boolean;
+  /**
+   * Starting value of the shared CC value at boot (before any press or incoming CC). Must be within cc_min..cc_max. Default: cc_min. Used when type='cc_inc' or 'cc_dec'.
+   */
+  cc_initial?: number;
+  cc_slot_colors?: CcSlotColors;
+  cc_slot_names?: CcSlotNames;
+  /**
+   * CC value sent when button is pressed (ON). Default: 127.
+   */
+  cc_on?: number;
+  /**
+   * CC value sent when button is released (OFF). Default: 0.
+   */
+  cc_off?: number;
+  /**
+   * CC number this button LISTENS on, when it differs from the one it sends. Use when the host exposes a command input and a separate state output (e.g. a looper's play/stop trigger vs. its is-playing indicator): the button sends on 'cc' and takes its LED/state from this CC instead. Setting it makes the LED host-owned — local presses still send MIDI but no longer repaint the LED, so foot and host can't fight over it. Matched on the button's 'channel', against the same cc_on/cc_off values. type='cc' only; not available on cc_inc/cc_dec (their shared value is keyed by 'cc'). For mode='keytimes' use short_cc_receive / long_cc_receive.
+   */
+  cc_receive?: number;
+  /**
+   * MIDI note number. Used when type='note'. Default: 60 (Middle C).
+   */
+  note?: number;
+  /**
+   * Note velocity when pressed. Used when type='note'. Default: 127.
+   */
+  velocity_on?: number;
+  /**
+   * Note velocity when released (Note Off). Used when type='note'. Default: 0.
+   */
+  velocity_off?: number;
+  /**
+   * Program number. Used when type='pc'. Default: 0.
+   */
+  program?: number;
+  /**
+   * Step size for program change increment/decrement. Used when type='pc_inc' or 'pc_dec'.
+   */
+  pc_step?: number;
+  /**
+   * Number of pages to advance/retreat. Used when type='page_inc' or 'page_dec'. Wraps at the ends.
+   */
+  page_step?: number;
+  /**
+   * Absolute target page index (0-based). Used when type='page_jump'. Clamped to a valid page.
+   */
+  page?: number;
+  /**
+   * LED flash duration in milliseconds. Used when type is PC and mode is 'flash', and by cc_inc/cc_dec in STEP mode (the LED flashes on every press).
+   */
+  flash_ms?: number;
+  /**
+   * DEPRECATED on toggle/momentary/flash/select modes (firmware accepts with a deprecation warning at boot; will be removed in v3.0). Forbidden on mode='keytimes' — use short[]/long[] arrays instead.
+   */
+  keytimes?: number;
+  states?: States;
+  messages_on?: MessagesOn;
+  messages_off?: MessagesOff;
+  short?: Short;
+  long?: Long;
+  /**
+   * Standard MIDI byte value (0-127).
+   */
+  short_cc_receive?: number;
+  /**
+   * Standard MIDI byte value (0-127).
+   */
+  long_cc_receive?: number;
+  /**
+   * Per-button long-press threshold override in milliseconds. Only meaningful when mode='keytimes'. Falls back to top-level long_press_threshold_ms (default 500).
+   */
+  long_press_threshold_ms?: number;
+  /**
+   * Only meaningful when mode='keytimes'. When true, the long-press color is used instead of the short-press color; short presses still send their messages as expected (a short 'off' step still turns the LED off). Default false: last-press-wins, so the LED color follows whichever timing class fired most recently (matches the label rule, #157).
+   */
+  long_overlay?: boolean;
+  /**
+   * 'send' = press+release, 'press' = hold key, 'release' = release key(s), 'delay' = pause execution.
+   */
+  hid_action?: "send" | "press" | "release" | "delay";
+  /**
+   * Key name for HID action. Used when type='hid'. Valid values: A-Z, 0-9, F1-F12, Mouse_L, Mouse_R, Space, Esc, Caps, Right, Left, Up, Down, End, Del, PageUp, PageDown, Enter, Pause, Table, BackSpace, Home, Ins, PrintS, all (for release-all).
+   */
+  hid_key?: string;
+  /**
+   * Modifier key held during the HID action. 'option' is macOS Alt; 'windows' is the Windows/Meta key.
+   */
+  hid_modifier?: "ctrl" | "shift" | "alt" | "option" | "windows";
+  /**
+   * Delay duration in milliseconds. Used when type='hid' and hid_action='delay'.
+   */
+  hid_delay_ms?: number;
 }
 /**
  * Per-page expression pedal configurations. Only supported on STD10.

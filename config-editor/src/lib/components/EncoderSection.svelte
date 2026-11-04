@@ -1,8 +1,8 @@
 <script lang="ts">
   import Accordion from './Accordion.svelte';
+  import ButtonRow from './ButtonRow.svelte';
   import { config, currentPage, updateField } from '$lib/formStore';
   import { validationErrors } from '$lib/formStore';
-  import { MESSAGE_TYPE_LABELS } from '$lib/types';
 
   let deviceType = $derived($config.device);
   let encoder = $derived($currentPage.encoder);
@@ -46,38 +46,7 @@
     encoder?.channel !== undefined ? encoder.channel + 1 : globalChannel + 1
   );
   
-  let displayPushChannel = $derived(
-    encoder?.push?.channel !== undefined ? encoder.push.channel + 1 : undefined
-  );
-  let effectivePushChannel = $derived(
-    encoder?.push?.channel !== undefined ? encoder.push.channel + 1 : globalChannel + 1
-  );
-  
   let ccError = $derived($validationErrors.get('encoder.cc'));
-  let pushCCError = $derived($validationErrors.get('encoder.push.cc'));
-  let pushStepError = $derived($validationErrors.get('encoder.push.cc_step'));
-  let pushMinError = $derived($validationErrors.get('encoder.push.cc_min'));
-  let pushMaxError = $derived($validationErrors.get('encoder.push.cc_max'));
-
-  // CC+/CC- push: each press steps the CC value; ON/OFF values don't apply.
-  let pushIsCcStep = $derived(encoder?.push?.type === 'cc_inc' || encoder?.push?.type === 'cc_dec');
-
-  // One Mode dropdown for the user; CC+/CC- are stored as `type` (like a CC+/CC- button),
-  // toggle/momentary as `mode` with the default `type: "cc"` left unset.
-  function handlePushMode(e: Event) {
-    const value = (e.target as HTMLSelectElement).value;
-    if (value === 'cc_inc' || value === 'cc_dec') {
-      updateField('encoder.push.type', value);
-    } else {
-      updateField('encoder.push.type', undefined);
-      updateField('encoder.push.mode', value);
-    }
-  }
-
-  function handlePushWrap(e: Event) {
-    // Default is true; only persist the non-default.
-    updateField('encoder.push.cc_wrap', (e.target as HTMLInputElement).checked ? undefined : false);
-  }
 </script>
 
 <Accordion 
@@ -199,161 +168,19 @@
         </div>
         
         {#if encoder.push?.enabled}
-          <div class="field-row">
-            <label for="encoder-push-label">Label:</label>
-            <input
-              id="encoder-push-label"
-              type="text"
-              value={encoder.push.label}
-              onblur={(e) => handleField('push.label', e)}
-              maxlength="6"
-              disabled={isDisabled}
-            />
-          </div>
-          <div class="field-row">
-            <label for="encoder-push-channel">Channel:</label>
-            <input
-              id="encoder-push-channel"
-              type="number"
-              value={displayPushChannel !== undefined ? displayPushChannel : ''}
-              onblur={(e) => handleChannelChange('push.channel', e)}
-              min="1"
-              max="16"
-              placeholder={effectivePushChannel.toString()}
-              title={encoder.push.channel !== undefined ? `MIDI Ch ${effectivePushChannel}` : `Using global: ${effectivePushChannel}`}
-              disabled={isDisabled}
-            />
-          </div>
-
-          <div class="field-row">
-            <label for="encoder-push-cc">CC:</label>
-            <input
-              id="encoder-push-cc"
-              type="number"
-              class:error={!!pushCCError}
-              value={encoder.push.cc}
-              onblur={(e) => handleField('push.cc', e)}
-              min="0"
-              max="127"
-              disabled={isDisabled}
-            />
-            {#if pushCCError}
-              <span class="error-text">{pushCCError}</span>
-            {/if}
-          </div>
-
-          <div class="field-row">
-            <label for="encoder-push-mode">Mode:</label>
-            <select
-              id="encoder-push-mode"
-              value={pushIsCcStep ? encoder.push.type : (encoder.push.mode || 'momentary')}
-              onchange={handlePushMode}
-              disabled={isDisabled}
-              title="CC+/CC-: each press steps the CC value up/down. The value is shared with any CC+/CC- button on the same CC and channel."
-            >
-              <option value="toggle">Toggle</option>
-              <option value="momentary">Momentary</option>
-              <option value="cc_inc">{MESSAGE_TYPE_LABELS.cc_inc}</option>
-              <option value="cc_dec">{MESSAGE_TYPE_LABELS.cc_dec}</option>
-            </select>
-          </div>
-
-          {#if pushIsCcStep}
-          <div class="field-row">
-            <label for="encoder-push-cc-step">Step:</label>
-            <input
-              id="encoder-push-cc-step"
-              type="number"
-              class:error={!!pushStepError}
-              value={encoder.push.cc_step ?? ''}
-              onblur={(e) => handleField('push.cc_step', e)}
-              min="1"
-              max="127"
-              placeholder="1"
-              disabled={isDisabled}
-            />
-            {#if pushStepError}
-              <span class="error-text">{pushStepError}</span>
-            {/if}
-          </div>
-
-          <div class="field-row">
-            <label for="encoder-push-cc-min">Min:</label>
-            <input
-              id="encoder-push-cc-min"
-              type="number"
-              class:error={!!pushMinError}
-              value={encoder.push.cc_min ?? ''}
-              onblur={(e) => handleField('push.cc_min', e)}
-              min="0"
-              max="127"
-              placeholder="0"
-              title="Lower bound, and the starting value."
-              disabled={isDisabled}
-            />
-            {#if pushMinError}
-              <span class="error-text">{pushMinError}</span>
-            {/if}
-          </div>
-
-          <div class="field-row">
-            <label for="encoder-push-cc-max">Max:</label>
-            <input
-              id="encoder-push-cc-max"
-              type="number"
-              class:error={!!pushMaxError}
-              value={encoder.push.cc_max ?? ''}
-              onblur={(e) => handleField('push.cc_max', e)}
-              min="0"
-              max="127"
-              placeholder="127"
-              disabled={isDisabled}
-            />
-            {#if pushMaxError}
-              <span class="error-text">{pushMaxError}</span>
-            {/if}
-          </div>
-
-          <div class="field-row">
-            <label>
-              <input
-                type="checkbox"
-                checked={encoder.push.cc_wrap ?? true}
-                onchange={handlePushWrap}
-                disabled={isDisabled}
-              />
-              Wrap
-            </label>
-          </div>
-          {:else}
-          <div class="field-row">
-            <label for="encoder-push-cc-on">ON Value:</label>
-            <input
-              id="encoder-push-cc-on"
-              type="number"
-              value={encoder.push.cc_on !== undefined ? encoder.push.cc_on : ''}
-              onblur={(e) => handleField('push.cc_on', e)}
-              min="0"
-              max="127"
-              placeholder="127"
-              disabled={isDisabled}
-            />
-          </div>
-
-          <div class="field-row">
-            <label for="encoder-push-cc-off">OFF Value:</label>
-            <input
-              id="encoder-push-cc-off"
-              type="number"
-              value={encoder.push.cc_off !== undefined ? encoder.push.cc_off : ''}
-              onblur={(e) => handleField('push.cc_off', e)}
-              min="0"
-              max="127"
-              placeholder="0"
-              disabled={isDisabled}
-            />
-          </div>
-          {/if}
+          <!-- The push is a footswitch without an LED (legacy default CC 14, CC defaults to momentary). -->
+          <ButtonRow
+            button={encoder.push}
+            buttonPath="encoder.push"
+            displayName="Push"
+            defaultCc={14}
+            disabled={isDisabled}
+            {globalChannel}
+            hasLed={false}
+            labelMaxLength={8}
+            ccDefaultMode="momentary"
+            onUpdate={(field, value) => updateField(`encoder.push.${field}`, value)}
+          />
         {/if}
       {/if}
     </div>
@@ -380,8 +207,7 @@
   }
   
   .field-row input[type="text"],
-  .field-row input[type="number"],
-  .field-row select {
+  .field-row input[type="number"] {
     padding: 0.375rem 0.5rem;
     border: 1px solid #ccc;
     border-radius: 4px;

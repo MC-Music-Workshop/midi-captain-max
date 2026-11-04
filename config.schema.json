@@ -574,50 +574,53 @@
     },
     "EncoderPush": {
       "type": "object",
-      "required": ["enabled", "cc", "label"],
+      "required": ["enabled", "label"],
+      "description": "Encoder push button: works exactly like a footswitch (every ButtonConfig field: type, mode, messages_on/off, keytimes, select, ...) except it has no LED. Fields reference ButtonConfig so each is defined once.",
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable/disable encoder push button."
-        },
-        "cc": {
-          "$ref": "#/definitions/MidiByte",
-          "default": 14,
-          "description": "CC number for push button."
-        },
-        "label": {
-          "type": "string",
-          "maxLength": 8,
-          "default": "PUSH",
-          "description": "Display label. Max 8 chars."
-        },
-        "type": {
-          "type": "string",
-          "enum": ["cc", "cc_inc", "cc_dec"],
-          "default": "cc",
-          "description": "'cc' = send cc_on/cc_off per mode. 'cc_inc'/'cc_dec' = each press steps the CC value up/down by cc_step within cc_min..cc_max (mode, cc_on and cc_off are ignored). The value is shared with any cc_inc/cc_dec button on the same channel and CC."
-        },
-        "mode": {
-          "$ref": "#/definitions/ButtonMode",
-          "description": "Button behavior. Default: 'momentary'."
-        },
-        "channel": {
-          "$ref": "#/definitions/MidiChannel",
-          "description": "Per-push MIDI channel override. Inherits encoder channel or global_channel if omitted."
-        },
-        "cc_on": {
-          "$ref": "#/definitions/MidiByte",
-          "description": "CC value when button ON. Default: 127."
-        },
-        "cc_off": {
-          "$ref": "#/definitions/MidiByte",
-          "description": "CC value when button OFF. Default: 0."
-        },
-        "cc_step": { "type": "integer", "minimum": 1, "maximum": 127, "default": 1, "description": "Only with type cc_inc/cc_dec. How much the value moves per press." },
-        "cc_min": { "$ref": "#/definitions/MidiByte", "default": 0, "description": "Only with type cc_inc/cc_dec. Lower bound, and the starting value. Must be < cc_max." },
-        "cc_max": { "$ref": "#/definitions/MidiByte", "default": 127, "description": "Only with type cc_inc/cc_dec. Upper bound. Must be > cc_min." },
-        "cc_wrap": { "type": "boolean", "default": true, "description": "Only with type cc_inc/cc_dec. Past a bound, wrap to the other one (true) or stay at it (false)." }
+        "enabled": { "type": "boolean", "default": true, "description": "Enable/disable encoder push button." },
+        "label": { "type": "string", "maxLength": 8, "default": "PUSH", "description": "Name for the push button. Max 8 chars." },
+        "color": { "$ref": "#/definitions/ButtonColor", "description": "Optional: the push has no LED. Kept for parity with ButtonConfig." },
+        "mode": { "$ref": "#/definitions/ButtonMode", "description": "Same as a button's mode, except a CC push (type 'cc' or no type) defaults to 'momentary'." },
+        "type": { "$ref": "#/definitions/ButtonConfig/properties/type" },
+        "select_group": { "$ref": "#/definitions/ButtonConfig/properties/select_group" },
+        "select_repress": { "$ref": "#/definitions/ButtonConfig/properties/select_repress" },
+        "off_mode": { "$ref": "#/definitions/ButtonConfig/properties/off_mode" },
+        "off_color": { "$ref": "#/definitions/ButtonConfig/properties/off_color" },
+        "channel": { "$ref": "#/definitions/ButtonConfig/properties/channel" },
+        "cc": { "$ref": "#/definitions/ButtonConfig/properties/cc" },
+        "cc_step": { "$ref": "#/definitions/ButtonConfig/properties/cc_step" },
+        "cc_slots": { "$ref": "#/definitions/ButtonConfig/properties/cc_slots" },
+        "cc_min": { "$ref": "#/definitions/ButtonConfig/properties/cc_min" },
+        "cc_max": { "$ref": "#/definitions/ButtonConfig/properties/cc_max" },
+        "cc_wrap": { "$ref": "#/definitions/ButtonConfig/properties/cc_wrap" },
+        "cc_initial": { "$ref": "#/definitions/ButtonConfig/properties/cc_initial" },
+        "cc_slot_colors": { "$ref": "#/definitions/ButtonConfig/properties/cc_slot_colors" },
+        "cc_slot_names": { "$ref": "#/definitions/ButtonConfig/properties/cc_slot_names" },
+        "cc_on": { "$ref": "#/definitions/ButtonConfig/properties/cc_on" },
+        "cc_off": { "$ref": "#/definitions/ButtonConfig/properties/cc_off" },
+        "cc_receive": { "$ref": "#/definitions/ButtonConfig/properties/cc_receive" },
+        "note": { "$ref": "#/definitions/ButtonConfig/properties/note" },
+        "velocity_on": { "$ref": "#/definitions/ButtonConfig/properties/velocity_on" },
+        "velocity_off": { "$ref": "#/definitions/ButtonConfig/properties/velocity_off" },
+        "program": { "$ref": "#/definitions/ButtonConfig/properties/program" },
+        "pc_step": { "$ref": "#/definitions/ButtonConfig/properties/pc_step" },
+        "page_step": { "$ref": "#/definitions/ButtonConfig/properties/page_step" },
+        "page": { "$ref": "#/definitions/ButtonConfig/properties/page" },
+        "flash_ms": { "$ref": "#/definitions/ButtonConfig/properties/flash_ms" },
+        "keytimes": { "$ref": "#/definitions/ButtonConfig/properties/keytimes" },
+        "states": { "$ref": "#/definitions/ButtonConfig/properties/states" },
+        "messages_on": { "$ref": "#/definitions/ButtonConfig/properties/messages_on" },
+        "messages_off": { "$ref": "#/definitions/ButtonConfig/properties/messages_off" },
+        "short": { "$ref": "#/definitions/ButtonConfig/properties/short" },
+        "long": { "$ref": "#/definitions/ButtonConfig/properties/long" },
+        "short_cc_receive": { "$ref": "#/definitions/ButtonConfig/properties/short_cc_receive" },
+        "long_cc_receive": { "$ref": "#/definitions/ButtonConfig/properties/long_cc_receive" },
+        "long_press_threshold_ms": { "$ref": "#/definitions/ButtonConfig/properties/long_press_threshold_ms" },
+        "long_overlay": { "$ref": "#/definitions/ButtonConfig/properties/long_overlay" },
+        "hid_action": { "$ref": "#/definitions/ButtonConfig/properties/hid_action" },
+        "hid_key": { "$ref": "#/definitions/ButtonConfig/properties/hid_key" },
+        "hid_modifier": { "$ref": "#/definitions/ButtonConfig/properties/hid_modifier" },
+        "hid_delay_ms": { "$ref": "#/definitions/ButtonConfig/properties/hid_delay_ms" }
       },
       "additionalProperties": false
     },

@@ -183,7 +183,6 @@ while True:
     flush_cc_step_updates()  # deferred LED/status repaints for cc_inc/cc_dec (#11)
     update_pc_flash_timers()
     if HAS_ENCODER:
-        handle_encoder_button()
         handle_encoder()
     if HAS_EXPRESSION:
         handle_expression()
@@ -192,6 +191,10 @@ while True:
 No sleep — runs as fast as possible. Timing-sensitive code must use `time.monotonic()`.
 
 **Keep `label.text =` off deep call chains (pystack).** CircuitPython's Python stack is small, and setting a displayio label's text can descend ~6 more frames into `adafruit_display_text` → `adafruit_bitmap_font/pcf.py::load_glyphs` when the text contains a glyph not yet cached. Doing that from the bottom of the keytimes dispatch chain (`handle_switches` → `dispatch_keytimes_events` → lambda → `_dispatch_message` → handler → repaint → `set_button_state`) raised `RuntimeError: pystack exhausted` on a real STD10 — on the *second* press, once a slot name needed a letter the button label hadn't already loaded (#11). Pattern: handlers send MIDI inline but queue display/LED work (`pending_cc_step_updates`, drained by `flush_cc_step_updates()` in the main loop), so the repaint starts from the same shallow depth as `update_pc_flash_timers()`. Same shape as the deferred `pending_page_target` switch.
+
+### STD10 Encoder Push = Logical Button `BUTTON_COUNT + 1`
+
+The encoder push is a full button with no LED: `encoder.push` takes every `ButtonConfig` field (schema refs them) plus `enabled`. `validate_encoder_push()` (`core/config.py`) runs it through `validate_button`, keeping only the legacy push defaults (CC 14, label `PUSH` up to 8 chars, a CC push without `mode` is `momentary`). `switch_page()` appends it to `buttons[]` at index `BUTTON_COUNT` when enabled, and `handle_switches()` maps switch 0 to `btn_num = BUTTON_COUNT + 1`, so press dispatch, `messages_on`/`messages_off`, keytimes, select groups, CC+/CC- shared values and MIDI RX sync all treat it like a footswitch. `set_button_state()` and `_render_keytimes_led()` already return for `idx >= BUTTON_COUNT`, which is what makes it LED-less (a future virtual on-screen LED would hook in there). Per-button arrays (`button_states`, `keytimes_states`, flash timers) are sized to `len(buttons)` / `BUTTON_SLOTS`, not `BUTTON_COUNT`. `boot.py`'s HID scan includes the push.
 
 ### MIDI Output Pattern
 

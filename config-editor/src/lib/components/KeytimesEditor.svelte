@@ -1,6 +1,6 @@
 <script lang="ts">
   import MessageList from './MessageList.svelte';
-  import type { ButtonConfig, KeytimesEntry, CycleEntryColor } from '$lib/types';
+  import type { ButtonLike, KeytimesEntry, CycleEntryColor } from '$lib/types';
   import { BUTTON_COLORS } from '$lib/types';
   import {
     addKeytimesEntry,
@@ -10,12 +10,13 @@
   } from '$lib/formStore';
 
   interface Props {
-    button: ButtonConfig;
-    index: number;
+    button: ButtonLike;
+    // Page-relative path: "buttons[3]" or "encoder.push".
+    buttonPath: string;
     globalChannel: number;
   }
 
-  let { button, index, globalChannel }: Props = $props();
+  let { button, buttonPath, globalChannel }: Props = $props();
 
   // Color palette for cycle entries: standard button colors plus "off".
   const CYCLE_COLORS: CycleEntryColor[] = [
@@ -24,32 +25,32 @@
 
   // Per-entry color picker: shows current value, swatch, and clear-to-inherit option.
   function setEntryColor(cycle: 'short' | 'long', entryIndex: number, color: CycleEntryColor | undefined) {
-    updateField(`buttons[${index}].${cycle}[${entryIndex}].color`, color);
+    updateField(`${buttonPath}.${cycle}[${entryIndex}].color`, color);
   }
 
   function setEntryDim(cycle: 'short' | 'long', entryIndex: number, dim: boolean) {
-    updateField(`buttons[${index}].${cycle}[${entryIndex}].dim`, dim ? true : undefined);
+    updateField(`${buttonPath}.${cycle}[${entryIndex}].dim`, dim ? true : undefined);
   }
 
   function setEntryLabel(cycle: 'short' | 'long', entryIndex: number, label: string) {
-    updateField(`buttons[${index}].${cycle}[${entryIndex}].label`, label === '' ? undefined : label);
+    updateField(`${buttonPath}.${cycle}[${entryIndex}].label`, label === '' ? undefined : label);
   }
 
   function handleThresholdChange(e: Event) {
     const target = e.target as HTMLInputElement;
     if (target.value === '') {
-      updateField(`buttons[${index}].long_press_threshold_ms`, undefined);
+      updateField(`${buttonPath}.long_press_threshold_ms`, undefined);
     } else {
-      updateField(`buttons[${index}].long_press_threshold_ms`, parseInt(target.value));
+      updateField(`${buttonPath}.long_press_threshold_ms`, parseInt(target.value));
     }
   }
 
   function handleLongOverlayChange(e: Event) {
     const target = e.target as HTMLInputElement;
-    updateField(`buttons[${index}].long_overlay`, target.checked ? true : undefined);
+    updateField(`${buttonPath}.long_overlay`, target.checked ? true : undefined);
   }
 
-  let thresholdError = $derived($validationErrors.get(`buttons[${index}].long_press_threshold_ms`));
+  let thresholdError = $derived($validationErrors.get(`${buttonPath}.long_press_threshold_ms`));
 
   // Host sync (#200): a cycle's Listen CC plus each entry's Receive value let the
   // host move the cycle. Blank means "not set".
@@ -59,11 +60,11 @@
   }
 
   function setListenCc(cycle: 'short' | 'long', e: Event) {
-    updateField(`buttons[${index}].${cycle}_cc_receive`, optionalByte(e));
+    updateField(`${buttonPath}.${cycle}_cc_receive`, optionalByte(e));
   }
 
   function setEntryRxValue(cycle: 'short' | 'long', entryIndex: number, e: Event) {
-    updateField(`buttons[${index}].${cycle}[${entryIndex}].rx_value`, optionalByte(e));
+    updateField(`${buttonPath}.${cycle}[${entryIndex}].rx_value`, optionalByte(e));
   }
 
   // 1-based number of an earlier entry in the cycle with the same receive value,
@@ -105,7 +106,7 @@
   {#each ['short', 'long'] as cycle (cycle)}
     {@const entries = (cycle === 'short' ? button.short : button.long) ?? []}
     {@const listenCc = cycle === 'short' ? button.short_cc_receive : button.long_cc_receive}
-    {@const listenError = $validationErrors.get(`buttons[${index}].${cycle}_cc_receive`)}
+    {@const listenError = $validationErrors.get(`${buttonPath}.${cycle}_cc_receive`)}
     <section class="kt-cycle">
       <header class="kt-cycle-header">
         <h4>{cycle === 'short' ? 'Short Press Cycle' : 'Long Press Cycle'}</h4>
@@ -128,7 +129,7 @@
             Cycles on every long hold. <code>long_down</code> fires when threshold elapses; <code>long_up</code> fires on release after threshold.
           {/if}
         </span>
-        <button type="button" class="kt-add" onclick={() => addKeytimesEntry(index, cycle as 'short' | 'long')}>
+        <button type="button" class="kt-add" onclick={() => addKeytimesEntry(buttonPath, cycle as 'short' | 'long')}>
           + Add entry
         </button>
       </header>
@@ -170,7 +171,7 @@
                      oninput={(e) => setEntryLabel(cycle as 'short' | 'long', ei, (e.target as HTMLInputElement).value)} />
             </label>
             {#if listenCc !== undefined}
-              {@const rxError = $validationErrors.get(`buttons[${index}].${cycle}[${ei}].rx_value`)}
+              {@const rxError = $validationErrors.get(`${buttonPath}.${cycle}[${ei}].rx_value`)}
               {@const dupOf = duplicateOf(entries, ei)}
               <label class="inline"
                      title="Value the host sends on this cycle's Listen CC to select this entry. Leave empty if the host never selects it.">
@@ -188,7 +189,7 @@
               {/if}
             {/if}
             <button type="button" class="kt-remove-entry"
-                    onclick={() => removeKeytimesEntry(index, cycle as 'short' | 'long', ei)}
+                    onclick={() => removeKeytimesEntry(buttonPath, cycle as 'short' | 'long', ei)}
                     title="Remove this entry">
               Remove entry
             </button>
@@ -196,7 +197,7 @@
 
           {#each ['down', 'up'] as slot (slot)}
             <MessageList
-              buttonIndex={index}
+              {buttonPath}
               listPath={`${cycle}[${ei}].${slot}`}
               label={`${cycle}_${slot}:`}
               mono

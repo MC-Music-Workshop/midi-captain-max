@@ -3,21 +3,31 @@
   import KeytimesEditor from './KeytimesEditor.svelte';
   import CcStepFields from './CcStepFields.svelte';
   import MessageList from './MessageList.svelte';
-  import type { ButtonConfig, ButtonColor, ButtonMode, OffMode, MessageType } from '$lib/types';
+  import type { ButtonLike, ButtonColor, ButtonMode, OffMode, MessageType } from '$lib/types';
   import { MESSAGE_TYPE_LABELS, BUTTON_MODE_LABELS, BUTTON_COLORS } from '$lib/types';
   import { validationErrors, syncButtonStates, selectGroupNames, config } from '$lib/formStore';
   import { keytimesUsesCcStep, buttonTurnsOff } from '$lib/validation';
 
   interface Props {
-    button: ButtonConfig;
-    index: number;
-    displayName?: string;
+    button: ButtonLike;
+    // Page-relative config path: "buttons[3]" for a footswitch, "encoder.push" for
+    // the STD10 encoder push. Prefixes error lookups and the structural helpers.
+    buttonPath: string;
+    displayName: string;
+    // CC number the firmware uses when `cc` is unset (CC+/CC- placeholder).
+    defaultCc: number;
     disabled?: boolean;
     globalChannel?: number;
+    // false for the encoder push: hides LED Color, LED Off/Start Mode and LED Off Color.
+    hasLed?: boolean;
+    labelMaxLength?: number;
+    // Mode a CC button with no `mode` behaves as (the encoder push: momentary).
+    ccDefaultMode?: ButtonMode;
     onUpdate: (field: string, value: any) => void;
   }
 
-  let { button, index, displayName, disabled = false, globalChannel = 0, onUpdate }: Props = $props();
+  let { button, buttonPath, displayName, defaultCc, disabled = false, globalChannel = 0,
+        hasLed = true, labelMaxLength = 6, ccDefaultMode = 'toggle', onUpdate }: Props = $props();
 
   // Off-state palette: the button colors. "off" isn't offered — LED Off Mode
   // already covers an extinguished LED, and off_color overrides it when set.
@@ -25,8 +35,9 @@
     'red', 'green', 'blue', 'yellow', 'cyan', 'magenta', 'orange', 'purple', 'white',
   ];
 
-  let basePath = $derived(`buttons[${index}]`);
-  let idPrefix = $derived(`btn-${index}`);
+  let basePath = $derived(buttonPath);
+  // Footswitches keep their btn-<n> ids; other paths become e.g. "encoder-push".
+  let idPrefix = $derived(buttonPath.replace(/^buttons\[(\d+)\]$/, 'btn-$1').replace(/\W+/g, '-'));
   const fieldId = (field: string) => `${idPrefix}-${field}`;
   const stateFieldId = (si: number, field: string) => `${idPrefix}-state-${si}-${field}`;
 
@@ -62,12 +73,15 @@
   let canSelectMode = $derived(isPC || isCC);
   let isSelectMode = $derived(button.mode === 'select');
   let isKeytimesMode = $derived(button.mode === 'keytimes');
+  // What the firmware does with no `mode`: PC and CC+/CC- flash, CC uses
+  // ccDefaultMode, everything else toggles.
+  let effectiveMode = $derived(button.mode || (isPCType || isCCStep ? 'flash' : isCC ? ccDefaultMode : 'toggle'));
   // Extra messages (messages_on/messages_off): when each list fires, in the
   // words of the button's mode. Off only exists where the button turns off.
   let turnsOff = $derived(buttonTurnsOff(button));
   let extraWhen = $derived.by(() => {
     if (isSelectMode) return { on: 'when selected', off: 'when deselected' };
-    if (turnsOff && button.mode === 'momentary') return { on: 'on press', off: 'on release' };
+    if (turnsOff && effectiveMode === 'momentary') return { on: 'on press', off: 'on release' };
     if (turnsOff) return { on: 'when turned on', off: 'when turned off' };
     return { on: 'on press', off: '' };
   });
@@ -254,7 +268,7 @@
   function handleKeytimesChange(e: Event) {
     const target = e.target as HTMLInputElement;
     const value = target.value === '' ? 1 : Math.min(99, Math.max(1, parseInt(target.value) || 1));
-    syncButtonStates(index, value);
+    syncButtonStates(buttonPath, value);
   }
 
   function handleStateFieldChange(si: number, field: string, e: Event) {
@@ -303,7 +317,7 @@
 </script>
 
 <div class="button-row" class:disabled>
-  <span class="button-num">{displayName ?? `Button ${index + 1}`}:</span>
+  <span class="button-num">{displayName}:</span>
 
   <div class="field">
     <label class="visually-hidden" for={fieldId('label')}>Label</label>
@@ -315,7 +329,7 @@
       value={button.label}
       onblur={handleLabelChange}
       disabled={disabled}
-      maxlength="6"
+      maxlength={labelMaxLength}
       placeholder="Label"
     />
     {#if labelError}
@@ -433,7 +447,7 @@
       {#if pcStepError}<span class="error-text">{pcStepError}</span>{/if}
     </div>
   {:else if isCCStep}
-    <CcStepFields button={button} index={index} disabled={disabled} onUpdate={onUpdate} />
+    <CcStepFields {button} {buttonPath} {idPrefix} {defaultCc} {disabled} {onUpdate} />
   {:else if isPageIncDec}
     <div class="field">
       <label class="field-label" for={fieldId('page-step')}>Step:</label>
@@ -539,17 +553,19 @@
   {/if}
   {/if}<!-- /!isKeytimesMode -->
 
-  <div class="field">
-    <span class="field-label">LED Color:</span>
-    <ColorSelect
-      value={button.color}
-      onchange={handleColorChange}
-    />
-  </div>
+  {#if hasLed}
+    <div class="field">
+      <span class="field-label">LED Color:</span>
+      <ColorSelect
+        value={button.color ?? 'white'}
+        onchange={handleColorChange}
+      />
+    </div>
+  {/if}
 
   <div class="field">
     <label class="field-label" for={fieldId('mode')}>Mode:</label>
-    <select id={fieldId('mode')} class="select" value={button.mode || (isPCType || isCCStep ? 'flash' : 'toggle')} onchange={handleModeChange} disabled={disabled}>
+    <select id={fieldId('mode')} class="select" value={effectiveMode} onchange={handleModeChange} disabled={disabled}>
       {#if isPageType}
         <!-- Page triggers ignore toggle/momentary/flash; offer only single-press vs gesture. -->
         <option value="toggle">Single press</option>
@@ -611,39 +627,41 @@
     </div>
   {/if}
 
-  <div class="field">
-    <label class="field-label" for={fieldId('off-mode')}>
-      {isKeytimesMode ? 'LED Start Mode' : 'LED Off Mode'}:
-    </label>
-    <select id={fieldId('off-mode')} class="select" value={button.off_mode || 'dim'} onchange={handleOffModeChange} disabled={disabled}
-            title={isKeytimesMode
-              ? 'LED state at boot, before any cycle entry has rendered. After the first press, the cycle entry takes over.'
-              : 'LED state when the button is in its off/idle state.'}>
-      <option value="dim">Dim</option>
-      <option value="off">Off</option>
-    </select>
-  </div>
-
-  {#if !isKeytimesMode}
+  {#if hasLed}
     <div class="field">
-      <label class="field-label" for={fieldId('off-color')}>LED Off Color:</label>
-      <select id={fieldId('off-color')} class="select" value={button.off_color ?? ''} onchange={handleOffColorChange} disabled={disabled}
-              title="A distinct color for the off state (e.g. green when playing, blue when stopped). Overrides LED Off Mode when set.">
-        <option value="">(use Off Mode)</option>
-        {#each OFF_COLORS as c}
-          <option value={c}>{c}</option>
-        {/each}
+      <label class="field-label" for={fieldId('off-mode')}>
+        {isKeytimesMode ? 'LED Start Mode' : 'LED Off Mode'}:
+      </label>
+      <select id={fieldId('off-mode')} class="select" value={button.off_mode || 'dim'} onchange={handleOffModeChange} disabled={disabled}
+              title={isKeytimesMode
+                ? 'LED state at boot, before any cycle entry has rendered. After the first press, the cycle entry takes over.'
+                : 'LED state when the button is in its off/idle state.'}>
+        <option value="dim">Dim</option>
+        <option value="off">Off</option>
       </select>
-      {#if button.off_color}
-        <span class="color-swatch" style="background: {BUTTON_COLORS[button.off_color]}"></span>
-      {/if}
     </div>
+
+    {#if !isKeytimesMode}
+      <div class="field">
+        <label class="field-label" for={fieldId('off-color')}>LED Off Color:</label>
+        <select id={fieldId('off-color')} class="select" value={button.off_color ?? ''} onchange={handleOffColorChange} disabled={disabled}
+                title="A distinct color for the off state (e.g. green when playing, blue when stopped). Overrides LED Off Mode when set.">
+          <option value="">(use Off Mode)</option>
+          {#each OFF_COLORS as c}
+            <option value={c}>{c}</option>
+          {/each}
+        </select>
+        {#if button.off_color}
+          <span class="color-swatch" style="background: {BUTTON_COLORS[button.off_color]}"></span>
+        {/if}
+      </div>
+    {/if}
   {/if}
 
   {#if !isKeytimesMode && !disabled}
     <div class="extra-messages">
       <MessageList
-        buttonIndex={index}
+        {buttonPath}
         listPath="messages_on"
         label={`Also send ${extraWhen.on}:`}
         messages={button.messages_on ?? []}
@@ -654,7 +672,7 @@
       />
       {#if turnsOff}
         <MessageList
-          buttonIndex={index}
+          {buttonPath}
           listPath="messages_off"
           label={`Also send ${extraWhen.off}:`}
           messages={button.messages_off ?? []}
@@ -671,12 +689,12 @@
     <!-- CC+/CC- entries are direction-only; these shared fields drive all of them (#11). -->
     <div class="cc-step-shared">
       <span class="cc-step-shared-label" title="Used by every CC+/CC- entry in the short and long cycles. In Slots mode the slot color and name own the LED and label for every press length.">Shared CC settings for CC+/CC- entries:</span>
-      <CcStepFields button={button} index={index} disabled={disabled} onUpdate={onUpdate} />
+      <CcStepFields {button} {buttonPath} {idPrefix} {defaultCc} {disabled} {onUpdate} />
     </div>
   {/if}
 
   {#if isKeytimesMode && !disabled}
-    <KeytimesEditor button={button} index={index} globalChannel={globalChannel} />
+    <KeytimesEditor {button} {buttonPath} {globalChannel} />
   {/if}
 
   {#if hasKeytimes && !isKeytimesMode}
@@ -811,7 +829,7 @@
           <div class="field">
             <span class="field-label">Color:</span>
             <ColorSelect
-              value={state.color ?? button.color}
+              value={state.color ?? button.color ?? 'white'}
               onchange={(color) => handleStateColorChange(si, color)}
             />
           </div>

@@ -27,8 +27,9 @@
       {@const isDisabled = (deviceType === 'one1' && index >= 1) || (deviceType === 'duo2' && index >= 2) || (deviceType === 'nano4' && index >= 4) || (deviceType === 'mini6' && index >= 6)}
       <ButtonRow
         {button}
-        {index}
-        displayName={buttonNames?.[index]}
+        buttonPath={`buttons[${index}]`}
+        displayName={buttonNames?.[index] ?? `Button ${index + 1}`}
+        defaultCc={20 + index}
         disabled={isDisabled}
         globalChannel={globalChannel}
         onUpdate={(field, value) => handleButtonUpdate(index, field, value)}

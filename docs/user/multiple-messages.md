@@ -21,15 +21,10 @@ HID buttons in momentary mode only flash, so they get just the press list.
 
 ## Example
 
-A toggle that switches an amp channel and the matching delay preset together:
+A toggle on CC 20 that switches an amp channel and the matching delay preset together:
 
-```json
-{
-  "label": "LEAD", "color": "red", "cc": 20,
-  "messages_on":  [{ "type": "pc", "program": 12 }, { "type": "cc", "cc": 30, "value": 127, "channel": 1 }],
-  "messages_off": [{ "type": "pc", "program": 4 },  { "type": "cc", "cc": 30, "value": 0, "channel": 1 }]
-}
-```
+- **Also send when turned on:** PC Fixed with program 12, then CC 30 with value 127 on channel 2
+- **Also send when turned off:** PC Fixed with program 4, then CC 30 with value 0 on channel 2
 
 Turning it on sends CC20=127, then PC12, then CC30=127 on channel 2. Turning it off sends CC20=0, PC4, CC30=0.
 

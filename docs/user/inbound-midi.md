@@ -83,8 +83,8 @@ Don't put a plain CC button on the same CC and channel: the CC+ / CC- button cla
 
 Keytimes buttons ignore inbound MIDI unless they carry CC+ / CC- settings (then they behave like this) or a listen CC:
 
-- **Listen CC** on a cycle (`short_cc_receive` / `long_cc_receive` in `config.json`): the CC that cycle listens on, on the button's channel.
-- **Receive value** on a cycle entry (`rx_value`): the exact incoming value that selects it. There's no above-63 rule, since a cycle can have more than two positions. Entries without a receive value can't be reached from MIDI, and a value that matches no entry is ignored.
+- **Listen CC** on a cycle: the CC that cycle listens on, on the button's channel.
+- **Receive value** on a cycle entry: the exact incoming value that selects it. There's no above-63 rule, since a cycle can have more than two positions. Entries without a receive value can't be reached from MIDI, and a value that matches no entry is ignored.
 
 Setting it up in the editor is covered in [Keytimes: Following the host](./keytimes.md#following-the-host).
 

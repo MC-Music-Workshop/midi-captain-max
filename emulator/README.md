@@ -41,7 +41,9 @@ How to write one:
 1. Press parts wired in `diagram.json`: `btn_enc` = encoder push (GP0, switch 0, logical button 11), `btn1` = footswitch 1 (GP1), `btn5` = Down (GP20), `btn6`-`btn10` = A, B, C, D, Up (GP9, GP10, GP11, GP18, GP19). Footswitches 2-4 are on GP23-GP25, which Wokwi can't wire.
 2. To test several setups in one run (one run = one config), put each on its own page and give a wired footswitch `type: "page_inc"` on every page. `encoder-push` uses footswitch 10 (`btn10`).
 3. **Wait right after the action that prints.** `wait-serial` only sees text printed after the step starts, so `press → wait-serial → release → wait-serial` works, but a `wait-serial` after a `delay` hangs: the line already went by, and the run stalls until Wokwi's 5-minute connection limit (about 5 cloud minutes wasted). To test a long press, press and then wait for the long entry's line; the wait lets time pass.
-4. Run `python3 -m pytest tests/test_wokwi_scenarios.py` before spending minutes. It replays every scenario on the desktop firmware harness with the same timing rule, so a wait that would hang fails there instantly. See [`tests/AGENTS.md`](../tests/AGENTS.md).
+4. Run `python3 -m pytest tests/test_wokwi_scenarios.py` before spending minutes (CI also runs it on every push). It replays every scenario on the desktop firmware harness with the same timing rule, so a wait that would hang fails there instantly. See [`tests/AGENTS.md`](../tests/AGENTS.md).
+
+In CI, `.github/workflows/wokwi.yml` runs every scenario on Wokwi, but only when a non-draft PR touching `firmware/dev/` or `emulator/` is opened, a draft is marked ready, the `wokwi` label is added (remove and re-add to rerun), or it's started from the Actions tab. It needs the `WOKWI_CLI_TOKEN` repo secret; without it the job warns and passes. Serial logs are uploaded as the `wokwi-serial-logs` artifact.
 
 Scenarios:
 

@@ -8,8 +8,8 @@ Run everything from the repo root with `./tools/test-all.sh`, or just Python wit
 |---|---|---|---|
 | Unit tests | Pure modules (`core/*.py`), the config validator, the schema | `tests/test_*.py` | Free, every run |
 | **Firmware harness** | The real `firmware/dev/code.py` on desktop mocks: boot, press switches, read MIDI / LEDs / serial | `tests/firmware_harness.py`, `boot` fixture in `tests/conftest.py` | Free, every run |
-| **Wokwi scenario replay** | Each `emulator/scenarios/*/scenario.yaml` replayed on the firmware harness | `tests/test_wokwi_scenarios.py` | Free, every run (skips without PyYAML) |
-| Wokwi emulator | The same scenarios on real CircuitPython 7.3.3 in Wokwi's simulated Pico | `./emulator/run-scenario.sh` (see [`emulator/README.md`](../emulator/README.md)) | Wokwi cloud minutes |
+| **Wokwi scenario replay** | Each `emulator/scenarios/*/scenario.yaml` replayed on the firmware harness | `tests/test_wokwi_scenarios.py` | Free, every push (CI's pytest step) |
+| Wokwi emulator | The same scenarios on real CircuitPython 7.3.3 in Wokwi's simulated Pico | `./emulator/run-scenario.sh` locally; `.github/workflows/wokwi.yml` on PRs (see [`emulator/README.md`](../emulator/README.md)) | Wokwi cloud minutes: PR opened/ready, `wokwi` label, or manual |
 | Bench | A real pedal | `tools/bench/run.sh`, [`docs/bench-tests.md`](../docs/bench-tests.md) | A pedal |
 
 Use the cheapest layer that can see the behavior. Anything in `handle_switches()`, `_process_midi_msg()`, page switching or the button dispatch path belongs in the firmware harness; reach for Wokwi to confirm it on real CircuitPython, and the bench for LEDs, the display and real MIDI.
@@ -49,7 +49,7 @@ Gotchas:
 
 Every `emulator/scenarios/<name>/` (a `config.json` + `scenario.yaml`) is replayed on the harness, mapping each Wokwi part to a switch through `emulator/diagram.json` and `SWITCH_PINS`. It follows Wokwi's timing rule (a `wait-serial` only sees text printed after the step starts), so a scenario that would hang on Wokwi fails here first, for free. Write and debug a scenario against this test, then spend Wokwi minutes once it passes.
 
-PyYAML isn't in `requirements-dev.txt`, so the replay skips where it's missing (CI today). Adding it would make CI run the replay.
+Needs PyYAML (`requirements-dev.txt`). A new scenario directory is picked up automatically by both the replay and the Wokwi workflow.
 
 ## Fixtures
 

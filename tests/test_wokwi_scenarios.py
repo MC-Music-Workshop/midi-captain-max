@@ -18,8 +18,7 @@ import json
 from pathlib import Path
 
 import pytest
-
-yaml = pytest.importorskip("yaml")  # PyYAML isn't in requirements-dev.txt; skip without it
+import yaml
 
 EMULATOR = Path(__file__).resolve().parent.parent / "emulator"
 SCENARIOS = sorted(p for p in (EMULATOR / "scenarios").glob("*") if (p / "scenario.yaml").exists())

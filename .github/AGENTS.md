@@ -23,7 +23,7 @@
 - Runs every `emulator/scenarios/<name>` on Wokwi's simulated STD10 (real CircuitPython 7.3.3) via `emulator/run-scenario.sh`, checks the firmware's serial lines, uploads `wokwi-serial-logs`
 - **Costs Wokwi cloud minutes** (~1-2 per scenario run; free plan is 50/month), which is why it isn't on `push`. The same scenarios are replayed for free on every push by `tests/test_wokwi_scenarios.py` in CI's pytest step
 - `paths:` limits it to PRs touching `firmware/dev/**` or `emulator/**`; rerun by removing and re-adding the `wokwi` label
-- Needs the `WOKWI_CLI_TOKEN` secret; without it (fork PRs) the job warns and passes
+- Needs the `WOKWI_CLI_TOKEN` secret, which is set at the **org level** (MC-Music-Workshop) and shared with this repo, not a repo secret; without it (fork PRs) the job warns and passes
 - Details: [`emulator/README.md`](../emulator/README.md), [`tests/AGENTS.md`](../tests/AGENTS.md)
 
 ### Release (`release.yml`) — Triggered on `v*` tag pushes

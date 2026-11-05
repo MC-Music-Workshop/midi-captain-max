@@ -9,7 +9,7 @@ name: Wokwi
 # The same scenarios are replayed for free on every push by tests/test_wokwi_scenarios.py
 # (CI's pytest step), so a broken scenario normally fails there first.
 #
-# Needs the WOKWI_CLI_TOKEN repo secret (https://wokwi.com/dashboard/ci). Without it
+# Needs the WOKWI_CLI_TOKEN secret (org-level in MC-Music-Workshop). Without it
 # (e.g. PRs from forks) the job warns and passes instead of failing.
 
 on:

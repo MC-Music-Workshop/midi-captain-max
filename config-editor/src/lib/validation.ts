@@ -116,15 +116,17 @@ export interface FieldValidator {
 }
 
 export const validators = {
-  // Footswitch labels cap at 6 chars; the encoder push allows 8.
-  label: (value: string, maxLength = 6): string | null => {
+  // Footswitch labels: max 6 chars of letters/digits/space/hyphen (schema pattern).
+  // The encoder push's schema label is any string up to 8 chars, so pass
+  // checkChars=false for it.
+  label: (value: string, maxLength = 6, checkChars = true): string | null => {
     if (!value || value.trim() === '') {
       return 'Label is required';
     }
     if (value.length > maxLength) {
       return `Label must be ${maxLength} characters or less`;
     }
-    if (!/^[\w\s-]+$/.test(value)) {
+    if (checkChars && !/^[\w\s-]+$/.test(value)) {
       return 'Label contains invalid characters';
     }
     return null;
@@ -273,10 +275,10 @@ function validateCcStep(btn: CcStepFields, p: string, errors: Map<string, string
 
 // Validate one footswitch or the encoder push. bp is its page-relative path
 // ("buttons[3]", "encoder.push"); every error key starts with it so ButtonRow
-// finds them inline.
+// finds them inline. The push differs only in its label rule (schema: any 8 chars).
 function validateButton(btn: ButtonLike, bp: string, pageCount: number,
-                        errors: Map<string, string>, labelMaxLength = 6) {
-  const labelError = validators.label(btn.label, labelMaxLength);
+                        errors: Map<string, string>, isPush = false) {
+  const labelError = isPush ? validators.label(btn.label, 8, false) : validators.label(btn.label);
   if (labelError) errors.set(`${bp}.label`, labelError);
 
   const msgType = btn.type ?? 'cc';
@@ -290,9 +292,10 @@ function validateButton(btn: ButtonLike, bp: string, pageCount: number,
       const e = validators.cc(btn.cc_receive);
       if (e) errors.set(`${bp}.cc_receive`, e);
     }
+    // validators.cc also rejects fractions (1.5), which the Rust save can't parse into a u8.
     for (const field of ['cc_on', 'cc_off'] as const) {
       if (btn[field] !== undefined) {
-        const e = validators.withinRange(btn[field], 0, 127);
+        const e = validators.cc(btn[field]);
         if (e) errors.set(`${bp}.${field}`, e);
       }
     }
@@ -577,7 +580,7 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
   // Independent of the rotary's `enabled`: the firmware uses the push whenever it's
   // enabled (Rust validates the same set).
   if (device === 'std10' && encoder?.push?.enabled) {
-    validateButton(encoder.push, 'encoder.push', pageCount, errors, 8);
+    validateButton(encoder.push, 'encoder.push', pageCount, errors, true);
   }
   
   // Validate expression pedals

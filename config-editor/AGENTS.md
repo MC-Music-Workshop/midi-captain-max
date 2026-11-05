@@ -120,7 +120,7 @@ Also strips `display: {}` if no display fields were set.
 
 Key constraints from `config.schema.json`:
 - **Button labels**: max 6 chars, pattern `[\w \-]+`
-- **Encoder/encoder push/expression labels**: max 8 chars
+- **Encoder/encoder push/expression labels**: max 8 chars, no character pattern (`validateButton(..., isPush=true)` skips the footswitch `[\w \-]` rule, matching the schema)
 - **Channels**: 0-15 (displayed 1-16)
 - **MIDI bytes** (cc, note, program, velocity, etc.): 0-127
 - **pc_step**: 1-127; **keytimes**: 1-99; **flash_ms**: 50-5000

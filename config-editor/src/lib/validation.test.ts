@@ -195,6 +195,20 @@ describe('encoder push (validated like a footswitch)', () => {
     expect(validateConfig(pushConfig({ cc_step: 0 })).isValid).toBe(true);
   });
 
+  it('push label: any characters (schema has no pattern), footswitch label keeps its pattern', () => {
+    expect(validateConfig(pushConfig({ label: 'TAP/TMP' })).isValid).toBe(true);
+    const fs = pushConfig({});
+    fs.pages[0].buttons[0].label = 'A/B';
+    expect(validateConfig(fs).errors.get('buttons[0].label')).toContain('invalid characters');
+  });
+
+  it('rejects fractional cc_on / cc_off (Rust save needs a whole MIDI byte)', () => {
+    expect(validateConfig(pushConfig({ cc_on: 1.5 })).errors.get('encoder.push.cc_on')).toContain('integer');
+    const fs = pushConfig({});
+    (fs.pages[0].buttons[0] as { cc_off?: number }).cc_off = 2.5;
+    expect(validateConfig(fs).errors.get('buttons[0].cc_off')).toContain('integer');
+  });
+
   it('allows an 8-char label and rejects 9', () => {
     expect(validateConfig(pushConfig({ label: 'ABCDEFGH' })).isValid).toBe(true);
     expect(validateConfig(pushConfig({ label: 'ABCDEFGHI' })).errors.get('encoder.push.label')).toContain('8 characters');

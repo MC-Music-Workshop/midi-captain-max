@@ -397,3 +397,28 @@ def test_shipped_configs_boot_and_every_switch_works(boot, path):
         pedal.clock.t += 0.1
     pedal.clock.t += 10
     pedal["update_pc_flash_timers"]()
+
+
+def test_editor_saved_config_runs_on_the_pedal(boot):
+    """End to end: the JSON the editor's Save to File… wrote (fixture, also saved through
+    Rust's write_config_file in config_files.rs) boots, and each page's push works."""
+    pedal = boot(json.loads((REPO / "tests" / "fixtures" / "editor-saved-encoder-push.json").read_text()))
+    leds = pedal.leds()
+    # Page 1: PC 5 push, Also send note 60.
+    pedal.tap(PUSH)
+    assert pedal.sent() == [(ProgramChange(5), 0), (NoteOn(60, 100), 0)]
+    # Page 2: push and footswitch 1 share select group "amps" on CC 60.
+    pedal["switch_page"](1)
+    states = pedal["button_states"]
+    pedal.tap(1)
+    pedal.tap(PUSH)
+    assert pedal.sent() == [cc(60, 1), cc(60, 2)]
+    assert states[10].state and not states[0].state
+    # Page 3: keytimes push.
+    pedal["switch_page"](2)
+    pedal.tap(PUSH)
+    pedal.clock.t += 0.1
+    pedal.hold(PUSH, 2.0)
+    assert pedal.sent() == [cc(41, 1), cc(41, 1), cc(42, 2)]
+    pedal["switch_page"](0)
+    assert pedal.leds() == leds

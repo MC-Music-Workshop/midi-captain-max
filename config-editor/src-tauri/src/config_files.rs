@@ -95,6 +95,18 @@ mod tests {
     }
 
     #[test]
+    fn editor_saved_encoder_push_config_saves_as_is() {
+        // tests/fixtures/editor-saved-encoder-push.json is the exact JSON the editor's
+        // Save to File… handed to save_config_file (PC push + Also send, select-mode
+        // push, keytimes push). tests/test_code_encoder_push.py boots the same file.
+        let json = include_str!("../../../tests/fixtures/editor-saved-encoder-push.json");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("push.json");
+        write_config_file(&path, json).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), json);
+    }
+
+    #[test]
     fn save_writes_the_json_it_was_given() {
         // #215: saves used to write the parsed struct back out, so any field the
         // Rust structs didn't model (keytimes host sync, at the time) was dropped.

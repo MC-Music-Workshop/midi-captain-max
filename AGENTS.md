@@ -16,7 +16,7 @@ This repository creates **custom CircuitPython firmware** for Paint Audio MIDI C
 
 ### Primary Goals
 - **Bidirectional MIDI sync** — host controls LEDs/LCD state, device sends switch/encoder events
-- **Config-driven mapping** — JSON configuration for MIDI assignments and UI layouts
+- **Config-driven mapping** — MIDI assignments and UI layouts live in `config.json`, authored through the Config Editor
 - **Multi-device support** — STD10 (10-switch), Mini6 (6-switch), NANO4 (4-switch), DUO2 (2-switch), ONE1 (1-switch)
 - **Hybrid state model** — local toggle for instant feedback, host-authoritative when it speaks
 - **Rock-solid reliability** — NO unexpected resets during live performance; stability is paramount
@@ -28,6 +28,13 @@ This is a **live performance tool**. The device must:
 - **Never crash** — defensive coding, graceful error handling, no unhandled exceptions
 - **Never lose state** — if host connection drops, device continues functioning locally
 - **Never surprise the performer** — predictable behavior in all scenarios
+
+### The Config Editor Is the Interface
+
+Users configure the device through the Config Editor. Editing `config.json` by hand still works, but we don't expect anyone to do it, so:
+- **Every user-facing feature must be reachable in the editor.** A feature that only exists in JSON isn't done.
+- **Don't design for hand-editing.** Don't add JSON shorthands, aliases, or "friendlier to type" field shapes when they cost editor or firmware complexity.
+- **Write user docs in editor terms** (field labels, modes as the editor names them), not JSON snippets. Field names belong in developer docs.
 
 ---
 

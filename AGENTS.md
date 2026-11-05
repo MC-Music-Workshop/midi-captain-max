@@ -7,6 +7,7 @@ For detailed technical context, read the relevant sub-file before working in tha
 - **[firmware/AGENTS.md](firmware/AGENTS.md)** — CircuitPython practices, hardware reference, firmware patterns, CP 7.x restrictions, device variants
 - **[config-editor/AGENTS.md](config-editor/AGENTS.md)** — Config editor architecture, schema-driven types, save flow, Tauri/Rust details
 - **[.github/AGENTS.md](.github/AGENTS.md)** — CI/CD workflows, versioning, release process, deploy scripts, code signing
+- **[tests/AGENTS.md](tests/AGENTS.md)** — test layers, the `code.py` firmware harness (`boot` fixture), Wokwi scenario replay, fixtures
 
 ---
 
@@ -103,6 +104,8 @@ cd config-editor && npm run check                # TypeScript / Svelte
 cd config-editor && npm run generate:types       # regenerate types from schema
 ```
 
+Firmware runtime (`code.py` press/RX handling) is tested on desktop mocks with the `boot` fixture, and on simulated CircuitPython with Wokwi scenarios (`./emulator/run-scenario.sh emulator/scenarios/<name>`, uses Wokwi cloud minutes). See [`tests/AGENTS.md`](tests/AGENTS.md) and [`emulator/README.md`](emulator/README.md).
+
 Hardware bench tests (real pedal, run before firmware releases): `tools/bench/run.sh`; setup and pass criteria in [`docs/bench-tests.md`](docs/bench-tests.md).
 
 ### Linting
@@ -137,6 +140,6 @@ Track features and bugs via [GitHub Issues](https://github.com/MC-Music-Workshop
 - [x] Keytimes / multi-press cycling, double-press, long-press detection — landed as `mode: "keytimes"` (#48). Legacy `keytimes`/`states` fields on toggle/momentary are deprecated in v2.0 and will be removed in v3.0; the validator prints a boot-time warning.
 - [ ] Pages / banks
 - [ ] `cc_inc`/`cc_dec` STEP mode: optional snap of incoming CC values to the `cc_step` grid from `cc_min` (today the value is taken as-is and the step is a stride; SLOT mode already snaps). Opt-in per button, low priority — tracked in #193.
-- [ ] Firmware press-handler unit tests for select-mode (`handle_pc_select_press`, `handle_cc_select_press`, `update_select_group`, and the RX hooks in `_process_midi_msg`). Validator coverage exists; runtime coverage does not. Mock infrastructure in `tests/mocks/` should support this.
+- [ ] Firmware press-handler unit tests for select-mode (`handle_pc_select_press`, `handle_cc_select_press`, `update_select_group`, and the RX hooks in `_process_midi_msg`). Validator coverage exists; runtime coverage is partial (`tests/test_code_encoder_push.py` covers select through the encoder push). The `boot` fixture in `tests/firmware_harness.py` makes the rest straightforward.
 - [ ] Tighten `pyproject.toml` ruff ignores: `F401` is currently global; should be scoped via `[tool.ruff.lint.per-file-ignores]` so genuinely-unused imports in production code get caught. Test-mock re-exports under `tests/mocks/**` are the legitimate use. Tracked with the wider "which rule families do we adopt" question in #189, which has the measured per-rule counts.
 - [x] Encoder-push `mode: "select"` handling: resolved by making the STD10 encoder push a full button without an LED (every `ButtonConfig` field, including `select_group`); see "STD10 Encoder Push" in `firmware/AGENTS.md`.

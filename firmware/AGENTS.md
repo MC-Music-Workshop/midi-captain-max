@@ -416,4 +416,5 @@ When changing `boot.py`, `usb_drive_name`, or `dev_mode`, verify on physical har
 ### Desktop Tests (pytest)
 - `tests/` with CircuitPython hardware mocks in `tests/mocks/`
 - Run: `python3 -m pytest tests/` from repo root
-- See `tests/AGENTS.md` (if present) or root `AGENTS.md` for full suite details
+- **Runtime tests of `code.py`**: the `boot` fixture (`tests/firmware_harness.py`) runs the real `code.py` up to its main loop on desktop mocks and lets a test press switches and read MIDI, LEDs and serial. Use it for anything in `handle_switches()` / `_process_midi_msg()` / page switching. See [`tests/AGENTS.md`](../tests/AGENTS.md).
+- **Wokwi** (real CircuitPython 7.3.3, simulated): `./emulator/run-scenario.sh emulator/scenarios/<name>`; see [`emulator/README.md`](../emulator/README.md).

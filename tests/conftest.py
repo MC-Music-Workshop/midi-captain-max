@@ -71,6 +71,17 @@ import pytest
 
 
 @pytest.fixture
+def boot(monkeypatch, tmp_path):
+    """Boot the real firmware/dev/code.py on desktop mocks: `pedal = boot(cfg)`.
+
+    Returns a tests.firmware_harness.Pedal (press/tap/hold switches, read sent MIDI,
+    LEDs and serial output, index code.py globals). See tests/firmware_harness.py.
+    """
+    from tests.firmware_harness import boot_pedal
+    return lambda cfg: boot_pedal(cfg, monkeypatch, tmp_path)
+
+
+@pytest.fixture
 def mock_board():
     """Provide access to mock board module."""
     from tests.mocks import board

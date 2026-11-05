@@ -1,0 +1,163 @@
+# Wokwi scenario: the STD10 encoder push behaves like a footswitch (no LED).
+# Run: ./emulator/run-scenario.sh emulator/scenarios/encoder-push
+# Parts: btn_enc = encoder push (GP0, logical button 11), btn1 = footswitch 1 (GP1),
+# btn10 = footswitch 10 (GP19, page_inc on every page of config.json).
+name: 'Encoder push works like a footswitch'
+version: 1
+steps:
+  - wait-serial: '=== MIDI CAPTAIN MAX ==='
+  - wait-serial: 'Running...'
+  - set-control:
+      part-id: btn_enc
+      control: pressed
+      value: 1
+  - wait-serial: '[MIDI TX] Ch1 CC14=127 (switch 11, momentary)'
+  - set-control:
+      part-id: btn_enc
+      control: pressed
+      value: 0
+  - wait-serial: '[MIDI TX] Ch1 CC14=0 (switch 11, momentary)'
+  - set-control:
+      part-id: btn10
+      control: pressed
+      value: 1
+  - wait-serial: '[PAGE] page_inc -> page 1 (switch 10)'
+  - delay: 100ms
+  - set-control:
+      part-id: btn10
+      control: pressed
+      value: 0
+  - delay: 100ms
+  - set-control:
+      part-id: btn_enc
+      control: pressed
+      value: 1
+  - wait-serial: '[MIDI TX] Ch1 CC30=5 (switch 11, cc_inc)'
+  - delay: 100ms
+  - set-control:
+      part-id: btn_enc
+      control: pressed
+      value: 0
+  - delay: 100ms
+  - set-control:
+      part-id: btn1
+      control: pressed
+      value: 1
+  - wait-serial: '[MIDI TX] Ch1 CC30=10 (switch 1, cc_inc)'
+  - delay: 100ms
+  - set-control:
+      part-id: btn1
+      control: pressed
+      value: 0
+  - delay: 100ms
+  - set-control:
+      part-id: btn_enc
+      control: pressed
+      value: 1
+  - wait-serial: '[MIDI TX] Ch1 CC30=15 (switch 11, cc_inc)'
+  - delay: 100ms
+  - set-control:
+      part-id: btn_enc
+      control: pressed
+      value: 0
+  - delay: 100ms
+  - set-control:
+      part-id: btn10
+      control: pressed
+      value: 1
+  - wait-serial: '[PAGE] page_inc -> page 2 (switch 10)'
+  - delay: 100ms
+  - set-control:
+      part-id: btn10
+      control: pressed
+      value: 0
+  - delay: 100ms
+  - set-control:
+      part-id: btn_enc
+      control: pressed
+      value: 1
+  - wait-serial: '[MIDI TX] Ch1 PC5 (switch 11)'
+  - wait-serial: '[MIDI TX] Ch1 NoteOn60 vel100 (switch 11, keytimes)'
+  - delay: 100ms
+  - set-control:
+      part-id: btn_enc
+      control: pressed
+      value: 0
+  - delay: 100ms
+  - set-control:
+      part-id: btn10
+      control: pressed
+      value: 1
+  - wait-serial: '[PAGE] page_inc -> page 3 (switch 10)'
+  - delay: 100ms
+  - set-control:
+      part-id: btn10
+      control: pressed
+      value: 0
+  - delay: 100ms
+  - set-control:
+      part-id: btn1
+      control: pressed
+      value: 1
+  - wait-serial: '[MIDI TX] Ch1 CC60=1 (switch 1, select)'
+  - delay: 100ms
+  - set-control:
+      part-id: btn1
+      control: pressed
+      value: 0
+  - delay: 100ms
+  - set-control:
+      part-id: btn_enc
+      control: pressed
+      value: 1
+  - wait-serial: '[MIDI TX] Ch1 CC60=2 (switch 11, select)'
+  - delay: 100ms
+  - set-control:
+      part-id: btn_enc
+      control: pressed
+      value: 0
+  - delay: 100ms
+  - set-control:
+      part-id: btn1
+      control: pressed
+      value: 1
+  - wait-serial: '[MIDI TX] Ch1 CC60=1 (switch 1, select)'
+  - delay: 100ms
+  - set-control:
+      part-id: btn1
+      control: pressed
+      value: 0
+  - delay: 100ms
+  - set-control:
+      part-id: btn10
+      control: pressed
+      value: 1
+  - wait-serial: '[PAGE] page_inc -> page 4 (switch 10)'
+  - delay: 100ms
+  - set-control:
+      part-id: btn10
+      control: pressed
+      value: 0
+  - delay: 100ms
+  - set-control:
+      part-id: btn_enc
+      control: pressed
+      value: 1
+  - wait-serial: '[MIDI TX] Ch1 CC41=1 (switch 11, keytimes)'
+  - delay: 100ms
+  - set-control:
+      part-id: btn_enc
+      control: pressed
+      value: 0
+  - delay: 100ms
+  - set-control:
+      part-id: btn_enc
+      control: pressed
+      value: 1
+  - wait-serial: '[MIDI TX] Ch1 CC41=1 (switch 11, keytimes)'
+  - wait-serial: '[MIDI TX] Ch1 CC42=2 (switch 11, keytimes)'
+  - set-control:
+      part-id: btn_enc
+      control: pressed
+      value: 0
+  - delay: 100ms

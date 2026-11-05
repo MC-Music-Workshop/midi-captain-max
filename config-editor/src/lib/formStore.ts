@@ -426,7 +426,10 @@ export function setMessageType(buttonPath: string, listPath: string, msgIndex: n
     const list = _messageList(btn, listPath);
     const messages = list?.holder[list.key];
     if (!Array.isArray(messages) || !messages[msgIndex]) return;
-    messages[msgIndex] = { ..._defaultMessage(newType), ...fields } as KeytimesMessage;
+    // Keep the UI id so MessageList's keyed {#each} doesn't fall back to the index
+    // (which can collide with another message's id: each_key_duplicate).
+    const uiId = (messages[msgIndex] as { __uiId?: number }).__uiId;
+    messages[msgIndex] = { ..._defaultMessage(newType), ...fields, __uiId: uiId ?? _nextUiId() } as KeytimesMessage;
   });
 }
 
@@ -612,6 +615,12 @@ export function setActivePage(index: number) {
   });
 }
 
+// The firmware's defaults for a page with no encoder block (code.py switch_page).
+const DEFAULT_ENCODER: EncoderConfig = {
+  enabled: true, cc: 11, label: 'ENC', min: 0, max: 127, initial: 64,
+  push: { enabled: true, cc: 14, label: 'PUSH', mode: 'momentary' },
+};
+
 export function addPage() {
   _commitConfigMutation(cfg => {
     if (cfg.pages.length >= PAGE_CAP) return false;
@@ -620,7 +629,10 @@ export function addPage() {
     const count = cfg.device
       ? DEVICE_BUTTON_COUNT[cfg.device]
       : activePage(cfg).buttons.length;
-    cfg.pages.push({ buttons: createDefaultButtons(0, count - 1) });
+    const page: Page = { buttons: createDefaultButtons(0, count - 1) };
+    // Same defaults the firmware uses for a page without an encoder block.
+    if (cfg.device && DEVICE_HAS_ENCODER[cfg.device]) page.encoder = structuredClone(DEFAULT_ENCODER);
+    cfg.pages.push(page);
     cfg.active_page = cfg.pages.length - 1;
   });
 }

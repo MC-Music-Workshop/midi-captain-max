@@ -712,9 +712,14 @@ def validate_encoder_push(push, index, channel):
     src = dict(push) if isinstance(push, dict) else {}
     src.setdefault("cc", 14)
     src.setdefault("label", "PUSH")
-    if "mode" not in src and src.get("type", "cc") == "cc":
+    is_cc = src.get("type", "cc") == "cc"
+    if "mode" not in src and is_cc:
         src["mode"] = "momentary"
     out = validate_button(src, index, channel)
+    # The pre-button push treated every mode but "toggle" as momentary. Keep that for
+    # a CC push whose mode a footswitch would reject (falls back to toggle) or "flash".
+    if is_cc and out["mode"] in ("toggle", "flash") and src.get("mode") != "toggle":
+        out["mode"] = "momentary"
     out["enabled"] = src.get("enabled", True) is not False
     out["label"] = str(src["label"])[:8]
     return out

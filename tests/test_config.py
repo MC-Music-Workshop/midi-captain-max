@@ -931,6 +931,14 @@ class TestEncoderConfig:
         assert p["mode"] == "keytimes" and p["enabled"] is True
         assert p["short"][0]["down"][0]["cc"] == 40
 
+    def test_encoder_push_legacy_modes_stay_momentary(self):
+        """The old push treated every mode but toggle as momentary; a CC push keeps that
+        for modes a footswitch would reject, and for flash (not offered on CC)."""
+        for mode in ("bogus", "flash", "select"):  # select without a group is invalid
+            assert self._push({"label": "P", "cc": 14, "mode": mode})["mode"] == "momentary", mode
+        assert self._push({"label": "P", "cc": 14, "mode": "toggle"})["mode"] == "toggle"
+        assert self._push({"label": "P", "type": "pc", "mode": "bogus"})["mode"] == "flash"
+
     def test_encoder_push_select_mode(self):
         p = self._push({"label": "P", "type": "cc", "cc": 30, "mode": "select", "select_group": "amps"})
         assert (p["mode"], p["select_group"]) == ("select", "amps")

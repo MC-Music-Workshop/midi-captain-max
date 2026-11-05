@@ -14,9 +14,12 @@
     // Page-relative path: "buttons[3]" or "encoder.push".
     buttonPath: string;
     globalChannel: number;
+    // false for the encoder push: entry color/dim/label and the long-color overlay
+    // only drive a button's LED and screen tile, which the push doesn't have.
+    hasLed?: boolean;
   }
 
-  let { button, buttonPath, globalChannel }: Props = $props();
+  let { button, buttonPath, globalChannel, hasLed = true }: Props = $props();
 
   // Color palette for cycle entries: standard button colors plus "off".
   const CYCLE_COLORS: CycleEntryColor[] = [
@@ -93,6 +96,7 @@
     {/if}
   </div>
 
+  {#if hasLed}
   <div class="kt-overlay-row">
     <label class="inline"
            title="When set, the long-press color is used instead of the short-press color. Short presses send their messages as expected.">
@@ -102,6 +106,7 @@
       Long-press color overrides short-press color
     </label>
   </div>
+  {/if}
 
   {#each ['short', 'long'] as cycle (cycle)}
     {@const entries = (cycle === 'short' ? button.short : button.long) ?? []}
@@ -142,6 +147,7 @@
         <div class="kt-entry">
           <div class="kt-entry-header">
             <span class="kt-entry-num">#{ei + 1}</span>
+            {#if hasLed}
             <label class="inline">
               Color:
               <select value={entry.color ?? ''}
@@ -170,6 +176,7 @@
                      placeholder="(inherit)"
                      oninput={(e) => setEntryLabel(cycle as 'short' | 'long', ei, (e.target as HTMLInputElement).value)} />
             </label>
+            {/if}
             {#if listenCc !== undefined}
               {@const rxError = $validationErrors.get(`${buttonPath}.${cycle}[${ei}].rx_value`)}
               {@const dupOf = duplicateOf(entries, ei)}

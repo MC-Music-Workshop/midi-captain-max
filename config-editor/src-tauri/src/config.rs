@@ -705,7 +705,9 @@ impl MidiCaptainConfig {
                         errors.push(format!("{}Encoder channel {} is invalid (must be 1-16)", pfx, ch + 1));
                     }
                 }
-                if let Some(ref push) = enc.push {
+                // A disabled push is ignored by the firmware, so it can't block a save
+                // (the editor doesn't validate it either).
+                if let Some(push) = enc.push.as_ref().filter(|p| p.enabled) {
                     validate_button(&push.button, &format!("{}Encoder push", pfx), 8, self.pages.len(), &mut errors);
                 }
             }
@@ -962,9 +964,9 @@ fn validate_button(button: &ButtonConfig, name: &str, label_max: usize, page_cou
             }
         }
         if let Some(ref names) = button.cc_slot_names {
-            for (s, name) in names.iter().enumerate() {
-                if name.chars().count() > 6 {
-                    errors.push(format!("{} slot {} name '{}' exceeds 6 chars", name, s + 1, name));
+            for (s, slot_name) in names.iter().enumerate() {
+                if slot_name.chars().count() > 6 {
+                    errors.push(format!("{} slot {} name '{}' exceeds 6 chars", name, s + 1, slot_name));
                 }
             }
         }
@@ -2037,6 +2039,15 @@ mod tests {
         let errs = parse_migrated(&bad).validate().unwrap_err();
         assert!(errs.iter().any(|e| e.contains("Encoder push cc_slots 17")), "{errs:?}");
         assert!(errs.iter().any(|e| e.contains("Encoder push label") && e.contains("8 chars")), "{errs:?}");
+
+        // A disabled push is ignored by the firmware, so it doesn't block a save.
+        let disabled = bad.replace(r#""push": {"enabled": true"#, r#""push": {"enabled": false"#);
+        parse_migrated(&disabled).validate().unwrap();
+
+        // Slot-name errors name the button, not the slot (the loop var used to shadow it).
+        let slot = json.replace(r#""cc_slots": 4,"#, r#""cc_slots": 2, "cc_slot_names": ["LONGNAME", ""],"#);
+        let errs = parse_migrated(&slot).validate().unwrap_err();
+        assert!(errs.iter().any(|e| e == "Page 1, Encoder push slot 1 name 'LONGNAME' exceeds 6 chars"), "{errs:?}");
     }
 
     #[test]

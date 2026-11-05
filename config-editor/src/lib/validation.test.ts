@@ -223,6 +223,12 @@ describe('encoder push (validated like a footswitch)', () => {
     expect(validateConfig(pushConfig({ enabled: false, label: '' })).isValid).toBe(true);
   });
 
+  it('validates an enabled push even when the rotary is disabled (firmware still uses it)', () => {
+    const cfg = pushConfig({ type: 'cc_inc', cc_step: 0 });
+    cfg.pages[0].encoder!.enabled = false;
+    expect(validateConfig(cfg).errors.get('encoder.push.cc_step')).toContain('between 1 and 127');
+  });
+
   it('validateAllPages reports push errors on a non-active page', () => {
     const cfg = pushConfig({});
     cfg.pages.push({ name: 'Two', buttons: [{ label: 'OK', cc: 20, color: 'green' }],

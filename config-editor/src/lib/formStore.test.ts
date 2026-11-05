@@ -375,8 +375,25 @@ describe('extra messages (messages_on / messages_off)', () => {
 
   it('setMessageType can seed starting fields (a CC+ extra starts with its own CC)', () => {
     loadConfig(withButton({ cc: 20, messages_on: [{ type: 'pc', program: 1 }] }));
+    const uiId = (button().messages_on?.[0] as { __uiId?: number }).__uiId;
     setMessageType('buttons[0]', 'messages_on', 0, 'cc_inc', { cc: 20 });
-    expect(button().messages_on?.[0]).toEqual({ type: 'cc_inc', cc: 20 });
+    expect(button().messages_on?.[0]).toEqual({ type: 'cc_inc', cc: 20, __uiId: uiId });
+  });
+
+  it('setMessageType keeps UI ids unique (no each_key_duplicate in MessageList)', () => {
+    loadConfig(withButton({ mode: 'momentary', messages_on: [
+      { type: 'cc', cc: 1, value: 1 }, { type: 'cc', cc: 2, value: 1 }, { type: 'cc', cc: 3, value: 1 }] }));
+    setMessageType('buttons[0]', 'messages_on', 2, 'note');
+    const ids = (button().messages_on ?? []).map(m => (m as { __uiId?: number }).__uiId);
+    expect(ids.every(id => typeof id === 'number')).toBe(true);
+    expect(new Set(ids).size).toBe(3);
+  });
+
+  it('a new page on an STD10 gets the default encoder and push', () => {
+    loadConfig({ device: 'std10', active_page: 0, pages: [{ buttons: Array.from({ length: 10 }, (_, i) => ({ label: String(i + 1), cc: 20 + i, color: 'white' as const })) }] });
+    addPage();
+    const page = get(formState).config.pages[1];
+    expect(page.encoder?.push).toMatchObject({ enabled: true, cc: 14, label: 'PUSH', mode: 'momentary' });
   });
 
   it('the same helpers edit a keytimes entry slot', () => {

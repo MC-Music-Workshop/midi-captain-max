@@ -152,8 +152,10 @@
             disabled={isDisabled}
           />
         </div>
-        
-        <h4>Encoder Push Button</h4>
+      {/if}
+
+      <!-- The push works whether or not the rotary is enabled (firmware treats them separately). -->
+      <h4>Encoder Push Button</h4>
         
         <div class="field-row">
           <label>
@@ -182,7 +184,6 @@
             onUpdate={(field, value) => updateField(`encoder.push.${field}`, value)}
           />
         {/if}
-      {/if}
     </div>
   {/if}
 </Accordion>

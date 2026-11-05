@@ -447,7 +447,7 @@
       {#if pcStepError}<span class="error-text">{pcStepError}</span>{/if}
     </div>
   {:else if isCCStep}
-    <CcStepFields {button} {buttonPath} {idPrefix} {defaultCc} {disabled} {onUpdate} />
+    <CcStepFields {button} {buttonPath} {idPrefix} {defaultCc} {disabled} {hasLed} {onUpdate} />
   {:else if isPageIncDec}
     <div class="field">
       <label class="field-label" for={fieldId('page-step')}>Step:</label>
@@ -689,12 +689,12 @@
     <!-- CC+/CC- entries are direction-only; these shared fields drive all of them (#11). -->
     <div class="cc-step-shared">
       <span class="cc-step-shared-label" title="Used by every CC+/CC- entry in the short and long cycles. In Slots mode the slot color and name own the LED and label for every press length.">Shared CC settings for CC+/CC- entries:</span>
-      <CcStepFields {button} {buttonPath} {idPrefix} {defaultCc} {disabled} {onUpdate} />
+      <CcStepFields {button} {buttonPath} {idPrefix} {defaultCc} {disabled} {hasLed} {onUpdate} />
     </div>
   {/if}
 
   {#if isKeytimesMode && !disabled}
-    <KeytimesEditor {button} {buttonPath} {globalChannel} />
+    <KeytimesEditor {button} {buttonPath} {globalChannel} {hasLed} />
   {/if}
 
   {#if hasKeytimes && !isKeytimesMode}

@@ -571,11 +571,13 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
       const initError = validators.withinRange(encoder.initial, min, max);
       if (initError) errors.set('encoder.initial', `Initial ${initError.toLowerCase()}`);
     }
+  }
 
-    // The push is a footswitch without an LED: same checks, 8-char label, no color.
-    if (device === 'std10' && encoder.push?.enabled) {
-      validateButton(encoder.push, 'encoder.push', pageCount, errors, 8);
-    }
+  // The push is a footswitch without an LED: same checks, 8-char label, no color.
+  // Independent of the rotary's `enabled`: the firmware uses the push whenever it's
+  // enabled (Rust validates the same set).
+  if (device === 'std10' && encoder?.push?.enabled) {
+    validateButton(encoder.push, 'encoder.push', pageCount, errors, 8);
   }
   
   // Validate expression pedals

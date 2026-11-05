@@ -381,7 +381,9 @@ def _config_glyphs(cfg):
     labels — plus STATUS_GLYPHS. Returned as one deduplicated string."""
     chars = set(STATUS_GLYPHS)
     for page in cfg.get("pages", []):
-        for btn in page.get("buttons", []):
+        enc = page.get("encoder")
+        push = enc.get("push") if isinstance(enc, dict) else None
+        for btn in page.get("buttons", []) + ([push] if isinstance(push, dict) else []):
             chars.update(str(btn.get("label", "")))
             for name in btn.get("cc_slot_names", []) or []:
                 chars.update(str(name))
@@ -1486,7 +1488,7 @@ def handle_switches():
         # Keytimes mode (#48): poll-driven dispatch via PressTracker. Runs every loop iteration
         # so the long-press threshold timer fires even when the switch state is steady.
         if btn_config.get("mode") == "keytimes":
-            # Defensive: keytimes_states is sized to BUTTON_COUNT; idx should already be < BUTTON_COUNT
+            # Defensive: keytimes_states is sized to len(buttons); idx should already be in range
             # given the switches loop above, but guard explicitly to mirror the buttons[] fallback at L1084.
             if idx >= len(keytimes_states):
                 continue

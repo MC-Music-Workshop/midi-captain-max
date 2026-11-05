@@ -18,10 +18,13 @@
     // CC the firmware uses when `cc` is unset (placeholder).
     defaultCc: number;
     disabled?: boolean;
+    // false for the encoder push: no LED, so no slot colors (slot names still show
+    // on the status line).
+    hasLed?: boolean;
     onUpdate: (field: string, value: any) => void;
   }
 
-  let { button, buttonPath, idPrefix, defaultCc, disabled = false, onUpdate }: Props = $props();
+  let { button, buttonPath, idPrefix, defaultCc, disabled = false, hasLed = true, onUpdate }: Props = $props();
 
   const fieldId = (field: string) => `${idPrefix}-ccstep-${field}`;
   // The encoder push has no LED color; new slots start white.
@@ -56,9 +59,11 @@
   // Slot tables are kept exactly `n` long so every slot has a color (schema
   // arrays can't hold gaps); names default to '' (falls back to "<label> n/N").
   function resizeTables(n: number) {
-    const colors = (button.cc_slot_colors ?? []).slice(0, n);
-    while (colors.length < n) colors.push(fillColor);
-    onUpdate('cc_slot_colors', colors);
+    if (hasLed) {
+      const colors = (button.cc_slot_colors ?? []).slice(0, n);
+      while (colors.length < n) colors.push(fillColor);
+      onUpdate('cc_slot_colors', colors);
+    }
     const names = (button.cc_slot_names ?? []).slice(0, n);
     while (names.length < n) names.push('');
     onUpdate('cc_slot_names', names);
@@ -187,13 +192,15 @@
 
 {#if slotMode}
   <div class="slot-table">
-    <span class="slot-table-label">Slots (LED color / name):</span>
+    <span class="slot-table-label">{hasLed ? 'Slots (LED color / name):' : 'Slots (name):'}</span>
     {#each slotValues as value, si}
       <div class="slot-row">
         <span class="slot-num">#{si + 1}</span>
-        <ColorSelect
-          value={button.cc_slot_colors?.[si] ?? fillColor}
-          onchange={(c) => handleSlotColor(si, c)} />
+        {#if hasLed}
+          <ColorSelect
+            value={button.cc_slot_colors?.[si] ?? fillColor}
+            onchange={(c) => handleSlotColor(si, c)} />
+        {/if}
         <label class="visually-hidden" for={fieldId(`name-${si}`)}>Slot {si + 1} name</label>
         <input id={fieldId(`name-${si}`)} type="text" class="input-name"
           class:error={!!err(`cc_slot_names[${si}]`)}

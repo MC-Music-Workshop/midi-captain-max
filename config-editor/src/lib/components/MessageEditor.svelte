@@ -10,7 +10,8 @@
   } from '$lib/formStore';
 
   interface Props {
-    buttonIndex: number;
+    // Page-relative path of the owning button: "buttons[3]" or "encoder.push".
+    buttonPath: string;
     // Button-relative path of the list this message lives in: "short[0].down", "messages_on".
     listPath: string;
     msgIndex: number;
@@ -21,10 +22,10 @@
     sharedCcStep?: boolean;
   }
 
-  let { buttonIndex, listPath, msgIndex, message, globalChannel, sharedCcStep = true }: Props = $props();
+  let { buttonPath, listPath, msgIndex, message, globalChannel, sharedCcStep = true }: Props = $props();
 
   // Path prefix used for both updateField() and validation error lookups.
-  let pathPrefix = $derived(`buttons[${buttonIndex}].${listPath}[${msgIndex}]`);
+  let pathPrefix = $derived(`${buttonPath}.${listPath}[${msgIndex}]`);
 
   // Display the configured channel as 1-16, fall back to global if undefined.
   // HID messages have no channel field; the channel input is hidden for HID below.
@@ -42,7 +43,7 @@
     const newType = (e.target as HTMLSelectElement).value as MessageType;
     // With no shared CC settings to fall back on, a CC+/CC- starts with its own CC.
     const needsCc = !sharedCcStep && (newType === 'cc_inc' || newType === 'cc_dec');
-    setMessageType(buttonIndex, listPath, msgIndex, newType, needsCc ? { cc: 20 } : undefined);
+    setMessageType(buttonPath, listPath, msgIndex, newType, needsCc ? { cc: 20 } : undefined);
   }
 
   function handleChannelChange(e: Event) {
@@ -76,7 +77,7 @@
   }
 
   function handleRemove() {
-    removeMessage(buttonIndex, listPath, msgIndex);
+    removeMessage(buttonPath, listPath, msgIndex);
   }
 
   // Page-switch messages carry no MIDI channel; hide the channel input for them.

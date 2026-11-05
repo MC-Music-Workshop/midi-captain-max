@@ -700,6 +700,31 @@ def validate_button(btn, index=0, global_channel=None):
     return validated
 
 
+def validate_encoder_push(push, index, channel):
+    """Validate an STD10 encoder push: it's a button without an LED, so it goes
+    through validate_button (every type, mode, messages_on/off, keytimes, select).
+
+    Only the legacy push defaults differ from a footswitch: CC 14, label "PUSH"
+    (max 8 chars, buttons have 6), and a CC push with no mode is momentary.
+    `index` is its logical button index (one past the footswitches), which is
+    also where code.py puts it in the page's button list.
+    """
+    src = dict(push) if isinstance(push, dict) else {}
+    src.setdefault("cc", 14)
+    src.setdefault("label", "PUSH")
+    is_cc = src.get("type", "cc") == "cc"
+    if "mode" not in src and is_cc:
+        src["mode"] = "momentary"
+    out = validate_button(src, index, channel)
+    # The pre-button push treated every mode but "toggle" as momentary. Keep that for
+    # a CC push whose mode a footswitch would reject (falls back to toggle) or "flash".
+    if is_cc and out["mode"] in ("toggle", "flash") and src.get("mode") != "toggle":
+        out["mode"] = "momentary"
+    out["enabled"] = src.get("enabled", True) is not False
+    out["label"] = str(src["label"])[:8]
+    return out
+
+
 def validate_config(cfg, button_count=10):
     """Validate entire config, filling in defaults.
 
@@ -741,6 +766,11 @@ def validate_config(cfg, button_count=10):
         for k, v in page.items():
             new_page[k] = v
         new_page["buttons"] = validated_buttons
+        enc = page.get("encoder")
+        if isinstance(enc, dict) and "push" in enc:
+            enc = dict(enc)
+            enc["push"] = validate_encoder_push(enc.get("push"), button_count, page_channel)
+            new_page["encoder"] = enc
         validated_pages.append(new_page)
 
     # Top-level long-press threshold (used by keytimes-mode buttons; per-button override allowed).

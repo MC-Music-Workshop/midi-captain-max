@@ -5,21 +5,30 @@
   // button, and once per keytimes button whose entries fire cc_inc/cc_dec —
   // the entries only pick a direction, these fields are shared by all of them.
   import ColorSelect from './ColorSelect.svelte';
-  import type { ButtonConfig, ButtonColor } from '$lib/types';
+  import type { ButtonLike, ButtonColor } from '$lib/types';
   import { validationErrors } from '$lib/formStore';
   import { CC_SLOTS_MIN, CC_SLOTS_MAX } from '$lib/validation';
 
   interface Props {
-    button: ButtonConfig;
-    index: number;
+    button: ButtonLike;
+    // Page-relative path ("buttons[3]", "encoder.push") for error lookups.
+    buttonPath: string;
+    // The owning ButtonRow's DOM id prefix, so ids stay unique per button.
+    idPrefix: string;
+    // CC the firmware uses when `cc` is unset (placeholder).
+    defaultCc: number;
     disabled?: boolean;
+    // false for the encoder push: no LED, so no slot colors (slot names still show
+    // on the status line).
+    hasLed?: boolean;
     onUpdate: (field: string, value: any) => void;
   }
 
-  let { button, index, disabled = false, onUpdate }: Props = $props();
+  let { button, buttonPath, idPrefix, defaultCc, disabled = false, hasLed = true, onUpdate }: Props = $props();
 
-  let basePath = $derived(`buttons[${index}]`);
-  const fieldId = (field: string) => `btn-${index}-ccstep-${field}`;
+  const fieldId = (field: string) => `${idPrefix}-ccstep-${field}`;
+  // The encoder push has no LED color; new slots start white.
+  let fillColor = $derived(button.color ?? 'white');
 
   // cc_slots present = SLOT mode; absent = STEP mode (the firmware keys off the same thing).
   let slotMode = $derived(button.cc_slots !== undefined);
@@ -35,7 +44,7 @@
   });
 
   function err(field: string): string | undefined {
-    return $validationErrors.get(`${basePath}.${field}`);
+    return $validationErrors.get(`${buttonPath}.${field}`);
   }
 
   function intOrUndef(e: Event): number | undefined {
@@ -50,9 +59,11 @@
   // Slot tables are kept exactly `n` long so every slot has a color (schema
   // arrays can't hold gaps); names default to '' (falls back to "<label> n/N").
   function resizeTables(n: number) {
-    const colors = (button.cc_slot_colors ?? []).slice(0, n);
-    while (colors.length < n) colors.push(button.color);
-    onUpdate('cc_slot_colors', colors);
+    if (hasLed) {
+      const colors = (button.cc_slot_colors ?? []).slice(0, n);
+      while (colors.length < n) colors.push(fillColor);
+      onUpdate('cc_slot_colors', colors);
+    }
     const names = (button.cc_slot_names ?? []).slice(0, n);
     while (names.length < n) names.push('');
     onUpdate('cc_slot_names', names);
@@ -84,7 +95,7 @@
 
   function handleSlotColor(si: number, color: ButtonColor) {
     const colors = (button.cc_slot_colors ?? []).slice(0, slots);
-    while (colors.length < slots) colors.push(button.color);
+    while (colors.length < slots) colors.push(fillColor);
     colors[si] = color;
     onUpdate('cc_slot_colors', colors);
   }
@@ -101,7 +112,7 @@
   <label class="field-label" for={fieldId('cc')}>CC:</label>
   <input id={fieldId('cc')} type="number" class="input-num" class:error={!!err('cc')}
     value={button.cc ?? ''} onblur={(e) => handleInt('cc', e)} disabled={disabled}
-    min="0" max="127" placeholder={String(20 + index)}
+    min="0" max="127" placeholder={String(defaultCc)}
     title="CC number of the shared value. Every CC+/CC- button on any page with this CC and channel moves the same value." />
   {#if err('cc')}<span class="error-text">{err('cc')}</span>{/if}
 </div>
@@ -181,13 +192,15 @@
 
 {#if slotMode}
   <div class="slot-table">
-    <span class="slot-table-label">Slots (LED color / name):</span>
+    <span class="slot-table-label">{hasLed ? 'Slots (LED color / name):' : 'Slots (name):'}</span>
     {#each slotValues as value, si}
       <div class="slot-row">
         <span class="slot-num">#{si + 1}</span>
-        <ColorSelect
-          value={button.cc_slot_colors?.[si] ?? button.color}
-          onchange={(c) => handleSlotColor(si, c)} />
+        {#if hasLed}
+          <ColorSelect
+            value={button.cc_slot_colors?.[si] ?? fillColor}
+            onchange={(c) => handleSlotColor(si, c)} />
+        {/if}
         <label class="visually-hidden" for={fieldId(`name-${si}`)}>Slot {si + 1} name</label>
         <input id={fieldId(`name-${si}`)} type="text" class="input-name"
           class:error={!!err(`cc_slot_names[${si}]`)}

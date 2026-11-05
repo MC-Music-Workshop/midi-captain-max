@@ -17,6 +17,7 @@ from core.config import (
     load_config,
     validate_button,
     validate_config,
+    validate_encoder_push,
     get_encoder_config,
     get_expression_config,
     get_button_state_config,
@@ -894,6 +895,53 @@ class TestEncoderConfig:
         enc = get_encoder_config({"encoder": {"push": {}}})
         assert enc["push"]["cc_on"] == 127
         assert enc["push"]["cc_off"] == 0
+
+    def _push(self, push, page_channel=None):
+        page = {"buttons": [], "encoder": {"enabled": True, "cc": 11, "label": "ENC"}}
+        if push is not None:
+            page["encoder"]["push"] = push
+        if page_channel is not None:
+            page["global_channel"] = page_channel
+        return validate_config({"pages": [page]})["pages"][0]["encoder"]["push"]
+
+    def test_encoder_push_legacy_defaults(self):
+        """A missing/empty push keeps the pre-button defaults: CC 14, momentary, enabled."""
+        # code.py validates a page's missing push at runtime with the same call.
+        for p in (self._push({}, page_channel=2), validate_encoder_push(None, 10, 2)):
+            assert (p["type"], p["cc"], p["mode"], p["label"]) == ("cc", 14, "momentary", "PUSH")
+            assert (p["cc_on"], p["cc_off"], p["channel"], p["enabled"]) == (127, 0, 2, True)
+
+    def test_encoder_push_legacy_config_unchanged(self):
+        p = self._push({"enabled": False, "cc": 77, "label": "TAPTEMPO", "mode": "toggle", "cc_on": 100, "cc_off": 20})
+        assert (p["cc"], p["mode"], p["cc_on"], p["cc_off"], p["enabled"]) == (77, "toggle", 100, 20, False)
+        assert p["label"] == "TAPTEMPO"  # push labels allow 8 chars
+
+    def test_encoder_push_validated_like_a_button(self):
+        """Non-CC pushes get the footswitch defaults for their type (PC -> flash)."""
+        assert self._push({"label": "P", "type": "pc", "program": 5})["mode"] == "flash"
+        p = self._push({"label": "P", "type": "cc_inc", "cc": 30, "cc_slots": 4, "cc_initial": 50})
+        assert (p["mode"], p["cc"], p["cc_slots"], p["cc_initial"]) == ("flash", 30, 4, 50)
+        assert "cc_step" not in p  # SLOT mode, same as a cc_inc footswitch
+
+    def test_encoder_push_messages_and_keytimes(self):
+        p = self._push({"label": "P", "cc": 30, "messages_on": [{"type": "pc", "program": 3}]})
+        assert p["messages_on"] == [{"type": "pc", "program": 3}]
+        p = self._push({"label": "P", "mode": "keytimes",
+                        "short": [{"down": [{"type": "cc", "cc": 40, "value": 1}]}]})
+        assert p["mode"] == "keytimes" and p["enabled"] is True
+        assert p["short"][0]["down"][0]["cc"] == 40
+
+    def test_encoder_push_legacy_modes_stay_momentary(self):
+        """The old push treated every mode but toggle as momentary; a CC push keeps that
+        for modes a footswitch would reject, and for flash (not offered on CC)."""
+        for mode in ("bogus", "flash", "select"):  # select without a group is invalid
+            assert self._push({"label": "P", "cc": 14, "mode": mode})["mode"] == "momentary", mode
+        assert self._push({"label": "P", "cc": 14, "mode": "toggle"})["mode"] == "toggle"
+        assert self._push({"label": "P", "type": "pc", "mode": "bogus"})["mode"] == "flash"
+
+    def test_encoder_push_select_mode(self):
+        p = self._push({"label": "P", "type": "cc", "cc": 30, "mode": "select", "select_group": "amps"})
+        assert (p["mode"], p["select_group"]) == ("select", "amps")
 
 
 class TestGetButtonStateConfig:

@@ -1,0 +1,265 @@
+{
+  "device": "std10",
+  "active_page": 0,
+  "pages": [
+    {
+      "buttons": [
+        {
+          "label": "1",
+          "color": "white",
+          "cc": 20
+        },
+        {
+          "label": "2",
+          "color": "white",
+          "cc": 21
+        },
+        {
+          "label": "3",
+          "color": "white",
+          "cc": 22
+        },
+        {
+          "label": "4",
+          "color": "white",
+          "cc": 23
+        },
+        {
+          "label": "5",
+          "color": "white",
+          "cc": 24
+        },
+        {
+          "label": "6",
+          "color": "white",
+          "cc": 25
+        },
+        {
+          "label": "7",
+          "color": "white",
+          "cc": 26
+        },
+        {
+          "label": "8",
+          "color": "white",
+          "cc": 27
+        },
+        {
+          "label": "9",
+          "color": "white",
+          "cc": 28
+        },
+        {
+          "label": "10",
+          "color": "white",
+          "cc": 29
+        }
+      ],
+      "encoder": {
+        "enabled": true,
+        "cc": 11,
+        "label": "ENC",
+        "min": 0,
+        "max": 127,
+        "initial": 64,
+        "steps": null,
+        "push": {
+          "enabled": true,
+          "label": "PUSH",
+          "mode": "momentary",
+          "type": "pc",
+          "messages_on": [
+            {
+              "type": "note",
+              "note": 60,
+              "velocity": 100
+            }
+          ],
+          "program": 5
+        }
+      }
+    },
+    {
+      "buttons": [
+        {
+          "label": "BTN0",
+          "color": "white",
+          "off_mode": "dim",
+          "mode": "select",
+          "cc": 60,
+          "cc_on": 1,
+          "select_group": "amps"
+        },
+        {
+          "label": "BTN1",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 21
+        },
+        {
+          "label": "BTN2",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 22
+        },
+        {
+          "label": "BTN3",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 23
+        },
+        {
+          "label": "BTN4",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 24
+        },
+        {
+          "label": "BTN5",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 25
+        },
+        {
+          "label": "BTN6",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 26
+        },
+        {
+          "label": "BTN7",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 27
+        },
+        {
+          "label": "BTN8",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 28
+        },
+        {
+          "label": "BTN9",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 29
+        }
+      ],
+      "encoder": {
+        "enabled": true,
+        "cc": 11,
+        "label": "ENC",
+        "min": 0,
+        "max": 127,
+        "initial": 64,
+        "push": {
+          "enabled": true,
+          "label": "PUSH",
+          "mode": "select",
+          "cc": 60,
+          "cc_on": 2,
+          "select_group": "amps"
+        }
+      }
+    },
+    {
+      "buttons": [
+        {
+          "label": "BTN0",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 20
+        },
+        {
+          "label": "BTN1",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 21
+        },
+        {
+          "label": "BTN2",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 22
+        },
+        {
+          "label": "BTN3",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 23
+        },
+        {
+          "label": "BTN4",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 24
+        },
+        {
+          "label": "BTN5",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 25
+        },
+        {
+          "label": "BTN6",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 26
+        },
+        {
+          "label": "BTN7",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 27
+        },
+        {
+          "label": "BTN8",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 28
+        },
+        {
+          "label": "BTN9",
+          "color": "white",
+          "off_mode": "dim",
+          "cc": 29
+        }
+      ],
+      "encoder": {
+        "enabled": true,
+        "cc": 11,
+        "label": "ENC",
+        "min": 0,
+        "max": 127,
+        "initial": 64,
+        "push": {
+          "enabled": true,
+          "label": "PUSH",
+          "mode": "keytimes",
+          "short": [
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 41,
+                  "value": 1
+                }
+              ]
+            }
+          ],
+          "long": [
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 42,
+                  "value": 2
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

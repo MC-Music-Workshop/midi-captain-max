@@ -171,6 +171,73 @@ describe('per-page global_channel (P4d)', () => {
   });
 });
 
+describe('encoder push (validated like a footswitch)', () => {
+  function pushConfig(push: Record<string, unknown>, extra: Partial<MidiCaptainConfig> = {}): MidiCaptainConfig {
+    return {
+      device: 'std10', active_page: 0,
+      pages: [{ buttons: [{ label: 'OK', cc: 20, color: 'green' }],
+        encoder: { enabled: true, cc: 11, label: 'ENC', push: { enabled: true, cc: 14, label: 'PUSH', ...push } as never } }],
+      ...extra,
+    };
+  }
+
+  it('accepts a cc_inc push with step fields', () => {
+    expect(validateConfig(pushConfig({ type: 'cc_inc', cc_step: 8, cc_min: 0, cc_max: 64 })).isValid).toBe(true);
+  });
+
+  it('reports a bad step and range on a cc_dec push under encoder.push.', () => {
+    const r = validateConfig(pushConfig({ type: 'cc_dec', cc_step: 0, cc_min: 90, cc_max: 20 }));
+    expect(r.errors.get('encoder.push.cc_step')).toContain('between 1 and 127');
+    expect(r.errors.get('encoder.push.cc_max')).toContain('greater than min');
+  });
+
+  it('ignores step fields on a plain cc push', () => {
+    expect(validateConfig(pushConfig({ cc_step: 0 })).isValid).toBe(true);
+  });
+
+  it('allows an 8-char label and rejects 9', () => {
+    expect(validateConfig(pushConfig({ label: 'ABCDEFGH' })).isValid).toBe(true);
+    expect(validateConfig(pushConfig({ label: 'ABCDEFGHI' })).errors.get('encoder.push.label')).toContain('8 characters');
+  });
+
+  it('needs no color (the push has no LED)', () => {
+    const cfg = pushConfig({});
+    expect('color' in cfg.pages[0].encoder!.push!).toBe(false);
+    expect(validateConfig(cfg).isValid).toBe(true);
+  });
+
+  it('validates out-of-range CC ON/OFF values', () => {
+    const r = validateConfig(pushConfig({ cc_on: 128, cc_off: -1 }));
+    expect(r.errors.get('encoder.push.cc_on')).toContain('between 0 and 127');
+    expect(r.errors.get('encoder.push.cc_off')).toContain('between 0 and 127');
+  });
+
+  it('validates extra messages and keytimes entries at push paths', () => {
+    const extras = validateConfig(pushConfig({ messages_on: [{ type: 'cc_inc' }] }));
+    expect(extras.errors.get('encoder.push.messages_on[0].cc')).toBe('Set the CC to step');
+    const kt = validateConfig(pushConfig({ mode: 'keytimes', short: [{ down: [{ type: 'cc', cc: 200, value: 1 }] }] }));
+    expect(kt.errors.get('encoder.push.short[0].down[0].cc')).toContain('between 0 and 127');
+  });
+
+  it('skips a disabled push', () => {
+    expect(validateConfig(pushConfig({ enabled: false, label: '' })).isValid).toBe(true);
+  });
+
+  it('validates an enabled push even when the rotary is disabled (firmware still uses it)', () => {
+    const cfg = pushConfig({ type: 'cc_inc', cc_step: 0 });
+    cfg.pages[0].encoder!.enabled = false;
+    expect(validateConfig(cfg).errors.get('encoder.push.cc_step')).toContain('between 1 and 127');
+  });
+
+  it('validateAllPages reports push errors on a non-active page', () => {
+    const cfg = pushConfig({});
+    cfg.pages.push({ name: 'Two', buttons: [{ label: 'OK', cc: 20, color: 'green' }],
+      encoder: { enabled: true, cc: 11, label: 'ENC', push: { enabled: true, label: 'PUSH', type: 'cc_inc', cc_step: 0 } } });
+    const lines = validateAllPages(cfg);
+    expect(lines.some(l => l.includes('Page 2 (Two)') && l.includes('encoder.push.cc_step'))).toBe(true);
+  });
+});
+
 describe('cc_inc / cc_dec fields (#11)', () => {
   function ccStepConfig(btn: Record<string, unknown>): MidiCaptainConfig {
     return {

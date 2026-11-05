@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Valid button colors
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ButtonColor {
     Red,
@@ -16,6 +16,7 @@ pub enum ButtonColor {
     Magenta,
     Orange,
     Purple,
+    #[default]
     White,
 }
 
@@ -247,6 +248,9 @@ pub struct StateOverride {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ButtonConfig {
     pub label: String,
+    /// Required on footswitches by the schema; optional on the encoder push (no LED).
+    /// Defaults to white, same as the firmware.
+    #[serde(default)]
     pub color: ButtonColor,
     #[serde(rename = "type", default, skip_serializing_if = "is_default_message_type")]
     pub message_type: MessageType,
@@ -359,20 +363,13 @@ fn is_default_message_type(t: &MessageType) -> bool {
     *t == MessageType::Cc
 }
 
-/// Encoder push button configuration
+/// Encoder push button: a full button (every ButtonConfig field) without an LED.
+/// Label up to 8 chars, color optional; validated by `validate_button` like a footswitch.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncoderPush {
     pub enabled: bool,
-    pub cc: u8,
-    pub label: String,
-    #[serde(default)]
-    pub mode: ButtonMode,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub channel: Option<u8>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cc_on: Option<u8>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cc_off: Option<u8>,
+    #[serde(flatten)]
+    pub button: ButtonConfig,
 }
 
 /// Rotary encoder configuration (STD10 only)
@@ -682,131 +679,7 @@ impl MidiCaptainConfig {
 
             // Validate CC numbers (0-127) and button-specific fields
             for (i, button) in page.buttons.iter().enumerate() {
-                if let Some(cc) = button.cc {
-                    if cc > 127 {
-                        errors.push(format!("{}Button {} CC {} exceeds 127", pfx, i + 1, cc));
-                    }
-                }
-                if button.label.len() > 6 {
-                    errors.push(format!("{}Button {} label '{}' exceeds 6 chars", pfx, i + 1, button.label));
-                }
-                if let Some(ch) = button.channel {
-                    if ch > 15 {
-                        errors.push(format!("{}Button {} channel {} is invalid (must be 1-16)", pfx, i + 1, ch + 1));
-                    }
-                }
-                if let Some(val) = button.cc_on {
-                    if val > 127 {
-                        errors.push(format!("{}Button {} cc_on {} exceeds 127", pfx, i + 1, val));
-                    }
-                }
-                if let Some(val) = button.cc_off {
-                    if val > 127 {
-                        errors.push(format!("{}Button {} cc_off {} exceeds 127", pfx, i + 1, val));
-                    }
-                }
-                for (field, val) in [
-                    ("cc_receive", button.cc_receive),
-                    ("short_cc_receive", button.short_cc_receive),
-                    ("long_cc_receive", button.long_cc_receive),
-                ] {
-                    if let Some(v) = val {
-                        if v > 127 {
-                            errors.push(format!("{}Button {} {} {} exceeds 127", pfx, i + 1, field, v));
-                        }
-                    }
-                }
-                for (cycle, entries) in [("short", &button.short), ("long", &button.long)] {
-                    for (e, entry) in entries.iter().flatten().enumerate() {
-                        if let Some(v) = entry.rx_value {
-                            if v > 127 {
-                                errors.push(format!("{}Button {} {} entry {} rx_value {} exceeds 127", pfx, i + 1, cycle, e + 1, v));
-                            }
-                        }
-                    }
-                }
-                if let Some(ms) = button.flash_ms {
-                    if !(50..=5000).contains(&ms) {
-                        errors.push(format!("{}Button {} flash_ms {} out of range (50-5000)", pfx, i + 1, ms));
-                    }
-                }
-                if let Some(ms) = button.long_press_threshold_ms {
-                    if !(50..=5000).contains(&ms) {
-                        errors.push(format!("{}Button {} long_press_threshold_ms {} out of range (50-5000)", pfx, i + 1, ms));
-                    }
-                }
-                // Page-switch trigger fields (#15 P4b). Type-gated: a stale page/page_step
-                // left behind by an editor type switch must not block save. The firmware
-                // clamps a bad jump target; the editor fails loud (P1 asymmetry rule).
-                if matches!(button.message_type, MessageType::PageInc | MessageType::PageDec) {
-                    if let Some(step) = button.page_step {
-                        if step < 1 {
-                            errors.push(format!("{}Button {} page_step must be >= 1", pfx, i + 1));
-                        }
-                    }
-                }
-                if matches!(button.message_type, MessageType::PageJump) {
-                    if let Some(pg) = button.page {
-                        if (pg as usize) >= self.pages.len() {
-                            errors.push(format!(
-                                "{}Button {} page {} out of range (0-{})",
-                                pfx, i + 1, pg, self.pages.len().saturating_sub(1)
-                            ));
-                        }
-                    }
-                }
-                // cc_inc/cc_dec fields (#11). Type-gated like the page fields: a
-                // plain cc_inc/cc_dec button, or a keytimes button that carries the
-                // cc-step fields because one of its entries fires cc_inc/cc_dec.
-                let is_cc_step = matches!(button.message_type, MessageType::CcInc | MessageType::CcDec)
-                    || (button.mode == ButtonMode::Keytimes
-                        && (button.cc_step.is_some() || button.cc_slots.is_some()));
-                if is_cc_step {
-                    if let Some(step) = button.cc_step {
-                        if !(1..=127).contains(&step) {
-                            errors.push(format!("{}Button {} cc_step {} out of range (1-127)", pfx, i + 1, step));
-                        }
-                    }
-                    if let Some(slots) = button.cc_slots {
-                        if !(2..=16).contains(&slots) {
-                            errors.push(format!("{}Button {} cc_slots {} out of range (2-16)", pfx, i + 1, slots));
-                        }
-                    }
-                    let lo = button.cc_min.unwrap_or(0);
-                    let hi = button.cc_max.unwrap_or(127);
-                    if lo > 127 {
-                        errors.push(format!("{}Button {} cc_min {} exceeds 127", pfx, i + 1, lo));
-                    }
-                    if hi > 127 {
-                        errors.push(format!("{}Button {} cc_max {} exceeds 127", pfx, i + 1, hi));
-                    }
-                    if lo >= hi {
-                        errors.push(format!("{}Button {} cc_min ({}) must be less than cc_max ({})", pfx, i + 1, lo, hi));
-                    }
-                    if let Some(init) = button.cc_initial {
-                        if init < lo || init > hi {
-                            errors.push(format!("{}Button {} cc_initial {} must be within cc_min..cc_max ({}-{})", pfx, i + 1, init, lo, hi));
-                        }
-                    }
-                    if let Some(ref names) = button.cc_slot_names {
-                        for (s, name) in names.iter().enumerate() {
-                            if name.chars().count() > 6 {
-                                errors.push(format!("{}Button {} slot {} name '{}' exceeds 6 chars", pfx, i + 1, s + 1, name));
-                            }
-                        }
-                    }
-                }
-                // mode='keytimes' carries its cycle data in short[]/long[]; the legacy
-                // keytimes/states fields are meaningless there and forbidden by the editor.
-                // Other modes still accept them with a runtime deprecation warning from the firmware.
-                if button.mode == ButtonMode::Keytimes {
-                    if button.keytimes.is_some() {
-                        errors.push(format!("{}Button {} 'keytimes' field is not allowed on mode='keytimes' (use short[]/long[])", pfx, i + 1));
-                    }
-                    if button.states.is_some() {
-                        errors.push(format!("{}Button {} 'states' field is not allowed on mode='keytimes' (use short[]/long[])", pfx, i + 1));
-                    }
-                }
+                validate_button(button, &format!("{}Button {}", pfx, i + 1), 6, self.pages.len(), &mut errors);
             }
 
             // Validate per-page encoder if present
@@ -832,28 +705,10 @@ impl MidiCaptainConfig {
                         errors.push(format!("{}Encoder channel {} is invalid (must be 1-16)", pfx, ch + 1));
                     }
                 }
-                if let Some(ref push) = enc.push {
-                    if push.cc > 127 {
-                        errors.push(format!("{}Encoder push CC {} exceeds 127", pfx, push.cc));
-                    }
-                    if push.label.len() > 8 {
-                        errors.push(format!("{}Encoder push label '{}' exceeds 8 chars", pfx, push.label));
-                    }
-                    if let Some(ch) = push.channel {
-                        if ch > 15 {
-                            errors.push(format!("{}Encoder push channel {} is invalid (must be 1-16)", pfx, ch + 1));
-                        }
-                    }
-                    if let Some(val) = push.cc_on {
-                        if val > 127 {
-                            errors.push(format!("{}Encoder push cc_on {} exceeds 127", pfx, val));
-                        }
-                    }
-                    if let Some(val) = push.cc_off {
-                        if val > 127 {
-                            errors.push(format!("{}Encoder push cc_off {} exceeds 127", pfx, val));
-                        }
-                    }
+                // A disabled push is ignored by the firmware, so it can't block a save
+                // (the editor doesn't validate it either).
+                if let Some(push) = enc.push.as_ref().filter(|p| p.enabled) {
+                    validate_button(&push.button, &format!("{}Encoder push", pfx), 8, self.pages.len(), &mut errors);
                 }
             }
 
@@ -997,6 +852,136 @@ pub fn migrate_to_pages(mut value: serde_json::Value) -> serde_json::Value {
     obj.insert("active_page".to_string(), serde_json::Value::from(active.min(max_idx)));
 
     value
+}
+
+/// Validate one button's fields. `name` prefixes every message (e.g. "Page 1, Button 3"
+/// or "Page 1, Encoder push"); `label_max` is 6 for footswitches, 8 for the encoder push.
+fn validate_button(button: &ButtonConfig, name: &str, label_max: usize, page_count: usize, errors: &mut Vec<String>) {
+    if let Some(cc) = button.cc {
+        if cc > 127 {
+            errors.push(format!("{} CC {} exceeds 127", name, cc));
+        }
+    }
+    if button.label.len() > label_max {
+        errors.push(format!("{} label '{}' exceeds {} chars", name, button.label, label_max));
+    }
+    if let Some(ch) = button.channel {
+        if ch > 15 {
+            errors.push(format!("{} channel {} is invalid (must be 1-16)", name, ch + 1));
+        }
+    }
+    if let Some(val) = button.cc_on {
+        if val > 127 {
+            errors.push(format!("{} cc_on {} exceeds 127", name, val));
+        }
+    }
+    if let Some(val) = button.cc_off {
+        if val > 127 {
+            errors.push(format!("{} cc_off {} exceeds 127", name, val));
+        }
+    }
+    for (field, val) in [
+        ("cc_receive", button.cc_receive),
+        ("short_cc_receive", button.short_cc_receive),
+        ("long_cc_receive", button.long_cc_receive),
+    ] {
+        if let Some(v) = val {
+            if v > 127 {
+                errors.push(format!("{} {} {} exceeds 127", name, field, v));
+            }
+        }
+    }
+    for (cycle, entries) in [("short", &button.short), ("long", &button.long)] {
+        for (e, entry) in entries.iter().flatten().enumerate() {
+            if let Some(v) = entry.rx_value {
+                if v > 127 {
+                    errors.push(format!("{} {} entry {} rx_value {} exceeds 127", name, cycle, e + 1, v));
+                }
+            }
+        }
+    }
+    if let Some(ms) = button.flash_ms {
+        if !(50..=5000).contains(&ms) {
+            errors.push(format!("{} flash_ms {} out of range (50-5000)", name, ms));
+        }
+    }
+    if let Some(ms) = button.long_press_threshold_ms {
+        if !(50..=5000).contains(&ms) {
+            errors.push(format!("{} long_press_threshold_ms {} out of range (50-5000)", name, ms));
+        }
+    }
+    // Page-switch trigger fields (#15 P4b). Type-gated: a stale page/page_step
+    // left behind by an editor type switch must not block save. The firmware
+    // clamps a bad jump target; the editor fails loud (P1 asymmetry rule).
+    if matches!(button.message_type, MessageType::PageInc | MessageType::PageDec) {
+        if let Some(step) = button.page_step {
+            if step < 1 {
+                errors.push(format!("{} page_step must be >= 1", name));
+            }
+        }
+    }
+    if matches!(button.message_type, MessageType::PageJump) {
+        if let Some(pg) = button.page {
+            if (pg as usize) >= page_count {
+                errors.push(format!(
+                    "{} page {} out of range (0-{})",
+                    name, pg, page_count.saturating_sub(1)
+                ));
+            }
+        }
+    }
+    // cc_inc/cc_dec fields (#11). Type-gated like the page fields: a
+    // plain cc_inc/cc_dec button, or a keytimes button that carries the
+    // cc-step fields because one of its entries fires cc_inc/cc_dec.
+    let is_cc_step = matches!(button.message_type, MessageType::CcInc | MessageType::CcDec)
+        || (button.mode == ButtonMode::Keytimes
+            && (button.cc_step.is_some() || button.cc_slots.is_some()));
+    if is_cc_step {
+        if let Some(step) = button.cc_step {
+            if !(1..=127).contains(&step) {
+                errors.push(format!("{} cc_step {} out of range (1-127)", name, step));
+            }
+        }
+        if let Some(slots) = button.cc_slots {
+            if !(2..=16).contains(&slots) {
+                errors.push(format!("{} cc_slots {} out of range (2-16)", name, slots));
+            }
+        }
+        let lo = button.cc_min.unwrap_or(0);
+        let hi = button.cc_max.unwrap_or(127);
+        if lo > 127 {
+            errors.push(format!("{} cc_min {} exceeds 127", name, lo));
+        }
+        if hi > 127 {
+            errors.push(format!("{} cc_max {} exceeds 127", name, hi));
+        }
+        if lo >= hi {
+            errors.push(format!("{} cc_min ({}) must be less than cc_max ({})", name, lo, hi));
+        }
+        if let Some(init) = button.cc_initial {
+            if init < lo || init > hi {
+                errors.push(format!("{} cc_initial {} must be within cc_min..cc_max ({}-{})", name, init, lo, hi));
+            }
+        }
+        if let Some(ref names) = button.cc_slot_names {
+            for (s, slot_name) in names.iter().enumerate() {
+                if slot_name.chars().count() > 6 {
+                    errors.push(format!("{} slot {} name '{}' exceeds 6 chars", name, s + 1, slot_name));
+                }
+            }
+        }
+    }
+    // mode='keytimes' carries its cycle data in short[]/long[]; the legacy
+    // keytimes/states fields are meaningless there and forbidden by the editor.
+    // Other modes still accept them with a runtime deprecation warning from the firmware.
+    if button.mode == ButtonMode::Keytimes {
+        if button.keytimes.is_some() {
+            errors.push(format!("{} 'keytimes' field is not allowed on mode='keytimes' (use short[]/long[])", name));
+        }
+        if button.states.is_some() {
+            errors.push(format!("{} 'states' field is not allowed on mode='keytimes' (use short[]/long[])", name));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1453,7 +1438,10 @@ mod tests {
     fn schema_samples(node: &serde_json::Value, defs: &serde_json::Value) -> Vec<serde_json::Value> {
         use serde_json::{json, Value};
         if let Some(r) = node.get("$ref").and_then(Value::as_str) {
-            return schema_samples(&defs[r.trim_start_matches("#/definitions/")], defs);
+            // JSON pointer, so deep refs like EncoderPush's
+            // "#/definitions/ButtonConfig/properties/type" resolve too.
+            let target = defs.pointer(r.trim_start_matches("#/definitions")).unwrap_or_else(|| panic!("unresolved $ref {r}"));
+            return schema_samples(target, defs);
         }
         if let Some(c) = node.get("const") {
             return vec![c.clone()];
@@ -2022,6 +2010,44 @@ mod tests {
         assert!(errs.iter().any(|e| e.contains("cc_min") && e.contains("less than")), "{errs:?}");
         assert!(errs.iter().any(|e| e.contains("cc_initial")), "{errs:?}");
         assert!(errs.iter().any(|e| e.contains("exceeds 6 chars")), "{errs:?}");
+    }
+
+    #[test]
+    fn test_encoder_push_is_a_button() {
+        let json = r#"{
+            "device": "std10",
+            "pages": [{"buttons": [
+                {"label": "1", "color": "white"}, {"label": "2", "color": "white"},
+                {"label": "3", "color": "white"}, {"label": "4", "color": "white"},
+                {"label": "5", "color": "white"}, {"label": "6", "color": "white"},
+                {"label": "7", "color": "white"}, {"label": "8", "color": "white"},
+                {"label": "9", "color": "white"}, {"label": "10", "color": "white"}],
+              "encoder": {"enabled": true, "cc": 11, "label": "ENC",
+                "push": {"enabled": true, "label": "TAPTEMPO", "type": "cc_inc", "cc": 14,
+                         "cc_slots": 4, "messages_on": [{"type": "pc", "program": 3}]}}}],
+            "active_page": 0
+        }"#;
+        let config = parse_migrated(json);
+        let push = config.pages[0].encoder.as_ref().unwrap().push.as_ref().unwrap();
+        assert!(push.enabled);
+        assert_eq!(push.button.message_type, MessageType::CcInc);
+        assert_eq!(push.button.cc_slots, Some(4));
+        assert_eq!(push.button.messages_on.as_ref().map(|m| m.len()), Some(1));
+        config.validate().unwrap(); // 8-char label and no color are fine on the push
+
+        let bad = json.replace(r#""cc_slots": 4"#, r#""cc_slots": 17"#).replace("TAPTEMPO", "TOOLONGXX");
+        let errs = parse_migrated(&bad).validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("Encoder push cc_slots 17")), "{errs:?}");
+        assert!(errs.iter().any(|e| e.contains("Encoder push label") && e.contains("8 chars")), "{errs:?}");
+
+        // A disabled push is ignored by the firmware, so it doesn't block a save.
+        let disabled = bad.replace(r#""push": {"enabled": true"#, r#""push": {"enabled": false"#);
+        parse_migrated(&disabled).validate().unwrap();
+
+        // Slot-name errors name the button, not the slot (the loop var used to shadow it).
+        let slot = json.replace(r#""cc_slots": 4,"#, r#""cc_slots": 2, "cc_slot_names": ["LONGNAME", ""],"#);
+        let errs = parse_migrated(&slot).validate().unwrap_err();
+        assert!(errs.iter().any(|e| e == "Page 1, Encoder push slot 1 name 'LONGNAME' exceeds 6 chars"), "{errs:?}");
     }
 
     #[test]

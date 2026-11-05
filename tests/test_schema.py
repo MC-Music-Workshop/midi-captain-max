@@ -317,6 +317,41 @@ class TestEncoderValidation:
     }
     assert not validator.is_valid(wrap(config))
 
+  def test_encoder_push_cc_inc(self, validator):
+    config = {
+      "buttons": [{"label": "OK", "color": "red"}],
+      "encoder": {
+        "enabled": True, "cc": 11, "label": "ENC",
+        "push": {"enabled": True, "cc": 14, "label": "P", "type": "cc_inc",
+                 "cc_step": 8, "cc_min": 0, "cc_max": 64, "cc_wrap": False},
+      },
+    }
+    assert validator.is_valid(wrap(config))
+
+  def _push_config(self, push):
+    return wrap({
+      "buttons": [{"label": "OK", "color": "red"}],
+      "encoder": {"enabled": True, "cc": 11, "label": "ENC", "push": push},
+    })
+
+  def test_encoder_push_takes_any_button_config(self, validator):
+    """The push is a button without an LED: color optional, any type/mode, extra messages."""
+    push = {"enabled": True, "label": "TAPTEMPO", "type": "pc", "program": 4, "mode": "keytimes",
+            "short": [{"down": [{"type": "cc", "cc": 40, "value": 1}]}],
+            "messages_on": [{"type": "note", "note": 60, "velocity": 100}]}
+    assert validator.is_valid(self._push_config(push))
+
+  def test_encoder_push_label_max_8(self, validator):
+    assert not validator.is_valid(self._push_config({"enabled": True, "label": "NINECHARS"}))
+
+  def test_encoder_push_mirrors_button_config(self, schema):
+    """Every ButtonConfig field is on EncoderPush, by $ref, so the two can't drift."""
+    btn = schema["definitions"]["ButtonConfig"]["properties"]
+    push = schema["definitions"]["EncoderPush"]["properties"]
+    assert set(push) == set(btn) | {"enabled"}
+    for name in set(btn) - {"label", "color", "mode"}:
+      assert push[name] == {"$ref": "#/definitions/ButtonConfig/properties/" + name}, name
+
 
 class TestExpressionValidation:
   def test_valid_expression(self, validator):

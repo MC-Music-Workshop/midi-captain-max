@@ -1,5 +1,6 @@
 <script lang="ts">
   import Accordion from './Accordion.svelte';
+  import ButtonRow from './ButtonRow.svelte';
   import { config, currentPage, updateField } from '$lib/formStore';
   import { validationErrors } from '$lib/formStore';
 
@@ -45,15 +46,7 @@
     encoder?.channel !== undefined ? encoder.channel + 1 : globalChannel + 1
   );
   
-  let displayPushChannel = $derived(
-    encoder?.push?.channel !== undefined ? encoder.push.channel + 1 : undefined
-  );
-  let effectivePushChannel = $derived(
-    encoder?.push?.channel !== undefined ? encoder.push.channel + 1 : globalChannel + 1
-  );
-  
   let ccError = $derived($validationErrors.get('encoder.cc'));
-  let pushCCError = $derived($validationErrors.get('encoder.push.cc'));
 </script>
 
 <Accordion 
@@ -159,8 +152,10 @@
             disabled={isDisabled}
           />
         </div>
-        
-        <h4>Encoder Push Button</h4>
+      {/if}
+
+      <!-- The push works whether or not the rotary is enabled (firmware treats them separately). -->
+      <h4>Encoder Push Button</h4>
         
         <div class="field-row">
           <label>
@@ -175,91 +170,20 @@
         </div>
         
         {#if encoder.push?.enabled}
-          <div class="field-row">
-            <label for="encoder-push-label">Label:</label>
-            <input
-              id="encoder-push-label"
-              type="text"
-              value={encoder.push.label}
-              onblur={(e) => handleField('push.label', e)}
-              maxlength="6"
-              disabled={isDisabled}
-            />
-          </div>
-          <div class="field-row">
-            <label for="encoder-push-channel">Channel:</label>
-            <input
-              id="encoder-push-channel"
-              type="number"
-              value={displayPushChannel !== undefined ? displayPushChannel : ''}
-              onblur={(e) => handleChannelChange('push.channel', e)}
-              min="1"
-              max="16"
-              placeholder={effectivePushChannel.toString()}
-              title={encoder.push.channel !== undefined ? `MIDI Ch ${effectivePushChannel}` : `Using global: ${effectivePushChannel}`}
-              disabled={isDisabled}
-            />
-          </div>
-
-          <div class="field-row">
-            <label for="encoder-push-cc">CC:</label>
-            <input
-              id="encoder-push-cc"
-              type="number"
-              class:error={!!pushCCError}
-              value={encoder.push.cc}
-              onblur={(e) => handleField('push.cc', e)}
-              min="0"
-              max="127"
-              disabled={isDisabled}
-            />
-            {#if pushCCError}
-              <span class="error-text">{pushCCError}</span>
-            {/if}
-          </div>
-
-          <div class="field-row">
-            <label for="encoder-push-mode">Mode:</label>
-            <select
-              id="encoder-push-mode"
-              value={encoder.push.mode || 'momentary'}
-              onchange={(e) => handleField('push.mode', e)}
-              disabled={isDisabled}
-            >
-              <option value="toggle">Toggle</option>
-              <option value="momentary">Momentary</option>
-            </select>
-          </div>
-
-          <div class="field-row">
-            <label for="encoder-push-cc-on">ON Value:</label>
-            <input
-              id="encoder-push-cc-on"
-              type="number"
-              value={encoder.push.cc_on !== undefined ? encoder.push.cc_on : ''}
-              onblur={(e) => handleField('push.cc_on', e)}
-              min="0"
-              max="127"
-              placeholder="127"
-              disabled={isDisabled}
-            />
-          </div>
-
-          <div class="field-row">
-            <label for="encoder-push-cc-off">OFF Value:</label>
-            <input
-              id="encoder-push-cc-off"
-              type="number"
-              value={encoder.push.cc_off !== undefined ? encoder.push.cc_off : ''}
-              onblur={(e) => handleField('push.cc_off', e)}
-              min="0"
-              max="127"
-              placeholder="0"
-              disabled={isDisabled}
-            />
-          </div>
+          <!-- The push is a footswitch without an LED (legacy default CC 14, CC defaults to momentary). -->
+          <ButtonRow
+            button={encoder.push}
+            buttonPath="encoder.push"
+            displayName="Push"
+            defaultCc={14}
+            disabled={isDisabled}
+            {globalChannel}
+            hasLed={false}
+            labelMaxLength={8}
+            ccDefaultMode="momentary"
+            onUpdate={(field, value) => updateField(`encoder.push.${field}`, value)}
+          />
         {/if}
-      {/if}
     </div>
   {/if}
 </Accordion>
@@ -284,8 +208,7 @@
   }
   
   .field-row input[type="text"],
-  .field-row input[type="number"],
-  .field-row select {
+  .field-row input[type="number"] {
     padding: 0.375rem 0.5rem;
     border: 1px solid #ccc;
     border-radius: 4px;

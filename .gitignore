@@ -36,6 +36,7 @@ emulator/devices/
 emulator/*.log
 emulator/*.uf2
 emulator/*.img
+emulator/scenarios/*/serial.log
 
 # Bundled firmware for Config Editor — populated by CI or tools/bundle-firmware-for-dev.sh
 config-editor/src-tauri/resources/firmware/*

@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import type { MidiCaptainConfig, ButtonConfig, EncoderConfig, DeviceType, KeytimesEntry, KeytimesMessage, MessageType, Page } from './types';
+import type { MidiCaptainConfig, ButtonConfig, ButtonLike, EncoderConfig, EncoderPush, DeviceType, KeytimesEntry, KeytimesMessage, MessageType, Page } from './types';
 import { validateConfig, keytimesUsesCcStep, buttonTurnsOff } from './validation';
 
 interface FormState {
@@ -45,6 +45,11 @@ function activePage(cfg: MidiCaptainConfig): Page {
   return cfg.pages[activePageIndex(cfg)];
 }
 
+// Every button-shaped object on a page: the footswitches, then the encoder push.
+function pageButtons(page: Page): ButtonLike[] {
+  return page.encoder?.push ? [...page.buttons, page.encoder.push] : page.buttons;
+}
+
 // Paths whose first segment is page-scoped control-surface data get prefixed with
 // the active page; device-wide paths (display, global_channel, usb_drive_name,
 // midi_thru_*, dev_mode, long_press_threshold_ms) pass through unchanged.
@@ -87,8 +92,9 @@ export const selectGroupNames = derived(formState, $state => {
   const groups = new Set<string>();
   // Select groups are per-page; the editor only renders the active page, so
   // suggest groups from that page.
-  for (const btn of activePage($state.config).buttons) {
-    if (btn.select_group) {
+  const page = activePage($state.config);
+  for (const btn of [...page.buttons, page.encoder?.push]) {
+    if (btn?.select_group) {
       groups.add(btn.select_group);
     }
   }
@@ -116,7 +122,7 @@ function _attachUiIds(cfg: MidiCaptainConfig): void {
   };
   for (const page of cfg.pages ?? []) {
     if (typeof (page as Page).__uiId !== 'number') (page as Page).__uiId = _nextUiId();
-    for (const btn of page.buttons) {
+    for (const btn of pageButtons(page)) {
       attach(btn.messages_on);
       attach(btn.messages_off);
       for (const cycle of ['short', 'long'] as const) {
@@ -334,10 +340,24 @@ function _defaultMessage(type: MessageType): KeytimesMessage {
   }
 }
 
-function _updateButton(buttonIndex: number, mutate: (btn: ButtonConfig) => void) {
+// Walk a dotted path with [n] indexes ("short[2].down", "encoder.push") from obj.
+// Undefined when any step is missing.
+function _walk(obj: unknown, path: string): any {
+  let cur: any = obj;
+  for (const part of path.split('.')) {
+    const m = part.match(/^(\w+)\[(\d+)\]$/);
+    cur = m ? cur?.[m[1]]?.[parseInt(m[2])] : cur?.[part];
+    if (cur === undefined || cur === null) return undefined;
+  }
+  return cur;
+}
+
+// buttonPath is page-relative: "buttons[3]" for a footswitch, "encoder.push" for
+// the STD10 encoder push (which takes every button field).
+function _updateButton(buttonPath: string, mutate: (btn: ButtonLike) => void) {
   formState.update(state => {
     const newConfig = structuredClone(state.config);
-    const btn = activePage(newConfig).buttons[buttonIndex];
+    const btn = _walk(activePage(newConfig), buttonPath) as ButtonLike | undefined;
     if (!btn) return state;
     mutate(btn);
     return { ...state, config: newConfig, isDirty: true };
@@ -347,16 +367,16 @@ function _updateButton(buttonIndex: number, mutate: (btn: ButtonConfig) => void)
   debounceTimer = setTimeout(() => formState.update(state => pushHistory(state)), DEBOUNCE_MS);
 }
 
-export function addKeytimesEntry(buttonIndex: number, cycle: 'short' | 'long') {
-  _updateButton(buttonIndex, btn => {
+export function addKeytimesEntry(buttonPath: string, cycle: 'short' | 'long') {
+  _updateButton(buttonPath, btn => {
     const arr = (btn[cycle] ?? []) as KeytimesEntry[];
     arr.push({ __uiId: _nextUiId() } as KeytimesEntry);
     btn[cycle] = arr;
   });
 }
 
-export function removeKeytimesEntry(buttonIndex: number, cycle: 'short' | 'long', entryIndex: number) {
-  _updateButton(buttonIndex, btn => {
+export function removeKeytimesEntry(buttonPath: string, cycle: 'short' | 'long', entryIndex: number) {
+  _updateButton(buttonPath, btn => {
     const arr = btn[cycle];
     if (!Array.isArray(arr)) return;
     arr.splice(entryIndex, 1);
@@ -370,20 +390,15 @@ export function removeKeytimesEntry(buttonIndex: number, cycle: 'short' | 'long'
 
 // Resolve a button-relative message-list path ("messages_on", "short[2].down") to
 // the object holding the list and the list's key on it. Null when the holder is missing.
-function _messageList(btn: ButtonConfig, listPath: string): { holder: Record<string, unknown>; key: string } | null {
+function _messageList(btn: ButtonLike, listPath: string): { holder: Record<string, unknown>; key: string } | null {
   const parts = listPath.split('.');
   const key = parts.pop()!;
-  let holder: any = btn;
-  for (const part of parts) {
-    const m = part.match(/^(\w+)\[(\d+)\]$/);
-    holder = m ? holder?.[m[1]]?.[parseInt(m[2])] : holder?.[part];
-    if (!holder) return null;
-  }
-  return { holder, key };
+  const holder = parts.length ? _walk(btn, parts.join('.')) : btn;
+  return holder ? { holder, key } : null;
 }
 
-export function addMessage(buttonIndex: number, listPath: string, msgType: MessageType = 'cc') {
-  _updateButton(buttonIndex, btn => {
+export function addMessage(buttonPath: string, listPath: string, msgType: MessageType = 'cc') {
+  _updateButton(buttonPath, btn => {
     const list = _messageList(btn, listPath);
     if (!list) return;
     const messages = (list.holder[list.key] ?? []) as KeytimesMessage[];
@@ -392,8 +407,8 @@ export function addMessage(buttonIndex: number, listPath: string, msgType: Messa
   });
 }
 
-export function removeMessage(buttonIndex: number, listPath: string, msgIndex: number) {
-  _updateButton(buttonIndex, btn => {
+export function removeMessage(buttonPath: string, listPath: string, msgIndex: number) {
+  _updateButton(buttonPath, btn => {
     const list = _messageList(btn, listPath);
     const messages = list?.holder[list.key];
     if (!list || !Array.isArray(messages)) return;
@@ -402,20 +417,23 @@ export function removeMessage(buttonIndex: number, listPath: string, msgIndex: n
   });
 }
 
-export function setMessageType(buttonIndex: number, listPath: string, msgIndex: number, newType: MessageType,
+export function setMessageType(buttonPath: string, listPath: string, msgIndex: number, newType: MessageType,
                                fields?: Record<string, unknown>) {
   // Replace the whole message with a default of the new type (plus any starting
   // fields), since type-specific fields don't overlap across types
   // (cc/value vs note/velocity vs program vs step vs key).
-  _updateButton(buttonIndex, btn => {
+  _updateButton(buttonPath, btn => {
     const list = _messageList(btn, listPath);
     const messages = list?.holder[list.key];
     if (!Array.isArray(messages) || !messages[msgIndex]) return;
-    messages[msgIndex] = { ..._defaultMessage(newType), ...fields } as KeytimesMessage;
+    // Keep the UI id so MessageList's keyed {#each} doesn't fall back to the index
+    // (which can collide with another message's id: each_key_duplicate).
+    const uiId = (messages[msgIndex] as { __uiId?: number }).__uiId;
+    messages[msgIndex] = { ..._defaultMessage(newType), ...fields, __uiId: uiId ?? _nextUiId() } as KeytimesMessage;
   });
 }
 
-export function syncButtonStates(buttonIndex: number, keytimes: number) {
+export function syncButtonStates(buttonPath: string, keytimes: number) {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
     debounceTimer = null;
@@ -423,7 +441,7 @@ export function syncButtonStates(buttonIndex: number, keytimes: number) {
 
   formState.update(state => {
     const newConfig = structuredClone(state.config);
-    const btn = activePage(newConfig).buttons[buttonIndex];
+    const btn = _walk(activePage(newConfig), buttonPath) as ButtonLike | undefined;
     if (!btn) return state;
 
     if (keytimes <= 1) {
@@ -597,6 +615,12 @@ export function setActivePage(index: number) {
   });
 }
 
+// The firmware's defaults for a page with no encoder block (code.py switch_page).
+const DEFAULT_ENCODER: EncoderConfig = {
+  enabled: true, cc: 11, label: 'ENC', min: 0, max: 127, initial: 64,
+  push: { enabled: true, cc: 14, label: 'PUSH', mode: 'momentary' },
+};
+
 export function addPage() {
   _commitConfigMutation(cfg => {
     if (cfg.pages.length >= PAGE_CAP) return false;
@@ -605,7 +629,10 @@ export function addPage() {
     const count = cfg.device
       ? DEVICE_BUTTON_COUNT[cfg.device]
       : activePage(cfg).buttons.length;
-    cfg.pages.push({ buttons: createDefaultButtons(0, count - 1) });
+    const page: Page = { buttons: createDefaultButtons(0, count - 1) };
+    // Same defaults the firmware uses for a page without an encoder block.
+    if (cfg.device && DEVICE_HAS_ENCODER[cfg.device]) page.encoder = structuredClone(DEFAULT_ENCODER);
+    cfg.pages.push(page);
     cfg.active_page = cfg.pages.length - 1;
   });
 }
@@ -671,7 +698,7 @@ export function movePage(from: number, to: number) {
 // The cc-step field subset of a button, cleaned for save: SLOT mode (cc_slots set)
 // drops cc_step; STEP mode drops cc_slots and the slot tables; an all-empty
 // cc_slot_names array is dropped.
-function ccStepFields(btn: ButtonConfig): Partial<ButtonConfig> {
+function ccStepFields(btn: ButtonLike): Partial<ButtonLike> {
   const { cc, cc_step, cc_slots, cc_min, cc_max, cc_wrap, cc_initial, cc_slot_colors, cc_slot_names } = btn;
   const slotMode = cc_slots !== undefined;
   const names = cc_slot_names?.some(n => n !== '') ? cc_slot_names : undefined;
@@ -691,7 +718,7 @@ function ccStepFields(btn: ButtonConfig): Partial<ButtonConfig> {
 // Strip type-specific fields that don't belong to the button's current type.
 // Prevents stale cc/note/program/etc. from accumulating in the saved JSON when
 // the user switches a button's type.
-function normalizeButton(btn: ButtonConfig): ButtonConfig {
+function normalizeButton(btn: ButtonLike): ButtonLike {
   // mode: "keytimes" carries its message data inside short[]/long[] entries,
   // not at the top of the button. Strip all legacy per-type fields here so
   // serialized JSON stays clean if the user toggled the button through other
@@ -717,7 +744,7 @@ function normalizeButton(btn: ButtonConfig): ButtonConfig {
   // never turns off (the form keeps it across a mode flip, like select_group).
   const { short: _short, long: _long, long_press_threshold_ms: _lpt,
           short_cc_receive: _scr, long_cc_receive: _lcr, messages_off, ...rest } = btn;
-  const btnWithoutKeytimesFields: ButtonConfig = {
+  const btnWithoutKeytimesFields: ButtonLike = {
     ...rest,
     ...(messages_off !== undefined && buttonTurnsOff(btn) && { messages_off }),
   };
@@ -810,7 +837,13 @@ export function normalizeConfig(cfg: MidiCaptainConfig): MidiCaptainConfig {
   const normalized: MidiCaptainConfig = {
     ...cloned,
     pages: cloned.pages.map(page => {
-      const p: Page = { ...page, buttons: page.buttons.map(normalizeButton) };
+      const p: Page = { ...page, buttons: page.buttons.map(b => normalizeButton(b) as ButtonConfig) };
+      // The push normalizes like a footswitch; `enabled` is push-only, so it
+      // rides around normalizeButton.
+      if (p.encoder?.push) {
+        const { enabled, ...push } = p.encoder.push;
+        p.encoder = { ...p.encoder, push: { enabled, ...normalizeButton(push) } as EncoderPush };
+      }
       if (p.display && Object.values(p.display).every(v => v === undefined)) {
         delete p.display;
       }

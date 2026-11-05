@@ -15,5 +15,9 @@ pytest>=8.0.0
 # JSON Schema validation for config tests
 jsonschema>=4.0.0
 
+# Parses emulator/scenarios/*/scenario.yaml so tests/test_wokwi_scenarios.py can
+# replay the Wokwi scenarios on the desktop firmware harness (free, every push).
+pyyaml>=6.0
+
 # Optional: Adafruit Blinka for more realistic hardware simulation
 # adafruit-blinka>=8.0.0

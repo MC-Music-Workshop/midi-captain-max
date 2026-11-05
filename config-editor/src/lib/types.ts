@@ -30,6 +30,11 @@ export type KeytimesMessage = import('./types.generated').KeytimesMessage & { __
 // Stripped by normalizeConfig before write — never reaches disk.
 export type Page = import('./types.generated').Page & { __uiId?: number };
 
+// Anything ButtonRow edits: a footswitch (ButtonConfig) or the STD10 encoder push
+// (EncoderPush = every ButtonConfig field plus `enabled`, with `color` optional
+// because the push has no LED).
+export type ButtonLike = Omit<ButtonConfig, 'color'> & { color?: ButtonColor };
+
 // Derived from generated types — no manual sync needed
 export type ButtonMode = NonNullable<ButtonConfig['mode']>;
 export type OffMode = NonNullable<ButtonConfig['off_mode']>;

@@ -1,0 +1,373 @@
+{
+  "device": "std10",
+  "active_page": 0,
+  "pages": [
+    {
+      "name": "Legacy",
+      "buttons": [
+        {
+          "label": "1",
+          "cc": 20,
+          "color": "white"
+        },
+        {
+          "label": "2",
+          "cc": 21,
+          "color": "white"
+        },
+        {
+          "label": "3",
+          "cc": 22,
+          "color": "white"
+        },
+        {
+          "label": "4",
+          "cc": 23,
+          "color": "white"
+        },
+        {
+          "label": "5",
+          "cc": 24,
+          "color": "white"
+        },
+        {
+          "label": "6",
+          "cc": 25,
+          "color": "white"
+        },
+        {
+          "label": "7",
+          "cc": 26,
+          "color": "white"
+        },
+        {
+          "label": "8",
+          "cc": 27,
+          "color": "white"
+        },
+        {
+          "label": "9",
+          "cc": 28,
+          "color": "white"
+        },
+        {
+          "label": "NEXT",
+          "color": "white",
+          "type": "page_inc"
+        }
+      ],
+      "encoder": {
+        "enabled": true,
+        "cc": 11,
+        "label": "ENC",
+        "push": {
+          "enabled": true,
+          "label": "PUSH",
+          "cc": 14,
+          "mode": "momentary"
+        }
+      }
+    },
+    {
+      "name": "CC plus",
+      "buttons": [
+        {
+          "label": "UP",
+          "color": "red",
+          "type": "cc_inc",
+          "cc": 30,
+          "cc_step": 5
+        },
+        {
+          "label": "2",
+          "cc": 21,
+          "color": "white"
+        },
+        {
+          "label": "3",
+          "cc": 22,
+          "color": "white"
+        },
+        {
+          "label": "4",
+          "cc": 23,
+          "color": "white"
+        },
+        {
+          "label": "5",
+          "cc": 24,
+          "color": "white"
+        },
+        {
+          "label": "6",
+          "cc": 25,
+          "color": "white"
+        },
+        {
+          "label": "7",
+          "cc": 26,
+          "color": "white"
+        },
+        {
+          "label": "8",
+          "cc": 27,
+          "color": "white"
+        },
+        {
+          "label": "9",
+          "cc": 28,
+          "color": "white"
+        },
+        {
+          "label": "NEXT",
+          "color": "white",
+          "type": "page_inc"
+        }
+      ],
+      "encoder": {
+        "enabled": true,
+        "cc": 11,
+        "label": "ENC",
+        "push": {
+          "enabled": true,
+          "label": "PUSH",
+          "type": "cc_inc",
+          "cc": 30,
+          "cc_step": 5
+        }
+      }
+    },
+    {
+      "name": "PC extra",
+      "buttons": [
+        {
+          "label": "1",
+          "cc": 20,
+          "color": "white"
+        },
+        {
+          "label": "2",
+          "cc": 21,
+          "color": "white"
+        },
+        {
+          "label": "3",
+          "cc": 22,
+          "color": "white"
+        },
+        {
+          "label": "4",
+          "cc": 23,
+          "color": "white"
+        },
+        {
+          "label": "5",
+          "cc": 24,
+          "color": "white"
+        },
+        {
+          "label": "6",
+          "cc": 25,
+          "color": "white"
+        },
+        {
+          "label": "7",
+          "cc": 26,
+          "color": "white"
+        },
+        {
+          "label": "8",
+          "cc": 27,
+          "color": "white"
+        },
+        {
+          "label": "9",
+          "cc": 28,
+          "color": "white"
+        },
+        {
+          "label": "NEXT",
+          "color": "white",
+          "type": "page_inc"
+        }
+      ],
+      "encoder": {
+        "enabled": true,
+        "cc": 11,
+        "label": "ENC",
+        "push": {
+          "enabled": true,
+          "label": "PUSH",
+          "type": "pc",
+          "program": 5,
+          "messages_on": [
+            {
+              "type": "note",
+              "note": 60,
+              "velocity": 100
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Select",
+      "buttons": [
+        {
+          "label": "AMP1",
+          "color": "green",
+          "cc": 60,
+          "cc_on": 1,
+          "mode": "select",
+          "select_group": "amps",
+          "select_repress": "nothing"
+        },
+        {
+          "label": "2",
+          "cc": 21,
+          "color": "white"
+        },
+        {
+          "label": "3",
+          "cc": 22,
+          "color": "white"
+        },
+        {
+          "label": "4",
+          "cc": 23,
+          "color": "white"
+        },
+        {
+          "label": "5",
+          "cc": 24,
+          "color": "white"
+        },
+        {
+          "label": "6",
+          "cc": 25,
+          "color": "white"
+        },
+        {
+          "label": "7",
+          "cc": 26,
+          "color": "white"
+        },
+        {
+          "label": "8",
+          "cc": 27,
+          "color": "white"
+        },
+        {
+          "label": "9",
+          "cc": 28,
+          "color": "white"
+        },
+        {
+          "label": "NEXT",
+          "color": "white",
+          "type": "page_inc"
+        }
+      ],
+      "encoder": {
+        "enabled": true,
+        "cc": 11,
+        "label": "ENC",
+        "push": {
+          "enabled": true,
+          "label": "PUSH",
+          "cc": 60,
+          "cc_on": 2,
+          "mode": "select",
+          "select_group": "amps"
+        }
+      }
+    },
+    {
+      "name": "Keytimes",
+      "buttons": [
+        {
+          "label": "1",
+          "cc": 20,
+          "color": "white"
+        },
+        {
+          "label": "2",
+          "cc": 21,
+          "color": "white"
+        },
+        {
+          "label": "3",
+          "cc": 22,
+          "color": "white"
+        },
+        {
+          "label": "4",
+          "cc": 23,
+          "color": "white"
+        },
+        {
+          "label": "5",
+          "cc": 24,
+          "color": "white"
+        },
+        {
+          "label": "6",
+          "cc": 25,
+          "color": "white"
+        },
+        {
+          "label": "7",
+          "cc": 26,
+          "color": "white"
+        },
+        {
+          "label": "8",
+          "cc": 27,
+          "color": "white"
+        },
+        {
+          "label": "9",
+          "cc": 28,
+          "color": "white"
+        },
+        {
+          "label": "NEXT",
+          "color": "white",
+          "type": "page_inc"
+        }
+      ],
+      "encoder": {
+        "enabled": true,
+        "cc": 11,
+        "label": "ENC",
+        "push": {
+          "enabled": true,
+          "label": "PUSH",
+          "mode": "keytimes",
+          "short": [
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 41,
+                  "value": 1
+                }
+              ]
+            }
+          ],
+          "long": [
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 42,
+                  "value": 2
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

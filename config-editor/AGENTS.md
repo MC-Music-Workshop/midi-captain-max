@@ -100,7 +100,11 @@ Also strips `display: {}` if no display fields were set.
 
 ## `cc_inc` / `cc_dec` editor (#11)
 
-`CcStepFields.svelte` renders the button-level cc-step fields (CC, Step/Slots radio, step or slot count, min/max, initial, wrap, and in Slots mode a per-slot color + name table). `ButtonRow` mounts it in the type branch for a plain `cc_inc`/`cc_dec` button, and again inside a "Shared CC settings" panel above `KeytimesEditor` when `keytimesUsesCcStep(button)`. Mode dropdown for these types offers only "Single press" (`flash`) and keytimes — the firmware coerces every other mode to `flash`. Slot tables are always kept exactly `cc_slots` long (colors default to the button color, names to `''`) because the schema arrays can't hold gaps; the whole array is rewritten on each edit via `onUpdate` rather than an indexed path. A `cc_inc`/`cc_dec` **message** with its own `cc` is self-contained: it carries `channel`, `cc_step`, `cc_min`, `cc_max`, `cc_wrap` under the same names as the button fields (STEP only, no slots or `cc_initial`), and `validateCcStep()` checks it at the message path. `MessageEditor` shows CC / Step / Min / Max / wrap / Ch for it; with the CC blank (keytimes only, `sharedCcStep`) it shows the "steps the shared CC value" hint and hides the channel.
+`CcStepFields.svelte` renders the button-level cc-step fields (CC, Step/Slots radio, step or slot count, min/max, initial, wrap, and in Slots mode a per-slot color + name table). `ButtonRow` mounts it in the type branch for a plain `cc_inc`/`cc_dec` button, and again inside a "Shared CC settings" panel above `KeytimesEditor` when `keytimesUsesCcStep(button)`. Mode dropdown for these types offers only "Single press" (`flash`) and keytimes — the firmware coerces every other mode to `flash`. Slot tables are always kept exactly `cc_slots` long (colors default to the button color, names to `''`) because the schema arrays can't hold gaps; the whole array is rewritten on each edit via `onUpdate` rather than an indexed path. A `cc_inc`/`cc_dec` **message** with its own `cc` is self-contained: it carries `channel`, `cc_step`, `cc_min`, `cc_max`, `cc_wrap` under the same names as the button fields (STEP only, no slots or `cc_initial`), and `validateCcStep()` checks it at the message path. `MessageEditor` shows CC / Step / Min / Max / wrap / Ch for it; with the CC blank (keytimes only, `sharedCcStep`) it shows the "steps the shared CC value" hint and hides the channel. The STD10 **encoder push** is a footswitch without an LED: `EncoderSection` renders the same `ButtonRow` with `buttonPath="encoder.push"`, `hasLed={false}` (hides every LED/screen-tile-only control: LED Color / Off Mode / Off Color, CC+/CC- slot colors (and doesn't write `cc_slot_colors`), keytimes entry color / dim / label and the long-color overlay; slot names stay, the status line shows them), `labelMaxLength={8}`, `defaultCc={14}` and `ccDefaultMode="momentary"` (a CC push with no `mode` is momentary, firmware and schema agree; the dropdown shows it without writing `mode`). Every type, mode, CC+/CC-, keytimes and "Also send" list works on it through the same path-based helpers, and `validatePage` runs the same `validateButton` on it (STD10 and push enabled, independent of the rotary's `enabled`, same as Rust and the firmware) with error keys under `encoder.push.`. The push section shows even when the rotary is disabled. `addPage()` gives a new page on an encoder device the firmware's default encoder + push (`DEFAULT_ENCODER`). `setMessageType` keeps the replaced message's `__uiId`; dropping it made `MessageList`'s keyed `{#each}` fall back to the index and crash with `each_key_duplicate`.
+
+## Button paths
+
+`ButtonRow`, `CcStepFields`, `KeytimesEditor`, `MessageList`, `MessageEditor` and the `formStore` structure helpers address a button by its **page-relative path**, not an index: `buttons[3]` for a footswitch, `encoder.push` for the encoder push. The same string prefixes `updateField` paths and validation error keys. Message helpers take it plus a button-relative list path: `addMessage('buttons[3]', 'short[0].down', 'pc')`, `setMessageType('encoder.push', 'messages_on', 0, 'cc_inc', { cc: 20 })`. `ButtonRow` turns the path into DOM ids (`buttons[3]` → `btn-3`, `encoder.push` → `encoder-push`). `normalizeConfig` runs `normalizeButton` on the push too, carrying `enabled` around it.
 
 ## `setNestedValue` Path Format
 
@@ -116,7 +120,7 @@ Also strips `display: {}` if no display fields were set.
 
 Key constraints from `config.schema.json`:
 - **Button labels**: max 6 chars, pattern `[\w \-]+`
-- **Encoder/expression labels**: max 8 chars
+- **Encoder/encoder push/expression labels**: max 8 chars
 - **Channels**: 0-15 (displayed 1-16)
 - **MIDI bytes** (cc, note, program, velocity, etc.): 0-127
 - **pc_step**: 1-127; **keytimes**: 1-99; **flash_ms**: 50-5000
@@ -144,7 +148,7 @@ The keytimes mode is rendered by `KeytimesEditor.svelte`, which composes per-cyc
 - `KeytimesEditor` renders threshold input, short cycle entries, long cycle entries
 - Host sync (#200, #211): each cycle header has a **Listen CC** (`short_cc_receive` / `long_cc_receive`); once it's set, each entry shows a **Receive value** (`rx_value`), and a later entry repeating an earlier value gets a warning (the firmware matches the first). `normalizeButton` strips the listen CCs from non-keytimes buttons
 
-Mutations on the nested structure (add/remove entry, add/remove message, change message type) go through dedicated `formStore` helpers (`addKeytimesEntry`, `removeKeytimesEntry`, and `addMessage` / `removeMessage` / `setMessageType`, which take a button-relative list path like `short[0].down` or `messages_on`) because `updateField()` requires intermediate path components to already exist. Leaf-value edits (color, dim, label, individual message field values) use `updateField()`.
+Mutations on the nested structure (add/remove entry, add/remove message, change message type, legacy `syncButtonStates`) go through dedicated `formStore` helpers (`addKeytimesEntry`, `removeKeytimesEntry`, `syncButtonStates`, and `addMessage` / `removeMessage` / `setMessageType`) because `updateField()` requires intermediate path components to already exist. Leaf-value edits (color, dim, label, individual message field values) use `updateField()`.
 
 `normalizeButton` strips legacy per-type fields when `mode === 'keytimes'` so save output stays clean even if the button was toggled through other modes before settling on keytimes. For non-keytimes modes, it strips the `short`/`long`/`long_press_threshold_ms` fields.
 
@@ -157,7 +161,7 @@ Same `KeytimesMessage` items as a keytimes slot, rendered by `ButtonRow` with th
 The config editor is held to **0 svelte-check warnings**. When adding form controls:
 
 - Every `<label>` must associate with its control via `for`/`id` pairing, or wrap-style.
-- For multi-instance components, derive unique IDs from the prop index. `ButtonRow` exposes `fieldId(field)` and `stateFieldId(si, field)` helpers — use them when adding fields.
+- For multi-instance components, derive unique IDs from the instance (index or button path). `ButtonRow` exposes `fieldId(field)` and `stateFieldId(si, field)` helpers — use them when adding fields.
 - Use Svelte 5 event syntax: `onclick`, `onblur`, `onchange` — never `on:click` etc.
 - Modal dialogs need `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `tabindex="-1"`, and an Escape key handler.
 - Backdrops need `role="presentation"` + `tabindex="-1"` + an `onkeydown` handler.

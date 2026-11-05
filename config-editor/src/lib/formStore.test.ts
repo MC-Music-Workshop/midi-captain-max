@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage, deletePage, movePage, updatePageField, PAGE_CAP, addPageFromTemplate, markSaved, updateField, addMessage, removeMessage, setMessageType } from './formStore';
+import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage, deletePage, movePage, updatePageField, PAGE_CAP, addPageFromTemplate, markSaved, updateField, addMessage, removeMessage, setMessageType, addKeytimesEntry, removeKeytimesEntry, syncButtonStates, selectGroupNames } from './formStore';
 import type { MidiCaptainConfig, DeviceType, Page } from './types';
 
 // Minimal valid config: one1 = 1 button per page, so validation stays green.
@@ -363,25 +363,42 @@ describe('extra messages (messages_on / messages_off)', () => {
 
   it('addMessage / setMessageType / removeMessage edit a button-level list', () => {
     loadConfig(withButton({ cc: 20 }));
-    addMessage(0, 'messages_on');
-    addMessage(0, 'messages_on', 'pc');
+    addMessage('buttons[0]', 'messages_on');
+    addMessage('buttons[0]', 'messages_on', 'pc');
     expect(button().messages_on?.map(m => m.type)).toEqual(['cc', 'pc']);
-    setMessageType(0, 'messages_on', 0, 'note');
+    setMessageType('buttons[0]', 'messages_on', 0, 'note');
     expect(button().messages_on?.[0]).toMatchObject({ type: 'note', note: 60 });
-    removeMessage(0, 'messages_on', 0);
-    removeMessage(0, 'messages_on', 0);
+    removeMessage('buttons[0]', 'messages_on', 0);
+    removeMessage('buttons[0]', 'messages_on', 0);
     expect(button().messages_on).toBeUndefined();
   });
 
   it('setMessageType can seed starting fields (a CC+ extra starts with its own CC)', () => {
     loadConfig(withButton({ cc: 20, messages_on: [{ type: 'pc', program: 1 }] }));
-    setMessageType(0, 'messages_on', 0, 'cc_inc', { cc: 20 });
-    expect(button().messages_on?.[0]).toEqual({ type: 'cc_inc', cc: 20 });
+    const uiId = (button().messages_on?.[0] as { __uiId?: number }).__uiId;
+    setMessageType('buttons[0]', 'messages_on', 0, 'cc_inc', { cc: 20 });
+    expect(button().messages_on?.[0]).toEqual({ type: 'cc_inc', cc: 20, __uiId: uiId });
+  });
+
+  it('setMessageType keeps UI ids unique (no each_key_duplicate in MessageList)', () => {
+    loadConfig(withButton({ mode: 'momentary', messages_on: [
+      { type: 'cc', cc: 1, value: 1 }, { type: 'cc', cc: 2, value: 1 }, { type: 'cc', cc: 3, value: 1 }] }));
+    setMessageType('buttons[0]', 'messages_on', 2, 'note');
+    const ids = (button().messages_on ?? []).map(m => (m as { __uiId?: number }).__uiId);
+    expect(ids.every(id => typeof id === 'number')).toBe(true);
+    expect(new Set(ids).size).toBe(3);
+  });
+
+  it('a new page on an STD10 gets the default encoder and push', () => {
+    loadConfig({ device: 'std10', active_page: 0, pages: [{ buttons: Array.from({ length: 10 }, (_, i) => ({ label: String(i + 1), cc: 20 + i, color: 'white' as const })) }] });
+    addPage();
+    const page = get(formState).config.pages[1];
+    expect(page.encoder?.push).toMatchObject({ enabled: true, cc: 14, label: 'PUSH', mode: 'momentary' });
   });
 
   it('the same helpers edit a keytimes entry slot', () => {
     loadConfig(withButton({ mode: 'keytimes', short: [{}] }));
-    addMessage(0, 'short[0].down', 'pc');
+    addMessage('buttons[0]', 'short[0].down', 'pc');
     expect(button().short?.[0].down?.[0]).toMatchObject({ type: 'pc', program: 0 });
   });
 
@@ -405,5 +422,70 @@ describe('extra messages (messages_on / messages_off)', () => {
     const out = normalizeConfig(get(formState).config).pages[0].buttons[0];
     expect(out.messages_on).toBeUndefined();
     expect(out.messages_off).toBeUndefined();
+  });
+});
+
+describe('encoder push uses the button helpers', () => {
+  function withPush(push: Record<string, unknown>): MidiCaptainConfig {
+    return {
+      device: 'std10', active_page: 0,
+      pages: [{ buttons: [{ label: 'B', cc: 20, color: 'green' }],
+        encoder: { enabled: true, cc: 11, label: 'ENC', push: { enabled: true, label: 'PUSH', ...push } as never } }],
+    };
+  }
+  const push = () => get(formState).config.pages[0].encoder!.push!;
+
+  it('loading does not write a mode or mark dirty', () => {
+    loadConfig(withPush({ cc: 14 }));
+    expect(push().mode).toBeUndefined();
+    expect(get(isDirty)).toBe(false);
+  });
+
+  it('addMessage / setMessageType / removeMessage edit the push lists', () => {
+    loadConfig(withPush({ cc: 14 }));
+    addMessage('encoder.push', 'messages_on');
+    addMessage('encoder.push', 'messages_on', 'pc');
+    expect(push().messages_on?.map(m => m.type)).toEqual(['cc', 'pc']);
+    setMessageType('encoder.push', 'messages_on', 0, 'note');
+    expect(push().messages_on?.[0]).toMatchObject({ type: 'note', note: 60 });
+    removeMessage('encoder.push', 'messages_on', 0);
+    removeMessage('encoder.push', 'messages_on', 0);
+    expect(push().messages_on).toBeUndefined();
+    expect(get(formState).config.pages[0].buttons[0].messages_on).toBeUndefined();
+  });
+
+  it('keytimes entries and their slots work on the push', () => {
+    loadConfig(withPush({ mode: 'keytimes' }));
+    addKeytimesEntry('encoder.push', 'short');
+    addMessage('encoder.push', 'short[0].down', 'pc');
+    expect(push().short?.[0].down?.[0]).toMatchObject({ type: 'pc', program: 0 });
+    removeKeytimesEntry('encoder.push', 'short', 0);
+    expect(push().short).toBeUndefined();
+  });
+
+  it('syncButtonStates sizes the push states', () => {
+    loadConfig(withPush({ cc: 14 }));
+    syncButtonStates('encoder.push', 3);
+    expect(push().keytimes).toBe(3);
+    expect(push().states).toHaveLength(3);
+  });
+
+  it('suggests the push select_group', () => {
+    loadConfig(withPush({ mode: 'select', select_group: 'amp' }));
+    expect(get(selectGroupNames)).toEqual(['amp']);
+  });
+
+  it('normalizeConfig strips type-irrelevant push fields and keeps enabled + label', () => {
+    loadConfig(withPush({ type: 'pc', program: 3, cc: 14, cc_on: 127, note: 60,
+                          messages_on: [{ type: 'pc', program: 1 }] }));
+    const out = normalizeConfig(get(formState).config).pages[0].encoder!.push!;
+    expect(out).toEqual({ enabled: true, label: 'PUSH', type: 'pc', program: 3,
+                          messages_on: [{ type: 'pc', program: 1 }] });
+  });
+
+  it('normalizeConfig keeps a disabled push disabled', () => {
+    loadConfig(withPush({ enabled: false, cc: 14 }));
+    const out = normalizeConfig(get(formState).config).pages[0].encoder!.push!;
+    expect(out).toEqual({ enabled: false, label: 'PUSH', cc: 14 });
   });
 });

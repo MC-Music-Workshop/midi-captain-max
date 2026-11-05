@@ -61,10 +61,17 @@ try:
     # USB descriptors are fixed at boot and can't be re-initialized when the
     # active page changes, so scan every page, not just the active one.
     # This keeps the USB descriptor clean for MIDI-only setups.
+    # The STD10 encoder push is a button too. Null-safe: a bad encoder/push must
+    # not raise here, or the except below would disable HID for every button.
+    def _page_buttons(page):
+        enc = page.get("encoder")
+        push = enc.get("push") if isinstance(enc, dict) else None
+        return page.get("buttons", []) + ([push] if isinstance(push, dict) else [])
+
     hid_enabled = any(
         btn.get("type") == "hid"
         for page in cfg.get("pages", [])
-        for btn in page.get("buttons", [])
+        for btn in _page_buttons(page)
     )
 except Exception:
     # If config fails to load, use safe defaults (performance mode, no HID)

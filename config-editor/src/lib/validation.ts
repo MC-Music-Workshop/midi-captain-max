@@ -1,10 +1,10 @@
-import type { MidiCaptainConfig, Page, ButtonConfig, KeytimesMessage } from './types';
+import type { MidiCaptainConfig, Page, ButtonConfig, ButtonLike, KeytimesMessage } from './types';
 
 // True when any short/long entry on a keytimes button fires a direction-only
 // cc_inc/cc_dec (#11, no cc of its own). Such a button carries the button-level
 // cc-step fields (cc, cc_step | cc_slots, cc_min/cc_max, cc_wrap, cc_initial, slot
 // tables) shared by every such entry.
-export function keytimesUsesCcStep(btn: ButtonConfig): boolean {
+export function keytimesUsesCcStep(btn: ButtonLike): boolean {
   for (const cycle of [btn.short, btn.long]) {
     for (const entry of cycle ?? []) {
       for (const msg of [...(entry.down ?? []), ...(entry.up ?? [])]) {
@@ -18,7 +18,9 @@ export function keytimesUsesCcStep(btn: ButtonConfig): boolean {
 // True when a non-keytimes button has an "off" event that sends messages_off: a
 // toggle turning off, a momentary release (not HID, whose momentary only flashes),
 // or a CC select button deselecting itself. Mirrors handle_switches in code.py.
-export function buttonTurnsOff(btn: ButtonConfig): boolean {
+// The encoder push's different default (momentary for CC) doesn't change the
+// answer: toggle and momentary both turn off.
+export function buttonTurnsOff(btn: ButtonLike): boolean {
   const type = btn.type ?? 'cc';
   if (!['cc', 'note', 'pc', 'pc_inc', 'pc_dec', 'hid'].includes(type)) return false;
   const mode = btn.mode ?? (type.startsWith('pc') ? 'flash' : 'toggle');
@@ -114,12 +116,13 @@ export interface FieldValidator {
 }
 
 export const validators = {
-  label: (value: string): string | null => {
+  // Footswitch labels cap at 6 chars; the encoder push allows 8.
+  label: (value: string, maxLength = 6): string | null => {
     if (!value || value.trim() === '') {
       return 'Label is required';
     }
-    if (value.length > 6) {
-      return 'Label must be 6 characters or less';
+    if (value.length > maxLength) {
+      return `Label must be ${maxLength} characters or less`;
     }
     if (!/^[\w\s-]+$/.test(value)) {
       return 'Label contains invalid characters';
@@ -268,6 +271,218 @@ function validateCcStep(btn: CcStepFields, p: string, errors: Map<string, string
   }
 }
 
+// Validate one footswitch or the encoder push. bp is its page-relative path
+// ("buttons[3]", "encoder.push"); every error key starts with it so ButtonRow
+// finds them inline.
+function validateButton(btn: ButtonLike, bp: string, pageCount: number,
+                        errors: Map<string, string>, labelMaxLength = 6) {
+  const labelError = validators.label(btn.label, labelMaxLength);
+  if (labelError) errors.set(`${bp}.label`, labelError);
+
+  const msgType = btn.type ?? 'cc';
+
+  if (msgType === 'cc') {
+    if (btn.cc !== undefined) {
+      const ccError = validators.cc(btn.cc);
+      if (ccError) errors.set(`${bp}.cc`, ccError);
+    }
+    if (btn.cc_receive !== undefined) {
+      const e = validators.cc(btn.cc_receive);
+      if (e) errors.set(`${bp}.cc_receive`, e);
+    }
+    for (const field of ['cc_on', 'cc_off'] as const) {
+      if (btn[field] !== undefined) {
+        const e = validators.withinRange(btn[field], 0, 127);
+        if (e) errors.set(`${bp}.${field}`, e);
+      }
+    }
+  } else if (msgType === 'note') {
+    if (btn.note !== undefined) {
+      const noteError = validators.note(btn.note);
+      if (noteError) errors.set(`${bp}.note`, noteError);
+    }
+    if (btn.velocity_on !== undefined) {
+      const velError = validators.velocity(btn.velocity_on);
+      if (velError) errors.set(`${bp}.velocity_on`, velError);
+    }
+    if (btn.velocity_off !== undefined) {
+      const velError = validators.velocity(btn.velocity_off);
+      if (velError) errors.set(`${bp}.velocity_off`, velError);
+    }
+  } else if (msgType === 'pc') {
+    if (btn.program !== undefined) {
+      const progError = validators.program(btn.program);
+      if (progError) errors.set(`${bp}.program`, progError);
+    }
+  } else if (msgType === 'pc_inc' || msgType === 'pc_dec') {
+    if (btn.pc_step !== undefined) {
+      const stepError = validators.pcStep(btn.pc_step);
+      if (stepError) errors.set(`${bp}.pc_step`, stepError);
+    }
+  } else if ((msgType === 'cc_inc' || msgType === 'cc_dec') && btn.mode !== 'keytimes') {
+    validateCcStep(btn, `${bp}`, errors);
+  } else if (msgType === 'page_inc' || msgType === 'page_dec') {
+    if (btn.page_step !== undefined) {
+      const stepError = validators.pageStep(btn.page_step);
+      if (stepError) errors.set(`${bp}.page_step`, stepError);
+    }
+  } else if (msgType === 'page_jump') {
+    // Cross-field: the firmware clamps a bad target, the editor fails loud
+    // (P1 asymmetry rule). 0-based, so max is pageCount - 1.
+    if (btn.page !== undefined) {
+      if (!Number.isInteger(btn.page) || btn.page < 0 || btn.page >= pageCount) {
+        errors.set(`${bp}.page`, `Target page must be between 0 and ${pageCount - 1} (0-based)`);
+      }
+    }
+  } else if (msgType === 'hid') {
+    const validActions = ['send', 'press', 'release', 'delay'];
+    if (btn.hid_action !== undefined && !validActions.includes(btn.hid_action)) {
+      errors.set(`${bp}.hid_action`, 'Invalid HID action');
+    }
+    const validModifiers = ['ctrl', 'shift', 'alt', 'option', 'windows'];
+    if (btn.hid_modifier !== undefined && !validModifiers.includes(btn.hid_modifier)) {
+      errors.set(`${bp}.hid_modifier`, 'Invalid modifier');
+    }
+    if (btn.hid_delay_ms !== undefined) {
+      if (!Number.isInteger(btn.hid_delay_ms) || btn.hid_delay_ms < 1 || btn.hid_delay_ms > 5000) {
+        errors.set(`${bp}.hid_delay_ms`, 'Delay must be between 1 and 5000 ms');
+      }
+    }
+  }
+
+  if (btn.channel !== undefined) {
+    const chError = validators.channel(btn.channel);
+    if (chError) errors.set(`${bp}.channel`, chError);
+  }
+
+  if (btn.flash_ms !== undefined) {
+    const fError = validators.flashMs(btn.flash_ms);
+    if (fError) errors.set(`${bp}.flash_ms`, fError);
+  }
+
+  if (btn.states && (btn.keytimes === undefined || btn.keytimes <= 1)) {
+    errors.set(`${bp}.states`, 'states requires keytimes > 1');
+  }
+
+  // mode: "keytimes" validation (#48): short/long entries + per-button threshold.
+  // NOTE: stale short[]/long[] on a NON-keytimes button are deliberately not an
+  // error. The form keeps them across a mode flip (like select_group) so switching
+  // back restores the cycle, and normalizeButton strips them at save time. A rule
+  // here used to set a `buttons[i].mode` error that no component rendered, leaving
+  // "Fix errors to save" with nothing visible to fix.
+  // Legacy keytimes/states are forbidden on the new mode='keytimes' (use short[]/long[] instead).
+  if (btn.mode === 'keytimes') {
+    if (btn.keytimes !== undefined) {
+      errors.set(`${bp}.keytimes`, `'keytimes' is not allowed on mode="keytimes" (use short[]/long[])`);
+    }
+    if (btn.states !== undefined) {
+      errors.set(`${bp}.states`, `'states' is not allowed on mode="keytimes" (use short[]/long[])`);
+    }
+  }
+  if (btn.mode === 'keytimes' && btn.long_press_threshold_ms !== undefined) {
+    const t = btn.long_press_threshold_ms;
+    if (!Number.isInteger(t) || t < 50 || t > 5000) {
+      errors.set(`${bp}.long_press_threshold_ms`, 'Threshold must be between 50 and 5000 ms');
+    }
+  }
+  if (btn.mode === 'keytimes') {
+    // cc_inc/cc_dec entries (#11) are direction-only; their cc/range/slot fields
+    // ride on the button and validate like a plain cc_inc button.
+    if (keytimesUsesCcStep(btn)) validateCcStep(btn, `${bp}`, errors);
+    // Host sync (#200): per-cycle listen CC and per-entry receive value.
+    for (const field of ['short_cc_receive', 'long_cc_receive'] as const) {
+      if (btn[field] !== undefined) {
+        const e = validators.cc(btn[field]);
+        if (e) errors.set(`${bp}.${field}`, e);
+      }
+    }
+    // Validate Message objects nested inside short[i].down[j] / up[j] and same for long.
+    for (const cycle of ['short', 'long'] as const) {
+      const entries = btn[cycle];
+      if (!entries) continue;
+      entries.forEach((entry, ei) => {
+        if (entry.rx_value !== undefined) {
+          const e = validators.withinRange(entry.rx_value, 0, 127);
+          if (e) errors.set(`${bp}.${cycle}[${ei}].rx_value`, e);
+        }
+        for (const slot of ['down', 'up'] as const) {
+          const messages = entry[slot];
+          if (!messages) continue;
+          validateMessages(messages, `${bp}.${cycle}[${ei}].${slot}`, pageCount, errors);
+        }
+      });
+    }
+  }
+
+  // Extra messages on non-keytimes modes. messages_off only counts when the
+  // button turns off; otherwise it's stale form state that save strips.
+  // A cc_inc/cc_dec here needs its own cc: these buttons have no shared cc-step fields.
+  if (btn.mode !== 'keytimes') {
+    for (const field of ['messages_on', 'messages_off'] as const) {
+      const messages = btn[field];
+      if (!messages || (field === 'messages_off' && !buttonTurnsOff(btn))) continue;
+      validateMessages(messages, `${bp}.${field}`, pageCount, errors);
+      messages.forEach((msg, mi) => {
+        if ((msg.type === 'cc_inc' || msg.type === 'cc_dec') && msg.cc === undefined) {
+          errors.set(`${bp}.${field}[${mi}].cc`, 'Set the CC to step');
+        }
+      });
+    }
+  }
+
+  if (btn.keytimes !== undefined) {
+    const ktError = validators.keytimes(btn.keytimes);
+    if (ktError) errors.set(`${bp}.keytimes`, ktError);
+
+    if (btn.states) {
+      btn.states.forEach((state, si) => {
+        const sp = `${bp}.states[${si}]`;
+        if (state.cc !== undefined) {
+          const e = validators.cc(state.cc);
+          if (e) errors.set(`${sp}.cc`, e);
+        }
+        if (state.cc_on !== undefined) {
+          const e = validators.withinRange(state.cc_on, 0, 127);
+          if (e) errors.set(`${sp}.cc_on`, e);
+        }
+        if (state.cc_off !== undefined) {
+          const e = validators.withinRange(state.cc_off, 0, 127);
+          if (e) errors.set(`${sp}.cc_off`, e);
+        }
+        if (state.note !== undefined) {
+          const e = validators.note(state.note);
+          if (e) errors.set(`${sp}.note`, e);
+        }
+        if (state.velocity_on !== undefined) {
+          const e = validators.velocity(state.velocity_on);
+          if (e) errors.set(`${sp}.velocity_on`, e);
+        }
+        if (state.velocity_off !== undefined) {
+          const e = validators.velocity(state.velocity_off);
+          if (e) errors.set(`${sp}.velocity_off`, e);
+        }
+        if (state.program !== undefined) {
+          const e = validators.program(state.program);
+          if (e) errors.set(`${sp}.program`, e);
+        }
+        if (state.pc_step !== undefined) {
+          const e = validators.pcStep(state.pc_step);
+          if (e) errors.set(`${sp}.pc_step`, e);
+        }
+        if (state.label !== undefined) {
+          const e = validators.label(state.label);
+          if (e) errors.set(`${sp}.label`, e);
+        }
+        if (state.hid_delay_ms !== undefined) {
+          if (!Number.isInteger(state.hid_delay_ms) || state.hid_delay_ms < 1 || state.hid_delay_ms > 5000) {
+            errors.set(`${sp}.hid_delay_ms`, 'Delay must be between 1 and 5000 ms');
+          }
+        }
+      });
+    }
+  }
+}
+
 // Validate one page's control-surface data against the device. Keys are
 // UNPREFIXED (buttons[i]…, encoder…, expression…) — for the active page they
 // feed the inline error Map that components look up by path (locked convention).
@@ -335,208 +550,7 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
     }
   }
 
-  // Validate all buttons
-  buttons.forEach((btn, idx) => {
-    const labelError = validators.label(btn.label);
-    if (labelError) errors.set(`buttons[${idx}].label`, labelError);
-
-    const msgType = btn.type ?? 'cc';
-
-    if (msgType === 'cc') {
-      if (btn.cc !== undefined) {
-        const ccError = validators.cc(btn.cc);
-        if (ccError) errors.set(`buttons[${idx}].cc`, ccError);
-      }
-      if (btn.cc_receive !== undefined) {
-        const e = validators.cc(btn.cc_receive);
-        if (e) errors.set(`buttons[${idx}].cc_receive`, e);
-      }
-    } else if (msgType === 'note') {
-      if (btn.note !== undefined) {
-        const noteError = validators.note(btn.note);
-        if (noteError) errors.set(`buttons[${idx}].note`, noteError);
-      }
-      if (btn.velocity_on !== undefined) {
-        const velError = validators.velocity(btn.velocity_on);
-        if (velError) errors.set(`buttons[${idx}].velocity_on`, velError);
-      }
-      if (btn.velocity_off !== undefined) {
-        const velError = validators.velocity(btn.velocity_off);
-        if (velError) errors.set(`buttons[${idx}].velocity_off`, velError);
-      }
-    } else if (msgType === 'pc') {
-      if (btn.program !== undefined) {
-        const progError = validators.program(btn.program);
-        if (progError) errors.set(`buttons[${idx}].program`, progError);
-      }
-    } else if (msgType === 'pc_inc' || msgType === 'pc_dec') {
-      if (btn.pc_step !== undefined) {
-        const stepError = validators.pcStep(btn.pc_step);
-        if (stepError) errors.set(`buttons[${idx}].pc_step`, stepError);
-      }
-    } else if ((msgType === 'cc_inc' || msgType === 'cc_dec') && btn.mode !== 'keytimes') {
-      validateCcStep(btn, `buttons[${idx}]`, errors);
-    } else if (msgType === 'page_inc' || msgType === 'page_dec') {
-      if (btn.page_step !== undefined) {
-        const stepError = validators.pageStep(btn.page_step);
-        if (stepError) errors.set(`buttons[${idx}].page_step`, stepError);
-      }
-    } else if (msgType === 'page_jump') {
-      // Cross-field: the firmware clamps a bad target, the editor fails loud
-      // (P1 asymmetry rule). 0-based, so max is pageCount - 1.
-      if (btn.page !== undefined) {
-        if (!Number.isInteger(btn.page) || btn.page < 0 || btn.page >= pageCount) {
-          errors.set(`buttons[${idx}].page`, `Target page must be between 0 and ${pageCount - 1} (0-based)`);
-        }
-      }
-    } else if (msgType === 'hid') {
-      const validActions = ['send', 'press', 'release', 'delay'];
-      if (btn.hid_action !== undefined && !validActions.includes(btn.hid_action)) {
-        errors.set(`buttons[${idx}].hid_action`, 'Invalid HID action');
-      }
-      const validModifiers = ['ctrl', 'shift', 'alt', 'option', 'windows'];
-      if (btn.hid_modifier !== undefined && !validModifiers.includes(btn.hid_modifier)) {
-        errors.set(`buttons[${idx}].hid_modifier`, 'Invalid modifier');
-      }
-      if (btn.hid_delay_ms !== undefined) {
-        if (!Number.isInteger(btn.hid_delay_ms) || btn.hid_delay_ms < 1 || btn.hid_delay_ms > 5000) {
-          errors.set(`buttons[${idx}].hid_delay_ms`, 'Delay must be between 1 and 5000 ms');
-        }
-      }
-    }
-
-    if (btn.channel !== undefined) {
-      const chError = validators.channel(btn.channel);
-      if (chError) errors.set(`buttons[${idx}].channel`, chError);
-    }
-
-    if (btn.flash_ms !== undefined) {
-      const fError = validators.flashMs(btn.flash_ms);
-      if (fError) errors.set(`buttons[${idx}].flash_ms`, fError);
-    }
-
-    if (btn.states && (btn.keytimes === undefined || btn.keytimes <= 1)) {
-      errors.set(`buttons[${idx}].states`, 'states requires keytimes > 1');
-    }
-
-    // mode: "keytimes" validation (#48): short/long entries + per-button threshold.
-    // NOTE: stale short[]/long[] on a NON-keytimes button are deliberately not an
-    // error. The form keeps them across a mode flip (like select_group) so switching
-    // back restores the cycle, and normalizeButton strips them at save time. A rule
-    // here used to set a `buttons[i].mode` error that no component rendered, leaving
-    // "Fix errors to save" with nothing visible to fix.
-    // Legacy keytimes/states are forbidden on the new mode='keytimes' (use short[]/long[] instead).
-    if (btn.mode === 'keytimes') {
-      if (btn.keytimes !== undefined) {
-        errors.set(`buttons[${idx}].keytimes`, `'keytimes' is not allowed on mode="keytimes" (use short[]/long[])`);
-      }
-      if (btn.states !== undefined) {
-        errors.set(`buttons[${idx}].states`, `'states' is not allowed on mode="keytimes" (use short[]/long[])`);
-      }
-    }
-    if (btn.mode === 'keytimes' && btn.long_press_threshold_ms !== undefined) {
-      const t = btn.long_press_threshold_ms;
-      if (!Number.isInteger(t) || t < 50 || t > 5000) {
-        errors.set(`buttons[${idx}].long_press_threshold_ms`, 'Threshold must be between 50 and 5000 ms');
-      }
-    }
-    if (btn.mode === 'keytimes') {
-      // cc_inc/cc_dec entries (#11) are direction-only; their cc/range/slot fields
-      // ride on the button and validate like a plain cc_inc button.
-      if (keytimesUsesCcStep(btn)) validateCcStep(btn, `buttons[${idx}]`, errors);
-      // Host sync (#200): per-cycle listen CC and per-entry receive value.
-      for (const field of ['short_cc_receive', 'long_cc_receive'] as const) {
-        if (btn[field] !== undefined) {
-          const e = validators.cc(btn[field]);
-          if (e) errors.set(`buttons[${idx}].${field}`, e);
-        }
-      }
-      // Validate Message objects nested inside short[i].down[j] / up[j] and same for long.
-      for (const cycle of ['short', 'long'] as const) {
-        const entries = btn[cycle];
-        if (!entries) continue;
-        entries.forEach((entry, ei) => {
-          if (entry.rx_value !== undefined) {
-            const e = validators.withinRange(entry.rx_value, 0, 127);
-            if (e) errors.set(`buttons[${idx}].${cycle}[${ei}].rx_value`, e);
-          }
-          for (const slot of ['down', 'up'] as const) {
-            const messages = entry[slot];
-            if (!messages) continue;
-            validateMessages(messages, `buttons[${idx}].${cycle}[${ei}].${slot}`, pageCount, errors);
-          }
-        });
-      }
-    }
-
-    // Extra messages on non-keytimes modes. messages_off only counts when the
-    // button turns off; otherwise it's stale form state that save strips.
-    // A cc_inc/cc_dec here needs its own cc: these buttons have no shared cc-step fields.
-    if (btn.mode !== 'keytimes') {
-      for (const field of ['messages_on', 'messages_off'] as const) {
-        const messages = btn[field];
-        if (!messages || (field === 'messages_off' && !buttonTurnsOff(btn))) continue;
-        validateMessages(messages, `buttons[${idx}].${field}`, pageCount, errors);
-        messages.forEach((msg, mi) => {
-          if ((msg.type === 'cc_inc' || msg.type === 'cc_dec') && msg.cc === undefined) {
-            errors.set(`buttons[${idx}].${field}[${mi}].cc`, 'Set the CC to step');
-          }
-        });
-      }
-    }
-
-    if (btn.keytimes !== undefined) {
-      const ktError = validators.keytimes(btn.keytimes);
-      if (ktError) errors.set(`buttons[${idx}].keytimes`, ktError);
-
-      if (btn.states) {
-        btn.states.forEach((state, si) => {
-          const sp = `buttons[${idx}].states[${si}]`;
-          if (state.cc !== undefined) {
-            const e = validators.cc(state.cc);
-            if (e) errors.set(`${sp}.cc`, e);
-          }
-          if (state.cc_on !== undefined) {
-            const e = validators.withinRange(state.cc_on, 0, 127);
-            if (e) errors.set(`${sp}.cc_on`, e);
-          }
-          if (state.cc_off !== undefined) {
-            const e = validators.withinRange(state.cc_off, 0, 127);
-            if (e) errors.set(`${sp}.cc_off`, e);
-          }
-          if (state.note !== undefined) {
-            const e = validators.note(state.note);
-            if (e) errors.set(`${sp}.note`, e);
-          }
-          if (state.velocity_on !== undefined) {
-            const e = validators.velocity(state.velocity_on);
-            if (e) errors.set(`${sp}.velocity_on`, e);
-          }
-          if (state.velocity_off !== undefined) {
-            const e = validators.velocity(state.velocity_off);
-            if (e) errors.set(`${sp}.velocity_off`, e);
-          }
-          if (state.program !== undefined) {
-            const e = validators.program(state.program);
-            if (e) errors.set(`${sp}.program`, e);
-          }
-          if (state.pc_step !== undefined) {
-            const e = validators.pcStep(state.pc_step);
-            if (e) errors.set(`${sp}.pc_step`, e);
-          }
-          if (state.label !== undefined) {
-            const e = validators.label(state.label);
-            if (e) errors.set(`${sp}.label`, e);
-          }
-          if (state.hid_delay_ms !== undefined) {
-            if (!Number.isInteger(state.hid_delay_ms) || state.hid_delay_ms < 1 || state.hid_delay_ms > 5000) {
-              errors.set(`${sp}.hid_delay_ms`, 'Delay must be between 1 and 5000 ms');
-            }
-          }
-        });
-      }
-    }
-  });
+  buttons.forEach((btn, idx) => validateButton(btn, `buttons[${idx}]`, pageCount, errors));
   
   // Validate encoder
   if (encoder?.enabled) {
@@ -557,24 +571,13 @@ export function validatePage(page: Page, device: MidiCaptainConfig['device'], pa
       const initError = validators.withinRange(encoder.initial, min, max);
       if (initError) errors.set('encoder.initial', `Initial ${initError.toLowerCase()}`);
     }
+  }
 
-    if (encoder.push?.enabled) {
-      const pushCcError = validators.cc(encoder.push.cc);
-      if (pushCcError) errors.set('encoder.push.cc', pushCcError);
-
-      if (encoder.push.channel !== undefined) {
-        const chError = validators.channel(encoder.push.channel);
-        if (chError) errors.set('encoder.push.channel', chError);
-      }
-      if (encoder.push.cc_on !== undefined) {
-        const e = validators.cc(encoder.push.cc_on);
-        if (e) errors.set('encoder.push.cc_on', e);
-      }
-      if (encoder.push.cc_off !== undefined) {
-        const e = validators.cc(encoder.push.cc_off);
-        if (e) errors.set('encoder.push.cc_off', e);
-      }
-    }
+  // The push is a footswitch without an LED: same checks, 8-char label, no color.
+  // Independent of the rotary's `enabled`: the firmware uses the push whenever it's
+  // enabled (Rust validates the same set).
+  if (device === 'std10' && encoder?.push?.enabled) {
+    validateButton(encoder.push, 'encoder.push', pageCount, errors, 8);
   }
   
   // Validate expression pedals

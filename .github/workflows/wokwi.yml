@@ -1,0 +1,95 @@
+name: Wokwi
+
+# Runs every emulator/scenarios/<name> on Wokwi's simulated STD10 (real CircuitPython
+# 7.3.3): presses buttons and checks the firmware's serial output. Each scenario run
+# costs Wokwi cloud minutes (~1-2), so this does NOT run on every push. It runs when:
+#   - a non-draft PR touching firmware/emulator is opened, or a draft is marked ready
+#   - the `wokwi` label is added to a PR (remove and re-add it to run again)
+#   - manually: Actions -> Wokwi -> Run workflow
+# The same scenarios are replayed for free on every push by tests/test_wokwi_scenarios.py
+# (CI's pytest step), so a broken scenario normally fails there first.
+#
+# Needs the WOKWI_CLI_TOKEN secret (org-level in MC-Music-Workshop). Without it
+# (e.g. PRs from forks) the job warns and passes instead of failing.
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, labeled]
+    paths:
+      - firmware/dev/**
+      - emulator/**
+  workflow_dispatch:
+
+concurrency:
+  group: wokwi-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scenarios:
+    name: Wokwi scenarios
+    # opened/ready_for_review: skip drafts. labeled: only the `wokwi` label.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'wokwi') ||
+      (github.event.action != 'labeled' && !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check for Wokwi token
+        id: token
+        run: |
+          if [ -z "$WOKWI_CLI_TOKEN" ]; then
+            echo "::warning::WOKWI_CLI_TOKEN secret not available; skipping Wokwi scenarios."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v7
+        if: steps.token.outputs.skip != 'true'
+        with:
+          python-version: "3.11"
+
+      - name: Install pyfatfs and wokwi-cli
+        if: steps.token.outputs.skip != 'true'
+        run: |
+          pip install pyfatfs
+          curl -L https://wokwi.com/ci/install.sh | sh
+          echo "$HOME/.wokwi/bin" >> "$GITHUB_PATH"
+
+      # setup.sh downloads this on first use; cache it across runs.
+      - uses: actions/cache@v6
+        if: steps.token.outputs.skip != 'true'
+        with:
+          path: emulator/circuitpython.uf2
+          key: circuitpython-uf2-7.3.3
+
+      - name: Run scenarios
+        if: steps.token.outputs.skip != 'true'
+        run: |
+          failed=""
+          for dir in emulator/scenarios/*/; do
+            name=$(basename "$dir")
+            echo "::group::$name"
+            # `|| failed=...` keeps going so every scenario reports, then fails below.
+            ./emulator/run-scenario.sh "$dir" || failed="$failed $name"
+            echo "::endgroup::"
+            if [[ " $failed " == *" $name "* ]]; then
+              echo "- ❌ \`$name\`" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- ✅ \`$name\`" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::Wokwi scenarios failed:$failed (serial logs are in the artifact)"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v7
+        if: always() && steps.token.outputs.skip != 'true'
+        with:
+          name: wokwi-serial-logs
+          path: emulator/scenarios/*/serial.log
+          if-no-files-found: ignore

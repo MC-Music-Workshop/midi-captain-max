@@ -459,6 +459,10 @@ if HAS_TFT:
 
 # Initialize switches
 switches = [Switch(pin) for pin in SWITCH_PINS]
+# A switch still held when the page changes belongs to the page it was pressed on.
+# handle_switches() ignores it until it's released, so its release (or a fresh-press
+# edge seen mid-hold) never fires the new page's button at that position.
+held_across_page = [False] * len(switches)
 print(f"Initialized {len(switches)} switches")
 
 # Encoder (STD10 only)
@@ -1476,6 +1480,12 @@ def handle_switches():
     now = time.monotonic()
     for i in range(len(switches)):
         sw = switches[i]
+        if held_across_page[i]:
+            # changed() keeps Switch.last_state in step so release isn't seen as an edge later.
+            _, pressed = sw.changed()
+            if not pressed:
+                held_across_page[i] = False
+            continue
         if HAS_ENCODER:
             btn_num = i if i else BUTTON_COUNT + 1
         else:
@@ -1725,6 +1735,9 @@ def handle_switches():
     if pending_page_target is not None:
         switch_page(pending_page_target)
         pending_page_target = None
+        for i in range(len(switches)):
+            if switches[i].pressed:
+                held_across_page[i] = True
 
 
 def handle_encoder():

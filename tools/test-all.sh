@@ -42,10 +42,12 @@ step "cargo test (Rust)"
 step "svelte-check (TypeScript)"
 # Self-heal: fresh worktrees / clones won't have config-editor/node_modules,
 # so `npm run check` would die with `svelte-kit: command not found`. Install
-# on demand the first time the suite runs in a new tree.
+# on demand the first time the suite runs in a new tree. `npm ci` installs exactly
+# what package-lock.json pins and never rewrites it (`npm install` can, leaving a
+# fresh worktree with a dirty lockfile).
 if [ ! -x config-editor/node_modules/.bin/svelte-kit ]; then
-  echo "config-editor/node_modules missing — installing deps..."
-  (cd config-editor && npm install --no-audit --no-fund)
+  echo "config-editor/node_modules missing — installing locked deps (npm ci)..."
+  (cd config-editor && npm ci --no-audit --no-fund)
 fi
 (cd config-editor && npm run check)
 

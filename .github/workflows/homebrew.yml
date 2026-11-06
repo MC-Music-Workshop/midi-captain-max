@@ -1,7 +1,8 @@
 name: Homebrew
 
 # Bumps the casks in MC-Music-Workshop/homebrew-tap for a published release:
-#   - midi-captain-max@beta tracks every release (alpha, beta, rc, stable)
+#   - midi-captain-max@beta tracks beta, rc and stable releases (alphas never reach Homebrew;
+#     maintainers install those with tools/install-release.sh)
 #   - midi-captain-max tracks stable releases only
 # Stable releases start as drafts (release.yml) and are published by hand in
 # the GitHub UI, which fires `release: published`. Beta/rc releases are
@@ -50,6 +51,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Alphas stay off Homebrew so @beta users only get betas, rcs and stables.
+          if [[ "$TAG" == *-alpha* ]]; then
+            echo "Alpha release ${TAG}: not published to Homebrew (tools/install-release.sh alpha installs it)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           VERSION="${TAG#v}"
           gh release download "$TAG" -R "${{ github.repository }}" \
             -p "MIDI-Captain-MAX-Config-Editor-${TAG}.dmg" -O cask.dmg

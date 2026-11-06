@@ -26,7 +26,7 @@ brew install --cask mc-music-workshop/tap/midi-captain-max
 
 Get new versions with `brew upgrade --cask midi-captain-max`. This cask only carries stable releases.
 
-To try betas and release candidates, install the beta cask instead. It follows the newest release of any kind, so it also picks up the stable release once that ships:
+To try betas and release candidates, install the beta cask instead. It gets every beta, release candidate and stable release (never alphas), so it also picks up the stable release once that ships:
 
 ```bash
 brew install --cask mc-music-workshop/tap/midi-captain-max@beta

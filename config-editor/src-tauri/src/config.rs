@@ -691,7 +691,7 @@ impl MidiCaptainConfig {
                 if enc.cc > 127 {
                     errors.push(format!("{}Encoder CC {} exceeds 127", pfx, enc.cc));
                 }
-                if enc.label.len() > 8 {
+                if enc.label.chars().count() > 8 {
                     errors.push(format!("{}Encoder label '{}' exceeds 8 chars", pfx, enc.label));
                 }
                 if enc.max < enc.min {
@@ -721,7 +721,7 @@ impl MidiCaptainConfig {
                 if exp.exp1.cc > 127 {
                     errors.push(format!("{}EXP1 CC {} exceeds 127", pfx, exp.exp1.cc));
                 }
-                if exp.exp1.label.len() > 8 {
+                if exp.exp1.label.chars().count() > 8 {
                     errors.push(format!("{}EXP1 label '{}' exceeds 8 chars", pfx, exp.exp1.label));
                 }
                 if exp.exp1.max < exp.exp1.min {
@@ -735,7 +735,7 @@ impl MidiCaptainConfig {
                 if exp.exp2.cc > 127 {
                     errors.push(format!("{}EXP2 CC {} exceeds 127", pfx, exp.exp2.cc));
                 }
-                if exp.exp2.label.len() > 8 {
+                if exp.exp2.label.chars().count() > 8 {
                     errors.push(format!("{}EXP2 label '{}' exceeds 8 chars", pfx, exp.exp2.label));
                 }
                 if exp.exp2.max < exp.exp2.min {
@@ -862,7 +862,9 @@ fn validate_button(button: &ButtonConfig, name: &str, label_max: usize, page_cou
             errors.push(format!("{} CC {} exceeds 127", name, cc));
         }
     }
-    if button.label.len() > label_max {
+    // Characters, not bytes (`len()`), to match the schema's maxLength and the editor:
+    // "ÉCHO-MIX" is 8 chars but 9 bytes.
+    if button.label.chars().count() > label_max {
         errors.push(format!("{} label '{}' exceeds {} chars", name, button.label, label_max));
     }
     if let Some(ch) = button.channel {
@@ -2034,6 +2036,9 @@ mod tests {
         assert_eq!(push.button.cc_slots, Some(4));
         assert_eq!(push.button.messages_on.as_ref().map(|m| m.len()), Some(1));
         config.validate().unwrap(); // 8-char label and no color are fine on the push
+
+        // Length counts characters, not UTF-8 bytes: 8 chars / 9 bytes is fine.
+        parse_migrated(&json.replace("TAPTEMPO", "ÉCHO-MIX")).validate().unwrap();
 
         let bad = json.replace(r#""cc_slots": 4"#, r#""cc_slots": 17"#).replace("TAPTEMPO", "TOOLONGXX");
         let errs = parse_migrated(&bad).validate().unwrap_err();

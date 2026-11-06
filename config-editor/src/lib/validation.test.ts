@@ -197,6 +197,9 @@ describe('encoder push (validated like a footswitch)', () => {
 
   it('push label: any characters (schema has no pattern), footswitch label keeps its pattern', () => {
     expect(validateConfig(pushConfig({ label: 'TAP/TMP' })).isValid).toBe(true);
+    // Length is characters, not UTF-16 units / bytes (Rust and the schema agree).
+    expect(validateConfig(pushConfig({ label: 'ÉCHO-MIX' })).isValid).toBe(true);
+    expect(validateConfig(pushConfig({ label: 'TAP🎸TMP!' })).isValid).toBe(true);
     const fs = pushConfig({});
     fs.pages[0].buttons[0].label = 'A/B';
     expect(validateConfig(fs).errors.get('buttons[0].label')).toContain('invalid characters');

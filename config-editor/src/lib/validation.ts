@@ -123,7 +123,9 @@ export const validators = {
     if (!value || value.trim() === '') {
       return 'Label is required';
     }
-    if (value.length > maxLength) {
+    // Code points (like the schema's maxLength and Rust's chars().count()), not
+    // UTF-16 units: an emoji is 1 character here, 2 in value.length.
+    if ([...value].length > maxLength) {
       return `Label must be ${maxLength} characters or less`;
     }
     if (checkChars && !/^[\w\s-]+$/.test(value)) {

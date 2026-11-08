@@ -43,3 +43,12 @@ Bypass is per-process, not persisted. Standard pattern used by Chocolatey, most 
 ### `$ErrorActionPreference = 'Stop'` + bare `pip` = terminating error
 
 With `Stop`, an unresolvable command name (e.g. bare `pip` when only the `py` launcher is installed) throws a terminating `CommandNotFoundException` that bypasses `try { } catch { }` if not specifically caught. Probe with `Get-Command -ErrorAction SilentlyContinue` before invoking, or wrap in `try`/`catch [System.Management.Automation.CommandNotFoundException]`.
+
+## `install-release.sh` — install any release on a Mac (maintainers)
+
+`tools/install-release.sh [alpha|beta|rc|stable|latest|<tag>]` picks the newest release of that kind (by creation date, drafts included), downloads its DMG with the `gh` login, and replaces `/Applications/MIDI Captain MAX Config Editor.app`. `list` shows recent releases; `--dry-run` downloads and mounts without installing. Alphas aren't on Homebrew (`homebrew.yml` skips them), so this is how to put one on a test machine. Drafts are only visible to repo members, which is why it needs `gh` rather than a public URL.
+
+- **Newest = creation date, not version sort.** A mistyped tag (`v1.140.0-beta.1` exists) would win a version sort forever.
+- **Homebrew copies:** overwriting a cask-installed app leaves Homebrew believing the old version, so the script offers to `brew uninstall` the cask first (`--yes` skips the prompt).
+- **No clone needed:** `bash <(gh api repos/MC-Music-Workshop/midi-captain-max/contents/tools/install-release.sh -H "Accept: application/vnd.github.raw") alpha`. Don't make it read its own file (`$0`): under `bash <(...)` that's a one-shot pipe already consumed.
+- **`set -o pipefail` + `| head`** exits 141 (SIGPIPE) once `head` closes the pipe; limit at the source (`gh ... --limit`) instead.

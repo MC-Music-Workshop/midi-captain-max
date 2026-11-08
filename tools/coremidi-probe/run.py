@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """CoreMIDI client probe: does starting short-lived MIDI clients fail on this macOS?
 
-Found on macOS 27.2: when no other MIDI client is open, a new short-lived
-client fails every ~7-10 s (CoreMIDI -304, "Couldn't find MIDI output", then a
-~5 s stall), so one `sendmidi` per message breaks. While any long-running
-client is open (a `receivemidi`, a DAW), the same sends all succeed.
+When no other MIDI client is open, every few seconds a new short-lived client
+waits ~5-6 s to start (macOS 15), or fails after that wait (macOS 26.7 and
+27.2: CoreMIDI -304, "Couldn't find MIDI output"), so one `sendmidi` per
+message stalls or breaks. While any long-running client is open (a
+`receivemidi`, a DAW), the same calls are all fast.
 
 Phase A, no other MIDI client open (one process per call):
   sendmidi list            a short-lived sendmidi client

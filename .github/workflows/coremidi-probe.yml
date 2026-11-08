@@ -1,13 +1,15 @@
 name: CoreMIDI probe
 
 # Measures whether short-lived CoreMIDI clients (one `sendmidi` per message)
-# fail on each GitHub-hosted macOS version. On macOS 27.2 they fail every
-# ~7-10 s with -304 when no other MIDI client is open (see
+# stall or fail on each GitHub-hosted macOS version while no other MIDI client
+# is open. First run (2026-11-08): macOS 15 stalls ~5.7 s every so often;
+# macOS 26.7 also fails those calls with -304, like 27.2 on a laptop (see
 # tools/coremidi-probe/run.py and gbevin/SendMIDI#66). Informational: it never
 # fails on what it measures, only if the probe itself can't run.
 #
 # Standard macOS runners are free for public repos; the -large/-xlarge labels
-# are billed, so don't add them. There is no hosted macOS 27 runner yet: run
+# are billed, so don't add them. macOS 14 was retired from GitHub Actions on
+# 2026-11-02. There is no hosted macOS 27 runner yet: run
 # tools/coremidi-probe/run.py locally for 27.x.
 on:
   workflow_dispatch:
@@ -28,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, macos-15, macos-15-intel, macos-26]
+        os: [macos-15, macos-15-intel, macos-26]
     steps:
       - uses: actions/checkout@v7
 

@@ -316,6 +316,16 @@
       background: var(--bg-raise);
       padding: 0.1em 0.35em;
       border-radius: 0.3em;
+      white-space: nowrap;
+    }
+    /* Too long to stay inline on phones: its own line, scrolling sideways if needed. */
+    .dl-note .dl-cmd {
+      display: block;
+      width: fit-content;
+      max-width: 100%;
+      margin: 0.5em auto;
+      padding: 0.4em 0.8em;
+      overflow-x: auto;
     }
 
     /* ---------- keytimes demo ---------- */
@@ -575,6 +585,7 @@
     </a>
   </div>
   <p class="dl-note"><span id="dl-version"></span>The macOS and Linux apps are fully signed and launch out of the box; the Windows build isn't signed yet, so expect a SmartScreen warning. Prefer <code>.msi</code>, <code>.deb</code>, or arm64? They're on the <a href="https://github.com/MC-Music-Workshop/midi-captain-max/releases/latest">release page</a>.</p>
+  <p class="dl-note">On a Mac with <a href="https://brew.sh">Homebrew</a>? Install with <code class="dl-cmd">brew install --cask mc-music-workshop/tap/midi-captain-max</code> and get new versions with <code>brew upgrade --cask midi-captain-max</code>. Already installed it from the download? Add <code>--adopt</code> after <code>--cask</code> so Homebrew takes over your copy (<a href="docs/installation#already-installed-from-the-download">details</a>). Want betas? See the <a href="docs/installation#macos-install-with-homebrew">beta cask</a>.</p>
 </section>
 
 <section id="features">

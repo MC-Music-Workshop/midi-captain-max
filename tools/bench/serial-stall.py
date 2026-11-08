@@ -17,14 +17,15 @@ sendmidi, or sendmidi exiting counts as a failed send.
 
 Pass: no failed sends; in read mode also `[PAGE]` lines == flips (within
 --tolerance); in hold mode the probe's `[PAGE]` lines == 10 (within
---tolerance). The hold run's own line count is informational: macOS buffers a
-limited amount of unread output, then drops the rest.
+--tolerance). The hold run's own line count is informational: macOS 26
+buffered ~45 KB of unread output and dropped the rest; macOS 27.2 kept all of
+a 2000-flip run (77 KB).
 
 Config: tools/bench/configs/nano4-207-serial-din-test.json (2 pages,
   page_control jump CC100 on Ch 4), or std10-207-serial-din-test.json. If
   page changes arrive faster than the pedal redraws a page, it merges them
   (no `[PAGE]` line, same final page): keep the gap at or above 0.25 s on a
-  NANO4 and 0.5 s on an STD10.
+  NANO4 and 0.4 s on an STD10 (it merges below ~0.35 s).
 Setup: pedal on USB only, nothing else holding its serial port open (close
   `screen`, the Config Editor's console). Only one pedal may be connected.
 Needs: sendmidi (brew install gbevin/tools/sendmidi). Stdlib only.
@@ -95,11 +96,17 @@ def main():
   args = ap.parse_args()
   flips = args.flips or DEFAULT_FLIPS[args.mode]
 
-  try:
-    ports = subprocess.run(["sendmidi", "list"], capture_output=True, text=True, timeout=10).stdout
-  except FileNotFoundError:
-    fail("sendmidi not installed (brew install gbevin/tools/sendmidi)")
-  if args.pedal_port not in ports.splitlines():
+  # Retried: `sendmidi list` is a short-lived MIDI client too, so macOS 27 can
+  # fail it (see above) and briefly report no ports.
+  for attempt in range(3):
+    try:
+      ports = subprocess.run(["sendmidi", "list"], capture_output=True, text=True, timeout=10).stdout
+    except FileNotFoundError:
+      fail("sendmidi not installed (brew install gbevin/tools/sendmidi)")
+    if args.pedal_port in ports.splitlines():
+      break
+    time.sleep(3)
+  else:
     fail(f"MIDI port '{args.pedal_port}' not found (sendmidi list)")
 
   dev = args.serial or next(iter(sorted(glob.glob("/dev/cu.usbmodem*"))), None)
@@ -124,6 +131,16 @@ def main():
         return
       buf.extend(chunk)
 
+  def drain_until_quiet(quiet_s=1.0, cap_s=30.0):
+    # After a hold the backlog arrives in chunks over a fraction of a second;
+    # one drain() would stop at the first gap.
+    end, last = time.monotonic() + cap_s, (len(buf), time.monotonic())
+    while time.monotonic() < end and time.monotonic() - last[1] < quiet_s:
+      drain()
+      if len(buf) != last[0]:
+        last = (len(buf), time.monotonic())
+      time.sleep(0.05)
+
   print(f"{args.mode}: {flips} flips every {args.gap}s via '{args.pedal_port}', console {dev}", flush=True)
   t0 = time.monotonic()
   slow = 0
@@ -142,7 +159,7 @@ def main():
       if (i + 1) % 50 == 0:
         print(f"{i + 1} flips at {time.monotonic() - t0:.1f}s, [PAGE] lines read so far {count_page_lines(buf)}", flush=True)
     time.sleep(1)
-    drain()
+    drain_until_quiet()
     lines, held = count_page_lines(buf), len(buf)
     if args.mode == "hold":
       for i in range(flips, flips + PROBE_FLIPS):
@@ -152,8 +169,7 @@ def main():
           print(f"probe flip {i + 1 - flips}: {err}", flush=True)
         time.sleep(PROBE_GAP_S)
         drain()
-      time.sleep(1)
-      drain()
+      drain_until_quiet()
       probe = count_page_lines(buf) - lines
   finally:
     os.close(fd)

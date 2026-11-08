@@ -48,11 +48,17 @@ for tool in sendmidi receivemidi; do
   command -v "$tool" >/dev/null || fail "$tool not installed (brew install gbevin/tools/$tool)"
 done
 
-ports="$(sendmidi list)"
-for port in "$pedal_port" "$din_port"; do
-  # -x: whole-line match, -F: literal (port names contain [ ] and .)
-  grep -qxF "$port" <<<"$ports" || fail "MIDI port '$port' not found (sendmidi list)"
-done
+# has_ports: are both ports listed? -x: whole-line match, -F: literal (port
+# names contain [ ] and .)
+has_ports() {
+  local ports
+  ports="$(sendmidi list)"
+  grep -qxF "$pedal_port" <<<"$ports" && grep -qxF "$din_port" <<<"$ports"
+}
+# Retried: `sendmidi list` is a short-lived MIDI client too, so macOS 27 can
+# fail it and briefly report no ports.
+has_ports || { sleep 3; has_ports; } || { sleep 3; has_ports; } ||
+  fail "MIDI port '$pedal_port' or '$din_port' not found (sendmidi list)"
 
 log="$(mktemp -t din-count)"
 tx_err="$(mktemp -t din-count-tx)"

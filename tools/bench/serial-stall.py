@@ -3,20 +3,28 @@
 
 Flips the pedal's page over USB MIDI (page_control jump CC100, values 0/1 on
 Ch 4) once per gap, so the pedal prints one `[PAGE]` line per flip to its serial
-console. Any MIDI send that takes longer than 0.2 s or fails counts as a stall.
+console. Every flip goes through one long-running `sendmidi --` process: on
+macOS 27, starting a new MIDI client per message fails every ~10 s with a ~5 s
+stall, from the OS, not the pedal. A send that blocks over 0.2 s, an error from
+sendmidi, or sendmidi exiting counts as a failed send.
 
   read: open the serial console and keep reading it (baseline: every line
         should arrive).
   hold: open it read-only and never read, like a suspended `screen`, so the
-        host's buffer fills up. At the end, drain and report what had queued.
+        host's buffer fills up. At the end, drain and report what had queued,
+        then probe: 10 more flips 1 s apart while reading, which must all
+        print, so a wedged pedal fails.
 
-Pass: no slow or failed sends; in read mode also `[PAGE]` lines == flips
-(within --tolerance). In hold mode the line count is informational: macOS
-buffers about 45 KB of unread output, then drops the rest.
+Pass: no failed sends; in read mode also `[PAGE]` lines == flips (within
+--tolerance); in hold mode the probe's `[PAGE]` lines == 10 (within
+--tolerance). The hold run's own line count is informational: macOS buffers a
+limited amount of unread output, then drops the rest.
 
 Config: tools/bench/configs/nano4-207-serial-din-test.json (2 pages,
-  page_control jump CC100 on Ch 4). The gap must stay at or above 0.25 s:
-  faster, and the pedal merges page changes into one `[PAGE]` line.
+  page_control jump CC100 on Ch 4), or std10-207-serial-din-test.json. If
+  page changes arrive faster than the pedal redraws a page, it merges them
+  (no `[PAGE]` line, same final page): keep the gap at or above 0.25 s on a
+  NANO4 and 0.5 s on an STD10.
 Setup: pedal on USB only, nothing else holding its serial port open (close
   `screen`, the Config Editor's console). Only one pedal may be connected.
 Needs: sendmidi (brew install gbevin/tools/sendmidi). Stdlib only.
@@ -35,23 +43,45 @@ import time
 PEDAL_PORT = "Pico Midi Captain- usb_midi.ports[0]"
 SLOW_SEND_S = 0.2
 DEFAULT_FLIPS = {"read": 200, "hold": 2000}
+PROBE_FLIPS = 10
+PROBE_GAP_S = 1.0
 
 
 def count_page_lines(buf):
   return buf.count(b"[PAGE]")
 
 
-def evaluate(mode, flips, lines, slow, tolerance=2):
-  """Return (passed, summary) for one run."""
+def evaluate(mode, flips, lines, slow, tolerance=2, probe=None):
+  """Return (passed, summary) for one run. probe: hold mode's post-hold [PAGE] lines."""
   passed = slow == 0
+  summary = f"{mode}: {flips} flips, slow/failed sends {slow}, [PAGE] lines {lines}"
   if mode == "read":
     passed = passed and abs(lines - flips) <= tolerance
-  return passed, f"{mode}: {flips} flips, slow/failed sends {slow}, [PAGE] lines {lines}"
+  else:
+    passed = passed and probe is not None and abs(probe - PROBE_FLIPS) <= tolerance
+    summary += f", probe {probe}/{PROBE_FLIPS}"
+  return passed, summary
 
 
 def fail(msg):
   print(f"FAIL {msg}")
   sys.exit(1)
+
+
+def send(sender, value):
+  """Send one flip through the long-running sendmidi; return an error or None."""
+  try:
+    sender.stdin.write(f"ch 4 cc 100 {value}\n".encode())
+    sender.stdin.flush()
+  except BrokenPipeError:
+    pass
+  if sender.poll() is not None:
+    return f"sendmidi exited rc={sender.returncode}"
+  try:
+    err = os.read(sender.stderr.fileno(), 4096)
+  except BlockingIOError:
+    return None
+  return err.decode(errors="replace").strip()[:60] or None
 
 
 def main():
@@ -78,6 +108,11 @@ def main():
 
   fd = os.open(dev, os.O_RDONLY | os.O_NONBLOCK)
   buf = bytearray()
+  # `--` makes sendmidi read commands from stdin until it closes: one MIDI
+  # client for the whole run.
+  sender = subprocess.Popen(["sendmidi", "dev", args.pedal_port, "--"],
+                            stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+  os.set_blocking(sender.stderr.fileno(), False)
 
   def drain():
     while True:
@@ -92,19 +127,15 @@ def main():
   print(f"{args.mode}: {flips} flips every {args.gap}s via '{args.pedal_port}', console {dev}", flush=True)
   t0 = time.monotonic()
   slow = 0
+  probe = None
   try:
     for i in range(flips):
       t = time.monotonic()
-      cmd = ["sendmidi", "dev", args.pedal_port, "ch", "4", "cc", "100", str((i + 1) % 2)]
-      try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        rc, err = r.returncode, r.stderr.strip()[:60]
-      except subprocess.TimeoutExpired:
-        rc, err = "timeout", ""
+      err = send(sender, (i + 1) % 2)
       dt = time.monotonic() - t
-      if dt > SLOW_SEND_S or rc:
+      if dt > SLOW_SEND_S or err:
         slow += 1
-        print(f"flip {i + 1}: send took {dt:.2f}s rc={rc} {err}", flush=True)
+        print(f"flip {i + 1}: send took {dt:.2f}s {err or ''}", flush=True)
       if args.mode == "read":
         drain()
       time.sleep(max(0, args.gap - dt))
@@ -112,12 +143,26 @@ def main():
         print(f"{i + 1} flips at {time.monotonic() - t0:.1f}s, [PAGE] lines read so far {count_page_lines(buf)}", flush=True)
     time.sleep(1)
     drain()
+    lines, held = count_page_lines(buf), len(buf)
+    if args.mode == "hold":
+      for i in range(flips, flips + PROBE_FLIPS):
+        err = send(sender, (i + 1) % 2)
+        if err:
+          slow += 1
+          print(f"probe flip {i + 1 - flips}: {err}", flush=True)
+        time.sleep(PROBE_GAP_S)
+        drain()
+      time.sleep(1)
+      drain()
+      probe = count_page_lines(buf) - lines
   finally:
     os.close(fd)
+    sender.stdin.close()
+    sender.wait(timeout=5)
 
-  passed, summary = evaluate(args.mode, flips, count_page_lines(buf), slow, args.tolerance)
+  passed, summary = evaluate(args.mode, flips, lines, slow, args.tolerance, probe)
   noun = "buffered" if args.mode == "hold" else "read"
-  print(f"{'PASS' if passed else 'FAIL'} {summary}, bytes {noun} {len(buf)}")
+  print(f"{'PASS' if passed else 'FAIL'} {summary}, bytes {noun} {held}")
   sys.exit(0 if passed else 1)
 
 

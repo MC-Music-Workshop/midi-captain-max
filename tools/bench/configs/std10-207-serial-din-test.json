@@ -1,0 +1,209 @@
+{
+  "device": "std10",
+  "global_channel": 3,
+  "usb_drive_name": "STD10",
+  "dev_mode": true,
+  "page_control": {
+    "enabled": true,
+    "jump": {
+      "cc": 100
+    }
+  },
+  "pages": [
+    {
+      "name": "A",
+      "buttons": [
+        {
+          "label": "N60",
+          "color": "green",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 60
+        },
+        {
+          "label": "N61",
+          "color": "blue",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 61
+        },
+        {
+          "label": "N62",
+          "color": "yellow",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 62
+        },
+        {
+          "label": "N63",
+          "color": "red",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 63
+        },
+        {
+          "label": "N64",
+          "color": "magenta",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 64
+        },
+        {
+          "label": "N65",
+          "color": "white",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 65
+        },
+        {
+          "label": "N66",
+          "color": "green",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 66
+        },
+        {
+          "label": "N67",
+          "color": "blue",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 67
+        },
+        {
+          "label": "N68",
+          "color": "yellow",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 68
+        },
+        {
+          "label": "N69",
+          "color": "red",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 69
+        }
+      ],
+      "expression": {
+        "exp1": {
+          "enabled": false,
+          "cc": 12,
+          "label": "EXP1"
+        },
+        "exp2": {
+          "enabled": false,
+          "cc": 13,
+          "label": "EXP2"
+        }
+      }
+    },
+    {
+      "name": "B",
+      "buttons": [
+        {
+          "label": "N60",
+          "color": "purple",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 60
+        },
+        {
+          "label": "N61",
+          "color": "cyan",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 61
+        },
+        {
+          "label": "N62",
+          "color": "orange",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 62
+        },
+        {
+          "label": "N63",
+          "color": "white",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 63
+        },
+        {
+          "label": "N64",
+          "color": "magenta",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 64
+        },
+        {
+          "label": "N65",
+          "color": "white",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 65
+        },
+        {
+          "label": "N66",
+          "color": "green",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 66
+        },
+        {
+          "label": "N67",
+          "color": "blue",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 67
+        },
+        {
+          "label": "N68",
+          "color": "yellow",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 68
+        },
+        {
+          "label": "N69",
+          "color": "red",
+          "mode": "toggle",
+          "off_mode": "off",
+          "type": "note",
+          "note": 69
+        }
+      ],
+      "expression": {
+        "exp1": {
+          "enabled": false,
+          "cc": 12,
+          "label": "EXP1"
+        },
+        "exp2": {
+          "enabled": false,
+          "cc": 13,
+          "label": "EXP2"
+        }
+      }
+    }
+  ],
+  "active_page": 0
+}

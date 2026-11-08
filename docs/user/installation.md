@@ -34,6 +34,24 @@ brew install --cask mc-music-workshop/tap/midi-captain-max@beta
 
 The two casks can't be installed together. To switch, uninstall one first: `brew uninstall --cask midi-captain-max` (or `midi-captain-max@beta`), then install the other.
 
+#### Already Installed from the Download?
+
+If you already installed the Config Editor from a `.dmg`, Homebrew refuses to install over it. Add `--adopt` so Homebrew takes over your existing copy instead:
+
+```bash
+brew install --cask --adopt mc-music-workshop/tap/midi-captain-max
+```
+
+(Use `midi-captain-max@beta` instead if you want the beta cask.)
+
+Adopting only works when your installed version matches the cask's version. If it doesn't, Homebrew stops with a "bundle version" error. When that happens, use `--force` instead to replace your copy with the cask's version:
+
+```bash
+brew install --cask --force mc-music-workshop/tap/midi-captain-max
+```
+
+Either way, your settings, saved configs and templates are kept. From then on, `brew upgrade` keeps the app up to date.
+
 ## Updating an Existing MIDI Captain MAX Install
 
 1. Connect your MIDI Captain via USB and power it on.

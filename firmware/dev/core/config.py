@@ -1005,18 +1005,23 @@ def get_dev_mode(cfg):
     return bool(cfg.get("dev_mode", False))
 
 
+def _list(value):
+    """value if it's a list, else []: raw config may hold anything."""
+    return value if isinstance(value, list) else []
+
+
 def _button_uses_hid(btn):
     """True if a raw button sends HID: its own type, messages_on/off, or a keytimes entry."""
     if btn.get("type") == "hid":
         return True
     lists = [btn.get("messages_on"), btn.get("messages_off")]
     for cycle in ("short", "long"):
-        for entry in btn.get(cycle) or []:
+        for entry in _list(btn.get(cycle)):
             if isinstance(entry, dict):
                 lists.append(entry.get("down"))
                 lists.append(entry.get("up"))
     for msgs in lists:
-        for msg in msgs or []:
+        for msg in _list(msgs):
             if isinstance(msg, dict) and msg.get("type") == "hid":
                 return True
     return False
@@ -1027,13 +1032,15 @@ def config_uses_hid(cfg):
 
     boot.py enables USB HID only when this is True, keeping the USB descriptor
     clean for MIDI-only setups. Descriptors are fixed at boot, so every page is
-    scanned, not just the active one. Null-safe on malformed buttons/encoders:
-    a raise in boot.py would disable HID for every button.
+    scanned, not just the active one. Skips malformed pages, buttons and lists
+    rather than raising: a raise in boot.py would disable HID for every button.
     """
-    for page in cfg.get("pages", []):
+    for page in _list(cfg.get("pages")):
+        if not isinstance(page, dict):
+            continue
         enc = page.get("encoder")
         push = enc.get("push") if isinstance(enc, dict) else None
-        for btn in page.get("buttons", []) + [push]:
+        for btn in _list(page.get("buttons")) + [push]:
             if isinstance(btn, dict) and _button_uses_hid(btn):
                 return True
     return False

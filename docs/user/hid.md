@@ -22,7 +22,7 @@ HID messages have no MIDI channel, so the channel field is hidden for them.
 |---|---|---|
 | **Send** | presses and releases the key right away, like a quick tap | almost everything: shortcuts, page turns, transport |
 | **Press** | presses the key and keeps it down | holding a key, or dragging with the mouse |
-| **Release** | lets go of a key you pressed with **Press**. Key `all` lets go of every key and mouse button | ending a **Press** |
+| **Release** | lets go of a key you pressed with **Press**, and of its modifier if you set the same one here. Key `all` lets go of every key, modifier and mouse button | ending a **Press** |
 | **Delay** | waits, from 1 to 5000 ms (default 50). The **Key** and **Modifier** fields are replaced by **Delay (ms)** | spacing out messages in a list, for apps that miss keys sent too fast |
 
 Every **Press** needs a matching **Release**, or the computer acts as if the key is stuck down. If that happens, a button with **Release** and key `all` clears it.
@@ -92,10 +92,12 @@ In a list, pick **HID** as the message type. The **Action**, **Key**, **Modifier
 
 **Hold a key while your foot is down** (push-to-talk, a held mouse click). Set **Mode** to **Keytimes (short/long)**, then:
 
-1. Add one **Short Press Cycle** entry. In **short_down**, add HID **Press** with your key. In **short_up**, add HID **Release** with the same key.
+1. Add one **Short Press Cycle** entry. In **short_down**, add HID **Press** with your key and modifier. In **short_up**, add HID **Release** with the same key and the same modifier.
 2. Add one **Long Press Cycle** entry. In **long_up**, add the same HID **Release**.
 
 A quick tap releases through **short_up**. Holding past the long-press threshold skips **short_up**, so the long entry's **long_up** releases instead. Without it, a long hold leaves the key stuck down.
+
+The modifier matters: a **Release** without one lets go of the key but leaves the modifier down, so **Press** Ctrl+A followed by **Release** A leaves Ctrl held. If nothing else should stay held, **Release** with key `all` in both places is simpler: it lets go of every key, modifier and mouse button.
 
 **Two keys in a row.** **Type** HID, **Mode** Momentary, key `Esc`. Under **Also send**, add HID **Delay** of 100 ms, then HID **Send** with key `Space`. One press sends Esc, waits, then sends Space.
 

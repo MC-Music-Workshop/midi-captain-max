@@ -365,3 +365,23 @@ def test_config_uses_hid_false_without_hid():
 ])
 def test_config_uses_hid_tolerates_malformed(cfg):
     assert config_uses_hid(cfg) is False
+
+
+# A malformed button must not hide a valid HID button after it.
+@pytest.mark.parametrize("bad", [
+    {"messages_on": 1},
+    {"messages_off": 1},
+    {"mode": "keytimes", "short": 1},
+    {"mode": "keytimes", "long": [{"down": 1, "up": 1}]},
+], ids=["messages_on", "messages_off", "short", "entry_slots"])
+def test_config_uses_hid_skips_non_list_collections(bad):
+    assert config_uses_hid(_cfg(bad, {"type": "hid", "hid_key": "A"}))
+
+
+def test_config_uses_hid_non_list_pages_is_false():
+    assert config_uses_hid({"pages": 1}) is False
+
+
+@pytest.mark.parametrize("bad_page", [1, {"buttons": 1}], ids=["page", "buttons"])
+def test_config_uses_hid_skips_malformed_pages(bad_page):
+    assert config_uses_hid({"pages": [bad_page, {"buttons": [{"type": "hid"}]}]})

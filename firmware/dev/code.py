@@ -536,7 +536,7 @@ def midi_send(msg, channel=None):
 # USB HID Setup (Keyboard + Mouse)
 # =============================================================================
 # HID is only enabled if boot.py called usb_hid.enable(), which happens only
-# when at least one button is configured with type="hid".
+# when config_uses_hid() finds an HID send anywhere in the config.
 
 hid_keyboard = None
 hid_mouse = None

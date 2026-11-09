@@ -14,7 +14,7 @@ In the Config Editor, set the button's **Type** to **HID**. Three fields appear:
 | **Key** | the key or mouse button, by name, e.g. `A`, `F5`, `Space`, `Mouse_L`. See [Key names](#key-names) |
 | **Modifier** | an optional key held down with it: **Ctrl**, **Shift**, **Alt**, **Option (⌥)** or **Windows (⊞)** |
 
-HID messages have no MIDI channel, so the channel field is hidden for them.
+HID has no MIDI channel. The button's **Channel** field is ignored, and HID messages in lists don't show one.
 
 ## Actions
 
@@ -43,6 +43,8 @@ The **Modifier** is held down for the key's **Send** or **Press**. Each HID mess
 
 On a Mac, most shortcuts use **Command**, so pick **Windows (⊞)**. For example, ⌘S is key `S` with modifier **Windows (⊞)**.
 
+Modifiers apply to keyboard keys only. With `Mouse_L` or `Mouse_R` the modifier is ignored, so Shift-click and Ctrl-click aren't possible.
+
 ## Key names
 
 Type the name into the **Key** field. Upper or lower case both work.
@@ -63,13 +65,15 @@ The editor doesn't check key names. A misspelled name, or a key not on this list
 
 ## How the button behaves
 
-A button with **Type** set to **HID** sends its action **when you press it**. Lifting your foot sends nothing. **Mode** only changes what the LED does:
+A button with **Type** set to **HID** sends its action **when you press it**. Lifting your foot sends nothing. **Mode** changes what the LED does, and which **Also send** list goes out:
 
-| Mode | Each press | LED |
-|---|---|---|
-| **Toggle** (default) | sends the action | turns on and off on alternate presses |
-| **Momentary** | sends the action | flashes briefly |
-| **Keytimes (short/long)** | the entries decide | the entries decide |
+| Mode | Each press | LED | Also send |
+|---|---|---|---|
+| **Toggle** (default) | sends the action | turns on and off on alternate presses | alternates between the **when turned on** and **when turned off** lists, like the LED |
+| **Momentary** | sends the action | flashes briefly | sends its one list every press |
+| **Keytimes (short/long)** | the entries decide | the entries decide | not used: put messages in the entries |
+
+If you want the same extras on every press, use **Momentary**.
 
 **Momentary** doesn't hold the key while your foot is down. To do that, use **Keytimes**, below.
 
@@ -82,7 +86,7 @@ HID also works anywhere you can add messages:
 - **Also send** on any button, after the button's own message. See [Multiple Messages](./multiple-messages.md).
 - **Keytimes** entries, on press or release, for taps or holds. See [Keytimes](./keytimes.md).
 
-In a list, pick **HID** as the message type. The **Action**, **Key**, **Modifier** and **Delay ms** fields work as above. Messages go out in the order listed, which is what makes **Press**, **Delay** and **Release** useful.
+In a list, pick **HID** as the message type. The **Action**, **Key**, **Modifier** and **Delay ms** fields work as above, with lowercase option names: `send`, `press`, `release`, `delay`, and modifiers `ctrl`, `shift`, `alt`, `option`, `windows`. On a Mac, Command is `windows`. Messages go out in the order listed, which is what makes **Press**, **Delay** and **Release** useful.
 
 ## Examples
 
@@ -103,6 +107,7 @@ The modifier matters: a **Release** without one lets go of the key but leaves th
 
 ## Things to know
 
-- **Turn the pedal off and on after adding your first HID message.** The pedal shows up as a keyboard and mouse only if some button on some page sends HID, and it checks that only when it powers up. Saving from the editor restarts the config but not that check, so the first HID message you add does nothing until a power cycle. The same applies when you remove the last one. Editing an existing HID message takes effect on save.
+- **Turn the pedal off and on after adding your first HID message.** The pedal shows up as a keyboard and mouse only if some button on some page sends HID, and it checks that only when it powers up. **Save to Device** with restart reloads your config but doesn't repeat that check, so the first HID message you add does nothing until a power cycle. The same applies when you remove the last one. Changes to existing HID messages take effect when the editor restarts the pedal.
+- **Keys are sent by their position on a US keyboard.** The computer maps them through its own keyboard layout, so on a German (QWERTZ) layout `Y` types Z, and on a French (AZERTY) layout `A` types Q.
 - **The pedal is a keyboard, not a MIDI device, to the app.** Keys go to whichever window has focus, just like a real keyboard, so the right app needs to be in front.
 - **Incoming MIDI doesn't affect HID buttons.** The host can't sync their LEDs.

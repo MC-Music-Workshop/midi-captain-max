@@ -94,7 +94,7 @@ except SyntaxError as _e:
             time.sleep(_GAP)
         time.sleep(_MSG_GAP)
 
-# Enable USB HID (keyboard + mouse) if any configured button uses type="hid".
+# Enable USB HID (keyboard + mouse) if config_uses_hid() found an HID send.
 # Must be called before USB is fully initialized; boot.py is the only place
 # where usb_hid.enable() has any effect.
 if hid_enabled:

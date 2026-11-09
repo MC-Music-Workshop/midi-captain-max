@@ -40,7 +40,7 @@ Used by the GUI installer's pre-flight halt + post-install soft-reboot, and by `
 - **Ctrl-C halts `code.py`** and prints "Press any key to enter the REPL". CP _consumes_ the next inbound byte as that keypress. Always send a sacrificial CRLF after Ctrl-C before real commands — otherwise the first byte of your command gets eaten.
 - **REPL is line-mode**: only executes a buffered line on CRLF (`\r\n`). Always end commands with `\r\n`.
 - **Multi-line `try`/`except` doesn't paste cleanly** — use single-line semicolon-joined statements.
-- **Soft reboot = Ctrl-D** after Ctrl-C. Re-runs `boot.py` + `code.py`, also re-enables autoreload.
+- **Soft reboot = Ctrl-D** after Ctrl-C. Re-runs `code.py` (not `boot.py`, which runs only on a hard reset), also re-enables autoreload.
 - **REPL after Ctrl-C is a clean-slate namespace** — NOT `code.py`'s globals. Functions like `switch_page` are not directly accessible. To test code.py functions from REPL: `exec(open("code.py").read())` — re-runs all init in REPL's `__main__`, then all code.py names are in scope. Hardware reinit is safe (USB HID/MIDI wrapped in try/except). Verified CP 7.3.1 on RP2040.
 
 ### CP 7.x Syntax Restrictions (CRITICAL)

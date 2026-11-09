@@ -1035,6 +1035,8 @@ def config_uses_hid(cfg):
     scanned, not just the active one. Skips malformed pages, buttons and lists
     rather than raising: a raise in boot.py would disable HID for every button.
     """
+    if not isinstance(cfg, dict):
+        return False
     for page in _list(cfg.get("pages")):
         if not isinstance(page, dict):
             continue

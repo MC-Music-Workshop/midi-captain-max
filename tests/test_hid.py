@@ -362,6 +362,8 @@ def test_config_uses_hid_false_without_hid():
     {"pages": [{"buttons": [{"messages_on": [None, "x"]}], "encoder": "bad"}]},
     {"pages": [{"buttons": [], "encoder": {"push": "bad"}}]},
     {},
+    [],
+    None,
 ])
 def test_config_uses_hid_tolerates_malformed(cfg):
     assert config_uses_hid(cfg) is False

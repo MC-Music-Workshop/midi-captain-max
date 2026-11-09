@@ -1005,6 +1005,40 @@ def get_dev_mode(cfg):
     return bool(cfg.get("dev_mode", False))
 
 
+def _button_uses_hid(btn):
+    """True if a raw button sends HID: its own type, messages_on/off, or a keytimes entry."""
+    if btn.get("type") == "hid":
+        return True
+    lists = [btn.get("messages_on"), btn.get("messages_off")]
+    for cycle in ("short", "long"):
+        for entry in btn.get(cycle) or []:
+            if isinstance(entry, dict):
+                lists.append(entry.get("down"))
+                lists.append(entry.get("up"))
+    for msgs in lists:
+        for msg in msgs or []:
+            if isinstance(msg, dict) and msg.get("type") == "hid":
+                return True
+    return False
+
+
+def config_uses_hid(cfg):
+    """True if any button or encoder push on any page sends HID.
+
+    boot.py enables USB HID only when this is True, keeping the USB descriptor
+    clean for MIDI-only setups. Descriptors are fixed at boot, so every page is
+    scanned, not just the active one. Null-safe on malformed buttons/encoders:
+    a raise in boot.py would disable HID for every button.
+    """
+    for page in cfg.get("pages", []):
+        enc = page.get("encoder")
+        push = enc.get("push") if isinstance(enc, dict) else None
+        for btn in page.get("buttons", []) + [push]:
+            if isinstance(btn, dict) and _button_uses_hid(btn):
+                return True
+    return False
+
+
 def validate_usb_drive_name(name):
     """Validate USB drive name for FAT32 compatibility.
     

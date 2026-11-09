@@ -51,28 +51,12 @@ hid_enabled = False             # Default: HID not enabled
 try:
     import sys
     sys.path.insert(0, "/core")
-    from config import load_config, get_usb_drive_name, get_dev_mode
+    from config import load_config, get_usb_drive_name, get_dev_mode, config_uses_hid
 
     cfg = load_config("/config.json")
     dev_mode = get_dev_mode(cfg)
     usb_drive_name = get_usb_drive_name(cfg)
-
-    # Enable USB HID only if at least one button on ANY page uses type="hid".
-    # USB descriptors are fixed at boot and can't be re-initialized when the
-    # active page changes, so scan every page, not just the active one.
-    # This keeps the USB descriptor clean for MIDI-only setups.
-    # The STD10 encoder push is a button too. Null-safe: a bad encoder/push must
-    # not raise here, or the except below would disable HID for every button.
-    def _page_buttons(page):
-        enc = page.get("encoder")
-        push = enc.get("push") if isinstance(enc, dict) else None
-        return page.get("buttons", []) + ([push] if isinstance(push, dict) else [])
-
-    hid_enabled = any(
-        btn.get("type") == "hid"
-        for page in cfg.get("pages", [])
-        for btn in _page_buttons(page)
-    )
+    hid_enabled = config_uses_hid(cfg)
 except Exception:
     # If config fails to load, use safe defaults (performance mode, no HID)
     pass

@@ -101,6 +101,6 @@ A quick tap releases through **short_up**. Holding past the long-press threshold
 
 ## Things to know
 
-- **At least one button needs Type HID.** The pedal shows up as a keyboard and mouse only when at least one button, on any page or the encoder push, has its **Type** set to **HID**. HID messages that only appear in **Also send** lists or **Keytimes** entries don't count. If those do nothing, set any spare button's **Type** to **HID**.
+- **Turn the pedal off and on after adding your first HID message.** The pedal shows up as a keyboard and mouse only if some button on some page sends HID, and it checks that only when it powers up. Saving from the editor restarts the config but not that check, so the first HID message you add does nothing until a power cycle. The same applies when you remove the last one. Editing an existing HID message takes effect on save.
 - **The pedal is a keyboard, not a MIDI device, to the app.** Keys go to whichever window has focus, just like a real keyboard, so the right app needs to be in front.
 - **Incoming MIDI doesn't affect HID buttons.** The host can't sync their LEDs.

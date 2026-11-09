@@ -2,7 +2,7 @@
 
 Any button can send more than its own message. Under each button in the editor, **Also send** lists extra messages that go out right after the button's own one, in the order listed. Click **+ message** to add one.
 
-The extras take the same message types as a [keytimes](./keytimes.md) entry: **CC**, **Note**, **PC Fixed**, **PC+** / **PC-**, **CC+** / **CC-**, **HID**, and **Page+** / **Page-** / **Page Jump**, each with its own channel.
+The extras take the same message types as a [keytimes](./keytimes.md) entry: **CC**, **Note**, **PC Fixed**, **PC+** / **PC-**, **CC+** / **CC-**, [**HID**](./hid.md), and **Page+** / **Page-** / **Page Jump**, each with its own channel.
 
 **CC+** / **CC-** here step a CC of their own: set its **CC**, and optionally **Step** (default 1), **Min** / **Max** (default 0–127, starting at Min) and **wrap** (on by default). The value is shared with any CC+ / CC- button on the same CC and channel, so they stay in step.
 

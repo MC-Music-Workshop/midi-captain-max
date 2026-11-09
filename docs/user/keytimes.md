@@ -65,7 +65,7 @@ The screen label follows the same last-press-wins rule, falling back to the butt
 
 ## What an entry can send
 
-Each slot takes any message the editor offers: **CC**, **Note**, **PC Fixed**, **PC+** / **PC-**, **CC+** / **CC-**, **HID** (keyboard/mouse), and **Page+** / **Page-** / **Page Jump**. One entry can hold several messages — click **+ message** again.
+Each slot takes any message the editor offers: **CC**, **Note**, **PC Fixed**, **PC+** / **PC-**, **CC+** / **CC-**, [**HID**](./hid.md) (keyboard/mouse), and **Page+** / **Page-** / **Page Jump**. One entry can hold several messages — click **+ message** again.
 
 Two worth calling out:
 

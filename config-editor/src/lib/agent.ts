@@ -24,7 +24,7 @@ const tools = (toolDefinitions as Anthropic.Tool[]).filter(t => EDITOR_TOOL_NAME
 
 const EDITOR_NOTES = `
 
-You are running inside the Config Editor. The config is the one open in the editor: never pass \`target\`. \`apply_changes\` puts your edit in the editor as unsaved changes; the user reviews it and saves it to the pedal themselves, so end by telling them to review and save. The full config schema follows, so you do not need a \`get_schema\` tool.
+You are running inside the Config Editor. The config is the one open in the editor: never pass \`target\`. \`apply_changes\` puts your edit in the editor as unsaved changes; the user reviews it and saves it to the pedal themselves, so end by telling them to review and save. The panel shows your reply as plain text: no Markdown. The full config schema follows, so you do not need a \`get_schema\` tool.
 
 `;
 

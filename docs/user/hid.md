@@ -107,7 +107,6 @@ The modifier matters: a **Release** without one lets go of the key but leaves th
 
 ## Things to know
 
-- **Turn the pedal off and on after adding your first HID message.** The pedal shows up as a keyboard and mouse only if some button on some page sends HID, and it checks that only when it powers up. **Save to Device** with restart reloads your config but doesn't repeat that check, so the first HID message you add does nothing until a power cycle. The same applies when you remove the last one. Changes to existing HID messages take effect when the editor restarts the pedal.
 - **Keys are sent by their position on a US keyboard.** The computer maps them through its own keyboard layout, so on a German (QWERTZ) layout `Y` types Z, and on a French (AZERTY) layout `A` types Q.
 - **The pedal is a keyboard, not a MIDI device, to the app.** Keys go to whichever window has focus, just like a real keyboard, so the right app needs to be in front.
 - **Incoming MIDI doesn't affect HID buttons.** The host can't sync their LEDs.

@@ -51,12 +51,28 @@ hid_enabled = False             # Default: HID not enabled
 try:
     import sys
     sys.path.insert(0, "/core")
-    from config import load_config, get_usb_drive_name, get_dev_mode, config_uses_hid
+    from config import load_config, get_usb_drive_name, get_dev_mode
 
     cfg = load_config("/config.json")
     dev_mode = get_dev_mode(cfg)
     usb_drive_name = get_usb_drive_name(cfg)
-    hid_enabled = config_uses_hid(cfg)
+
+    # CircuitPython 7.x on the RP2040 turns on keyboard, mouse and consumer
+    # control HID by default, so HID works whatever this finds. When a button
+    # on ANY page has type="hid", usb_hid.enable() below narrows that set to
+    # keyboard + mouse. Descriptors are fixed at boot, so scan every page.
+    # The STD10 encoder push is a button too. Null-safe: a bad encoder/push must
+    # not raise here.
+    def _page_buttons(page):
+        enc = page.get("encoder")
+        push = enc.get("push") if isinstance(enc, dict) else None
+        return page.get("buttons", []) + ([push] if isinstance(push, dict) else [])
+
+    hid_enabled = any(
+        btn.get("type") == "hid"
+        for page in cfg.get("pages", [])
+        for btn in _page_buttons(page)
+    )
 except Exception:
     # If config fails to load, use safe defaults (performance mode, no HID)
     pass
@@ -94,7 +110,8 @@ except SyntaxError as _e:
             time.sleep(_GAP)
         time.sleep(_MSG_GAP)
 
-# Enable USB HID (keyboard + mouse) if config_uses_hid() found an HID send.
+# Narrow USB HID to keyboard + mouse if any button uses type="hid" (without
+# this call, CircuitPython's default set also includes consumer control).
 # Must be called before USB is fully initialized; boot.py is the only place
 # where usb_hid.enable() has any effect.
 if hid_enabled:

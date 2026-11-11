@@ -343,8 +343,8 @@ USB HID (keyboard + mouse) via the `"hid"` message type:
 
 - `firmware/dev/core/hid.py`: `KEY_TABLE`, `MODIFIER_TABLE`, `dispatch_hid(keyboard, mouse, action, key, modifier, delay_ms)`
 - Mouse button bitmasks (0x01, 0x02, 0x04) are **hardcoded** in `hid.py` — do not import from `adafruit_hid.mouse` in the hot dispatch path (CP 7.x does a filesystem scan per import call)
-- HID is only enabled in `boot.py` if `config_uses_hid()` (`core/config.py`) finds an HID send anywhere: a button's own `type`, its `messages_on`/`messages_off`, or a keytimes `short`/`long` entry's `down`/`up`, on any page, encoder push included. Keeps the USB descriptor clean for MIDI-only setups. A new message-list location must be added there too, or HID in it silently does nothing
-- `boot.py` runs only on a hard reset. The editor's restart after save is a soft reload (Ctrl-D), so adding the first HID send (or removing the last) needs a power cycle before the descriptor changes
+- **USB HID is always on.** CircuitPython 7.x on the RP2040 enables keyboard, mouse and consumer control by default (`CIRCUITPY_USB_HID_ENABLED_DEFAULT` is on with 5+ USB endpoint pairs; the RP2040 has 8), and `boot.py` never calls `usb_hid.disable()`. When a button on any page has `"type": "hid"`, `boot.py`'s `usb_hid.enable((KEYBOARD, MOUSE))` only narrows that set. So HID in `messages_on`/`messages_off` and keytimes entries works without a Type HID button, and HID changes take effect on the editor's soft restart, no power cycle
+- Making HID opt-in (`usb_hid.disable()` when unused) would add a power-cycle step whenever the first HID send is added or the last removed, because `boot.py` runs only on a hard reset and the editor's restart is a soft reload (Ctrl-D). Considered and rejected for that reason (PR #233)
 
 **HID config fields** (on ButtonConfig and StateOverride):
 - `hid_action`: "send" | "press" | "release" | "delay" (default: "send")

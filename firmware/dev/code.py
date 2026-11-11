@@ -535,8 +535,10 @@ def midi_send(msg, channel=None):
 # =============================================================================
 # USB HID Setup (Keyboard + Mouse)
 # =============================================================================
-# HID is only enabled if boot.py called usb_hid.enable(), which happens only
-# when config_uses_hid() finds an HID send anywhere in the config.
+# CircuitPython 7.x on the RP2040 enables keyboard, mouse and consumer control
+# HID by default; boot.py only narrows that to keyboard + mouse when a button
+# has type="hid". Either way usb_hid.devices is non-empty on the device, so HID
+# messages work anywhere in the config, including messages_on/off and keytimes.
 
 hid_keyboard = None
 hid_mouse = None

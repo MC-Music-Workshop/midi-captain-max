@@ -14,7 +14,6 @@ FIRMWARE_DIR = Path(__file__).parent.parent / "firmware" / "dev"
 sys.path.insert(0, str(FIRMWARE_DIR))
 
 from core.hid import dispatch_hid, KEY_TABLE, MODIFIER_TABLE, _MOUSE_LEFT, _MOUSE_RIGHT
-from core.config import config_uses_hid
 from tests.mocks.adafruit_hid.keyboard import Keyboard
 from tests.mocks.adafruit_hid.keycode import Keycode
 from tests.mocks.adafruit_hid.mouse import Mouse
@@ -306,84 +305,3 @@ class TestDispatchHidNoneHardware:
         monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
         dispatch_hid(None, None, "delay", None, delay_ms=10)
         assert len(slept) == 1
-
-
-# ---------------------------------------------------------------------------
-# config_uses_hid: boot.py enables USB HID only when this is True
-# ---------------------------------------------------------------------------
-
-_HID_MSG = {"type": "hid", "action": "send", "key": "A"}
-_CC_MSG = {"type": "cc", "cc": 20, "value": 127}
-
-
-def _cfg(*buttons, push=None):
-    page = {"buttons": list(buttons)}
-    if push is not None:
-        page["encoder"] = {"push": push}
-    return {"pages": [page]}
-
-
-@pytest.mark.parametrize("button", [
-    {"type": "hid", "hid_key": "A"},
-    {"type": "cc", "cc": 20, "messages_on": [_CC_MSG, _HID_MSG]},
-    {"type": "cc", "cc": 20, "messages_off": [_HID_MSG]},
-    {"mode": "keytimes", "short": [{"down": [_CC_MSG]}, {"up": [_HID_MSG]}]},
-    {"mode": "keytimes", "long": [{"down": [_HID_MSG]}]},
-], ids=["type", "messages_on", "messages_off", "short_entry", "long_entry"])
-def test_config_uses_hid_finds_hid(button):
-    assert config_uses_hid(_cfg({"type": "cc", "cc": 21}, button))
-
-
-def test_config_uses_hid_scans_every_page():
-    cfg = {"pages": [
-        {"buttons": [{"type": "cc"}]},
-        {"buttons": [{"type": "cc", "messages_on": [_HID_MSG]}]},
-    ]}
-    assert config_uses_hid(cfg)
-
-
-def test_config_uses_hid_scans_encoder_push():
-    assert config_uses_hid(_cfg({"type": "cc"}, push={"type": "cc", "messages_on": [_HID_MSG]}))
-
-
-def test_config_uses_hid_false_without_hid():
-    cfg = _cfg(
-        {"type": "cc", "messages_on": [_CC_MSG], "messages_off": [_CC_MSG]},
-        {"mode": "keytimes", "short": [{"down": [_CC_MSG]}], "long": [{"up": [_CC_MSG]}]},
-        push={"type": "pc"},
-    )
-    assert not config_uses_hid(cfg)
-
-
-# boot.py must not raise on a malformed config, or HID turns off for every button.
-@pytest.mark.parametrize("cfg", [
-    {"pages": [{"buttons": [None, "x", {"messages_on": None, "short": None}]}]},
-    {"pages": [{"buttons": [{"short": [None, "x", {"down": None}]}]}]},
-    {"pages": [{"buttons": [{"messages_on": [None, "x"]}], "encoder": "bad"}]},
-    {"pages": [{"buttons": [], "encoder": {"push": "bad"}}]},
-    {},
-    [],
-    None,
-])
-def test_config_uses_hid_tolerates_malformed(cfg):
-    assert config_uses_hid(cfg) is False
-
-
-# A malformed button must not hide a valid HID button after it.
-@pytest.mark.parametrize("bad", [
-    {"messages_on": 1},
-    {"messages_off": 1},
-    {"mode": "keytimes", "short": 1},
-    {"mode": "keytimes", "long": [{"down": 1, "up": 1}]},
-], ids=["messages_on", "messages_off", "short", "entry_slots"])
-def test_config_uses_hid_skips_non_list_collections(bad):
-    assert config_uses_hid(_cfg(bad, {"type": "hid", "hid_key": "A"}))
-
-
-def test_config_uses_hid_non_list_pages_is_false():
-    assert config_uses_hid({"pages": 1}) is False
-
-
-@pytest.mark.parametrize("bad_page", [1, {"buttons": 1}], ids=["page", "buttons"])
-def test_config_uses_hid_skips_malformed_pages(bad_page):
-    assert config_uses_hid({"pages": [bad_page, {"buttons": [{"type": "hid"}]}]})

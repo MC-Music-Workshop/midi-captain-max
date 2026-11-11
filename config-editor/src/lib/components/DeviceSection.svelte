@@ -123,6 +123,9 @@
           Hold Switch 1 while powering on to temporarily enable it for file updates.
         {/if}
       </p>
+      <p class="help-text">
+        Changes take effect the next time you power on the pedal. Restarting from the editor doesn't apply them.
+      </p>
     </div>
   </div>
 </Accordion>

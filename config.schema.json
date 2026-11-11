@@ -561,7 +561,7 @@
         },
         "hid_modifier": {
           "$ref": "#/definitions/HidModifier",
-          "description": "Optional modifier key held during HID action. Used when type='hid' and hid_action='send' or 'press'."
+          "description": "Optional modifier key held during HID action. Used when type='hid' and hid_action='send', 'press' or 'release' (release lets go of the modifier too). Ignored for Mouse_L/Mouse_R."
         },
         "hid_delay_ms": {
           "type": "integer",

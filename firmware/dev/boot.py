@@ -19,7 +19,8 @@ USB DRIVE — two modes, controlled by config.json:
     Convenient when iterating on firmware locally.
 
 To reload after config/code changes:
-- Send Ctrl+D over serial console
+- Send Ctrl+D over serial console (re-runs code.py only; settings read here,
+  such as dev_mode, need a power cycle)
 - Or power-cycle the device
 """
 
@@ -42,12 +43,12 @@ microcontroller.nvm[_BOOT_FLAG_BYTE] = 1
 # CP 7.x uses supervisor.disable_autoreload(), not runtime.autoreload
 supervisor.disable_autoreload()
 
-# Load config settings needed at boot time (drive name, dev mode, HID enable).
+# Load config settings needed at boot time (drive name, dev mode, HID set).
 # boot.py runs before normal module search paths are established,
 # so we add /core to sys.path explicitly.
 usb_drive_name = "MIDICAPTAIN"  # Default fallback
 dev_mode = False                # Default: performance mode
-hid_enabled = False             # Default: HID not enabled
+hid_enabled = False             # Default: keep CircuitPython's HID set (kbd + mouse + consumer)
 try:
     import sys
     sys.path.insert(0, "/core")
@@ -57,12 +58,12 @@ try:
     dev_mode = get_dev_mode(cfg)
     usb_drive_name = get_usb_drive_name(cfg)
 
-    # Enable USB HID only if at least one button on ANY page uses type="hid".
-    # USB descriptors are fixed at boot and can't be re-initialized when the
-    # active page changes, so scan every page, not just the active one.
-    # This keeps the USB descriptor clean for MIDI-only setups.
+    # CircuitPython 7.x on the RP2040 turns on keyboard, mouse and consumer
+    # control HID by default, so HID works whatever this finds. When a button
+    # on ANY page has type="hid", usb_hid.enable() below narrows that set to
+    # keyboard + mouse. Descriptors are fixed at boot, so scan every page.
     # The STD10 encoder push is a button too. Null-safe: a bad encoder/push must
-    # not raise here, or the except below would disable HID for every button.
+    # not raise here.
     def _page_buttons(page):
         enc = page.get("encoder")
         push = enc.get("push") if isinstance(enc, dict) else None
@@ -74,7 +75,7 @@ try:
         for btn in _page_buttons(page)
     )
 except Exception:
-    # If config fails to load, use safe defaults (performance mode, no HID)
+    # If config fails to load, use safe defaults (performance mode, default HID set)
     pass
 
 # Compile-check code.py — only when the previous boot didn't complete.
@@ -110,7 +111,8 @@ except SyntaxError as _e:
             time.sleep(_GAP)
         time.sleep(_MSG_GAP)
 
-# Enable USB HID (keyboard + mouse) if any configured button uses type="hid".
+# Narrow USB HID to keyboard + mouse if any button uses type="hid" (without
+# this call, CircuitPython's default set also includes consumer control).
 # Must be called before USB is fully initialized; boot.py is the only place
 # where usb_hid.enable() has any effect.
 if hid_enabled:

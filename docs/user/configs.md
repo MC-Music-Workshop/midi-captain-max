@@ -37,6 +37,13 @@ A **●** next to the name means what you're working on doesn't have your latest
 
 **Two devices connected:** picking a device in the header loads it. To save a file to the second device, pick that device first, then load the file.
 
+## Development Mode applies at power-up
+
+**Development Mode**, under **Device Settings**, decides whether the pedal's USB drive appears when the pedal powers on. It takes effect the next time you power on the pedal, not when the editor restarts it:
+
+- **Turning it on:** from the next power-on, the drive appears without holding Switch 1 / KEY0.
+- **Turning it off:** the drive stays visible until you turn the pedal off. From the next power-on it's hidden; hold Switch 1 / KEY0 while powering on to get it back for edits.
+
 ## Unplugging a device
 
 Your edits stay open. **Save to File…** still works, and **Save to Device** comes back when the device reconnects. Plugging a device in never replaces a file or unsaved edits you have open.

@@ -34,6 +34,7 @@ The config editor is a desktop app built with **SvelteKit 5 + Tauri 2 (Rust back
 | `agent/tools.json`, `agent/prompt.md` | MCM agent (#230): tool definitions and model instructions, shared by the MCP server and the in-app Assistant. See [`agent/README.md`](agent/README.md) |
 | `src/lib/agent.ts`, `src/lib/components/AgentChat.svelte` | In-app Assistant: Claude tool loop on the open form (edits land as one undo step via `formStore.replaceConfig`) and its panel |
 | `src-tauri/src/agent.rs` | The agent tools: `get_schema`, `get_config`, `validate` (schema + Rust validator), `merge_changes`, `apply_changes` (merge → validate → backup → raw-JSON write); `agent_tool` command runs them on the open form |
+| `src-tauri/src/secrets.rs` | The Assistant's API key in the OS credential store (`keyring`); never in `localStorage` |
 | `src-tauri/src/mcp.rs`, `src-tauri/src/bin/mcm-mcp.rs` | `mcm-mcp`: the agent tools as an `rmcp` stdio MCP server. Second binary in the crate, hence `default-run` in `Cargo.toml`; not bundled into the app |
 
 ## Save Flow

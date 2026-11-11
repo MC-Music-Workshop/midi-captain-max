@@ -8,7 +8,7 @@ Instead of filling in the fields yourself, you can tell the Config Editor what y
 
 1. Open a config (from a device, a file, or a new one).
 2. Click **Assistant** in the toolbar. A panel opens on the right.
-3. The first time, paste your Anthropic API key and click **Use this key**. The key is stored on this computer only. **Change API key** removes it.
+3. The first time, paste your Anthropic API key and click **Use this key**. The key is stored in your computer's keychain (macOS Keychain, Windows Credential Manager, or the Linux secret service). **Change API key** removes it.
 4. Describe the change and press Enter. For example:
    - "Switch 3 toggles CC 52 on channel 1, red when on."
    - "Make switch 1 on page 2 a momentary note 60."

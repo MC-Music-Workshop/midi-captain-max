@@ -71,5 +71,5 @@ The toolbar's **Assistant** button opens a chat panel (`AgentChat.svelte`). User
 
 - **One Rust command, `agent_tool`** (`agent::call_editor_tool`), runs the tools against the config the frontend passes in, so merge and validation are the same code the MCP server uses.
 - **Model and limits** are constants in `agent.ts`: `claude-opus-5-5`, 8 tool rounds per request.
-- **API access is bring-your-own-key for now.** The key lives in `localStorage` (`mcm.agentApiKey`) and the webview calls `api.anthropic.com` directly (`connect-src` in `tauri.conf.json`). The planned proxy replaces the key with a `baseURL` on the client in `createClient`.
+- **API access is bring-your-own-key for now.** The key lives in the OS credential store (`src-tauri/src/secrets.rs`, `keyring` crate: macOS Keychain, Windows Credential Manager, Secret Service on Linux), the panel holds it in memory only, and the webview calls `api.anthropic.com` directly (`connect-src` in `tauri.conf.json`). The planned proxy replaces the key with a `baseURL` on the client in `createClient`.
 - **A failed request leaves the conversation as it was**, so a retry doesn't replay half a turn; an edit already applied stays in the form (Undo reverts it).

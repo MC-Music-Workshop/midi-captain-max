@@ -2,22 +2,26 @@
   // Assistant panel (#230): describe a change, it edits the open config as
   // unsaved edits. Non-modal on purpose: the form stays visible and usable so
   // the user can see what changed, undo it, and save it themselves.
-  import { tick } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import type Anthropic from '@anthropic-ai/sdk';
   import { createClient, sendTurn, describeError, type ToolOutcome } from '$lib/agent';
+  import { agentKeyGet, agentKeySet, agentKeyDelete } from '$lib/api';
 
   interface Props {
     onClose: () => void;
   }
   let { onClose }: Props = $props();
 
-  // Until the hosted proxy exists the assistant runs on the user's own key,
-  // kept in this app's local storage on this computer.
-  const KEY_STORAGE = 'mcm.agentApiKey';
+  // Until the hosted proxy exists the assistant runs on the user's own key. It
+  // lives in the OS keychain (secrets.rs); this component only holds it in memory.
+  // Early builds kept it in localStorage under this name; onMount moves it out.
+  const LEGACY_KEY_STORAGE = 'mcm.agentApiKey';
 
-  function loadKey(): string {
+  function takeLegacyKey(): string {
     try {
-      return globalThis.localStorage?.getItem(KEY_STORAGE) ?? '';
+      const key = globalThis.localStorage?.getItem(LEGACY_KEY_STORAGE) ?? '';
+      globalThis.localStorage?.removeItem(LEGACY_KEY_STORAGE);
+      return key;
     } catch {
       return '';
     }
@@ -25,7 +29,10 @@
 
   type Entry = { kind: 'user' | 'assistant' | 'note' | 'error'; text: string };
 
-  let apiKey = $state(loadKey());
+  let apiKey = $state('');
+  let keyLoading = $state(true);
+  // Set when the keychain can't be used: the key then lasts until the app closes.
+  let keyNotice = $state('');
   let keyDraft = $state('');
   let input = $state('');
   let busy = $state(false);
@@ -36,24 +43,44 @@
   const history: Anthropic.MessageParam[] = [];
   let abort: AbortController | null = null;
 
-  function saveKey() {
-    const key = keyDraft.trim();
-    if (!key) return;
+  async function storeKey(key: string) {
     apiKey = key;
-    keyDraft = '';
     try {
-      globalThis.localStorage?.setItem(KEY_STORAGE, key);
-    } catch {
-      // Storage blocked: the key still works until the app closes.
+      await agentKeySet(key);
+      keyNotice = '';
+    } catch (e) {
+      keyNotice = `${describeError(e)} The key will be forgotten when the app closes.`;
     }
   }
 
-  function forgetKey() {
+  onMount(async () => {
+    const legacy = takeLegacyKey();
+    try {
+      const stored = await agentKeyGet();
+      if (stored) apiKey = stored;
+      else if (legacy) await storeKey(legacy);
+    } catch (e) {
+      keyNotice = describeError(e);
+      if (legacy) apiKey = legacy;
+    } finally {
+      keyLoading = false;
+    }
+  });
+
+  async function saveKey() {
+    const key = keyDraft.trim();
+    if (!key) return;
+    keyDraft = '';
+    await storeKey(key);
+  }
+
+  async function forgetKey() {
     apiKey = '';
     try {
-      globalThis.localStorage?.removeItem(KEY_STORAGE);
-    } catch {
-      // Nothing stored.
+      await agentKeyDelete();
+      keyNotice = '';
+    } catch (e) {
+      keyNotice = describeError(e);
     }
   }
 
@@ -111,14 +138,18 @@
     <button class="icon-btn" onclick={onClose} aria-label="Close assistant">✕</button>
   </div>
 
-  {#if !apiKey}
+  {#if keyNotice}<p class="hint notice" role="status">{keyNotice}</p>{/if}
+
+  {#if keyLoading}
+    <p class="hint notice">Loading…</p>
+  {:else if !apiKey}
     <form class="key-form" onsubmit={(e) => { e.preventDefault(); saveKey(); }}>
       <label for="agent-api-key">Anthropic API key</label>
       <input id="agent-api-key" type="password" autocomplete="off" placeholder="sk-ant-…" bind:value={keyDraft} />
       <button class="send-btn" type="submit" disabled={!keyDraft.trim()}>Use this key</button>
       <p class="hint">
-        The assistant runs on your own Anthropic API key and you pay for its usage. The key is stored on this
-        computer only. Your config is sent to Anthropic with each request.
+        The assistant runs on your own Anthropic API key and you pay for its usage. The key is stored in this
+        computer's keychain. Your config is sent to Anthropic with each request.
       </p>
     </form>
   {:else}
@@ -247,6 +278,10 @@
     font-size: 12px;
     line-height: 1.4;
     color: var(--text-secondary, #888888);
+  }
+
+  .hint.notice {
+    padding: 8px 12px;
   }
 
   .key-form,

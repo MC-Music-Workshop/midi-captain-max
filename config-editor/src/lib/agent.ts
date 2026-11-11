@@ -158,7 +158,7 @@ export async function sendTurn(
   history.splice(0, history.length, ...messages);
 }
 
-/** A message for the panel from anything `sendTurn` can throw. */
+/** A message for the panel from anything `sendTurn` or a Tauri command can throw. */
 export function describeError(error: unknown): string {
   if (error instanceof Anthropic.APIUserAbortError) return 'Stopped.';
   if (error instanceof Anthropic.AuthenticationError) return 'That API key was rejected. Check the key and try again.';
@@ -166,5 +166,7 @@ export function describeError(error: unknown): string {
   if (error instanceof Anthropic.RateLimitError) return 'Rate limited by the API. Wait a moment and try again.';
   if (error instanceof Anthropic.APIConnectionError) return 'Could not reach the API. Check your connection.';
   if (error instanceof Anthropic.APIError) return `API error ${error.status ?? ''}: ${error.message}`;
-  return error instanceof Error ? error.message : String(error);
+  // Tauri commands reject with a plain `{ message }` object, not an Error.
+  const message = (error as { message?: unknown } | null)?.message;
+  return typeof message === 'string' ? message : String(error);
 }

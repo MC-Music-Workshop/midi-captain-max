@@ -191,3 +191,17 @@ export async function agentTool(
 ): Promise<Record<string, unknown>> {
   return invoke('agent_tool', { name, args, config });
 }
+
+// The Assistant's API key, kept in the OS credential store (macOS Keychain,
+// Windows Credential Manager, Secret Service on Linux).
+export async function agentKeyGet(): Promise<string | null> {
+  return invoke('agent_key_get');
+}
+
+export async function agentKeySet(key: string): Promise<void> {
+  return invoke('agent_key_set', { key });
+}
+
+export async function agentKeyDelete(): Promise<void> {
+  return invoke('agent_key_delete');
+}

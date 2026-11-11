@@ -39,6 +39,8 @@ rmcp = { version = "3", default-features = false, features = ["server", "transpo
 tokio = { version = "1", features = ["rt"] }
 # Agent `validate` (#230) checks configs against config.schema.json; no remote $ref resolving.
 jsonschema = { version = "0.61", default-features = false }
+# The Assistant's API key lives in the OS credential store (secrets.rs).
+keyring = "4"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["fileapi", "winbase", "winnt", "minwindef"] }

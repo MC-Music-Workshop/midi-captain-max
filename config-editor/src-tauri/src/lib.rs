@@ -8,6 +8,7 @@ pub mod mcp;
 mod reflash;
 mod templates;
 
+use agent::agent_tool;
 use commands::{detect_oem_v5_port, eject_device, enter_bootloader, enter_bootloader_oem_v5, read_config, read_config_raw, restart_device, validate_config, write_config, write_config_raw};
 use config_files::{configs_dir, default_config, device_config_type, open_config_file, save_config_file};
 use device::{scan_devices, start_device_watcher, stop_device_watcher};
@@ -47,7 +48,8 @@ pub fn run() {
             open_config_file,
             save_config_file,
             default_config,
-            device_config_type
+            device_config_type,
+            agent_tool
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

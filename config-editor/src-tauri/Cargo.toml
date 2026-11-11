@@ -37,6 +37,8 @@ hex = "0.4"
 # mcm-mcp (#230): MCP stdio server. Tools are listed by hand from agent/tools.json, so no macros/schemars.
 rmcp = { version = "3", default-features = false, features = ["server", "transport-io"] }
 tokio = { version = "1", features = ["rt"] }
+# Agent `validate` (#230) checks configs against config.schema.json; no remote $ref resolving.
+jsonschema = { version = "0.61", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["fileapi", "winbase", "winnt", "minwindef"] }

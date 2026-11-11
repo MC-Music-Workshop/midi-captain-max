@@ -38,10 +38,29 @@ pub fn get_schema(definition: Option<&str>) -> Result<Value, ConfigError> {
 }
 
 /// `{"ok": true}`, or `{"ok": false, "errors": [...]}`.
+///
+/// Two passes. `config.schema.json` catches what the Rust validator doesn't:
+/// ranges and patterns inside keytimes / "Also send" messages, and unknown
+/// field names (serde drops those silently, and a misspelled field is the
+/// likeliest mistake from a model). `MidiCaptainConfig::validate` then adds the
+/// cross-field rules a schema can't express (button count per model, page
+/// jump targets, ...).
 pub fn validate(config: &Value) -> Value {
-    match validate_config_json(&config.to_string()) {
-        Ok(()) => json!({ "ok": true }),
-        Err(e) => json!({ "ok": false, "errors": e.details.unwrap_or_else(|| vec![e.message]) }),
+    let validator = jsonschema::validator_for(&schema()).expect("config.schema.json is a valid schema");
+    let mut errors: Vec<String> = validator
+        .iter_errors(config)
+        .map(|e| {
+            let path = e.instance_path().to_string();
+            format!("{}: {e}", if path.is_empty() { "/" } else { path.as_str() })
+        })
+        .collect();
+    if let Err(e) = validate_config_json(&config.to_string()) {
+        errors.extend(e.details.unwrap_or_else(|| vec![e.message]));
+    }
+    if errors.is_empty() {
+        json!({ "ok": true })
+    } else {
+        json!({ "ok": false, "errors": errors })
     }
 }
 
@@ -145,15 +164,21 @@ fn resolve_target(target: Option<&str>) -> Result<Target, ConfigError> {
     Ok(Target { path, on_device })
 }
 
-fn describe(target: &Target, config: &Value) -> Value {
+/// What the model needs to know about a config before editing it.
+fn summarize(config: &Value) -> Value {
     let device: DeviceType = serde_json::from_value(config["device"].clone()).unwrap_or_default();
     json!({
-        "target": target.path,
-        "on_device": target.on_device,
         "model": device,
         "buttons_per_page": device.button_count(),
         "page_count": config["pages"].as_array().map_or(0, Vec::len),
     })
+}
+
+fn describe(target: &Target, config: &Value) -> Value {
+    let mut result = summarize(config);
+    result["target"] = json!(target.path);
+    result["on_device"] = json!(target.on_device);
+    result
 }
 
 /// Read a config (legacy flat configs come back in the pages shape).
@@ -232,21 +257,63 @@ fn apply_changes_with_backups(
     Ok(result)
 }
 
-/// Run the tool `name` with JSON `args` (the shapes in `agent/tools.json`).
+fn changes(args: &Map<String, Value>) -> (&[Value], Option<&Map<String, Value>>) {
+    (
+        args.get("pages").and_then(Value::as_array).map_or(&[], Vec::as_slice),
+        args.get("globals").and_then(Value::as_object),
+    )
+}
+
+fn config_arg(args: &Map<String, Value>) -> Result<&Value, ConfigError> {
+    args.get("config").ok_or_else(|| ConfigError::msg("`config` is required"))
+}
+
+/// Run the tool `name` with JSON `args` (the shapes in `agent/tools.json`)
+/// against a pedal or a config file: the MCP server's tools.
 pub fn call_tool(name: &str, args: &Map<String, Value>) -> Result<Value, ConfigError> {
     let target = args.get("target").and_then(Value::as_str);
     match name {
         "list_devices" => Ok(list_devices()),
         "get_schema" => get_schema(args.get("definition").and_then(Value::as_str)),
         "get_config" => get_config(target),
-        "validate" => Ok(validate(args.get("config").ok_or_else(|| ConfigError::msg("`config` is required"))?)),
-        "apply_changes" => apply_changes(
-            target,
-            args.get("pages").and_then(Value::as_array).map_or(&[], Vec::as_slice),
-            args.get("globals").and_then(Value::as_object),
-        ),
+        "validate" => Ok(validate(config_arg(args)?)),
+        "apply_changes" => {
+            let (pages, globals) = changes(args);
+            apply_changes(target, pages, globals)
+        }
         _ => Err(ConfigError::msg(format!("Unknown tool '{name}'"))),
     }
+}
+
+/// The same tools inside the Config Editor, where the config is the open form
+/// (`config`) rather than a file: `target` is ignored and nothing is written.
+/// A valid `apply_changes` returns the merged config as `config` for the editor
+/// to load as unsaved edits.
+pub fn call_editor_tool(name: &str, args: &Map<String, Value>, config: Value) -> Result<Value, ConfigError> {
+    match name {
+        "get_schema" => get_schema(args.get("definition").and_then(Value::as_str)),
+        "get_config" => {
+            let mut result = summarize(&config);
+            result["config"] = config;
+            Ok(result)
+        }
+        "validate" => Ok(validate(config_arg(args)?)),
+        "apply_changes" => {
+            let (pages, globals) = changes(args);
+            let merged = merge_changes(config, pages, globals)?;
+            let mut result = validate(&merged);
+            if result["ok"] == true {
+                result["config"] = merged;
+            }
+            Ok(result)
+        }
+        _ => Err(ConfigError::msg(format!("Unknown tool '{name}'"))),
+    }
+}
+
+#[tauri::command]
+pub fn agent_tool(name: String, args: Map<String, Value>, config: Value) -> Result<Value, ConfigError> {
+    call_editor_tool(&name, &args, config)
 }
 
 #[cfg(test)]
@@ -294,6 +361,50 @@ mod tests {
     }
 
     #[test]
+    fn validate_catches_what_the_rust_validator_misses() {
+        // A misspelled field and an out-of-range value inside an "Also send" message.
+        let mut bad = nano4();
+        bad["pages"][0]["buttons"][1]["cc_number"] = json!(52);
+        bad["pages"][0]["buttons"][2]["messages_on"] = json!([{ "type": "cc", "cc": 20, "value": 200 }]);
+        assert!(validate_config_json(&bad.to_string()).is_ok(), "Rust validator alone passes this");
+
+        let errors = validate(&bad)["errors"].to_string();
+        assert!(errors.contains("/pages/0/buttons/1") && errors.contains("cc_number"), "{errors}");
+        assert!(errors.contains("/pages/0/buttons/2/messages_on/0"), "{errors}");
+    }
+
+    #[test]
+    fn editor_apply_changes_returns_the_merged_config_without_writing() {
+        let args = json!({ "pages": [{ "index": 0, "page": page("FS4") }], "target": "/ignored" });
+        let result = call_editor_tool("apply_changes", args.as_object().unwrap(), nano4()).unwrap();
+        assert_eq!(result["ok"], true, "{result}");
+        assert_eq!(result["config"]["pages"][0]["buttons"][0]["label"], "FS4");
+
+        let read = call_editor_tool("get_config", &Map::new(), nano4()).unwrap();
+        assert_eq!(read["buttons_per_page"], 4);
+        assert_eq!(read["config"], nano4());
+
+        let mut short = page("X");
+        short["buttons"].as_array_mut().unwrap().pop();
+        let args = json!({ "pages": [{ "index": 0, "page": short }] });
+        let result = call_editor_tool("apply_changes", args.as_object().unwrap(), nano4()).unwrap();
+        assert_eq!(result["ok"], false);
+        assert!(result.get("config").is_none());
+    }
+
+    #[test]
+    fn every_shipped_config_passes_the_agent_validator() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../firmware/dev");
+        for entry in fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|e| e == "json") {
+                let config: Value = serde_json::from_str(&read_config_file(&path).unwrap()).unwrap();
+                assert_eq!(validate(&config), json!({ "ok": true }), "{}", path.display());
+            }
+        }
+    }
+
+    #[test]
     fn merge_replaces_and_appends_pages_and_sets_globals() {
         let globals = json!({ "global_channel": 3, "usb_drive_name": null });
         let merged = merge_changes(
@@ -332,8 +443,7 @@ mod tests {
         fs::write(&path, &original).unwrap();
         let backups = dir.path().join("backups");
 
-        let mut changed = page("FS4");
-        changed["buttons"][0]["not_in_rust_structs"] = json!(true);
+        let changed = page("FS4");
         let result = apply_changes_with_backups(
             path.to_str(),
             &[json!({ "index": 0, "page": changed })],
@@ -347,7 +457,6 @@ mod tests {
         assert_eq!(result["buttons_per_page"], 4);
         let written: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(written["pages"][0]["buttons"][0]["label"], "FS4");
-        assert_eq!(written["pages"][0]["buttons"][0]["not_in_rust_structs"], true);
         assert_eq!(fs::read_to_string(result["backup"].as_str().unwrap()).unwrap(), original);
 
         let read = get_config(path.to_str()).unwrap();

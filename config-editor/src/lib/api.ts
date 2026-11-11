@@ -179,3 +179,15 @@ export async function defaultConfig(device: DeviceType): Promise<string> {
 export async function deviceConfigType(devicePath: string): Promise<DeviceType | null> {
   return invoke('device_config_type', { devicePath });
 }
+
+/**
+ * Run one assistant tool (#230) against `config`, the open form's config.
+ * Nothing is written; a valid `apply_changes` returns the merged config.
+ */
+export async function agentTool(
+  name: string,
+  args: Record<string, unknown>,
+  config: MidiCaptainConfig | Record<string, never>,
+): Promise<Record<string, unknown>> {
+  return invoke('agent_tool', { name, args, config });
+}

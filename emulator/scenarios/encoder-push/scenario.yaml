@@ -77,7 +77,7 @@ steps:
       control: pressed
       value: 1
   - wait-serial: '[MIDI TX] Ch1 PC5 (switch 11)'
-  - wait-serial: '[MIDI TX] Ch1 NoteOn60 vel100 (switch 11, keytimes)'
+  - wait-serial: '[MIDI TX] Ch1 NoteOn60 vel100 (switch 11)'
   - delay: 100ms
   - set-control:
       part-id: btn_enc
@@ -143,7 +143,7 @@ steps:
       part-id: btn_enc
       control: pressed
       value: 1
-  - wait-serial: '[MIDI TX] Ch1 CC41=1 (switch 11, keytimes)'
+  - wait-serial: '[MIDI TX] Ch1 CC41=1 (switch 11)'
   - delay: 100ms
   - set-control:
       part-id: btn_enc
@@ -154,8 +154,8 @@ steps:
       part-id: btn_enc
       control: pressed
       value: 1
-  - wait-serial: '[MIDI TX] Ch1 CC41=1 (switch 11, keytimes)'
-  - wait-serial: '[MIDI TX] Ch1 CC42=2 (switch 11, keytimes)'
+  - wait-serial: '[MIDI TX] Ch1 CC41=1 (switch 11)'
+  - wait-serial: '[MIDI TX] Ch1 CC42=2 (switch 11)'
   - set-control:
       part-id: btn_enc
       control: pressed

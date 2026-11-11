@@ -1354,23 +1354,23 @@ def _dispatch_message(msg, default_channel, btn_num):
         cc = msg.get("cc", 0)
         val = msg.get("value", 0)
         midi_send(ControlChange(cc, val), channel=channel)
-        print(f"[MIDI TX] Ch{channel+1} CC{cc}={val} (switch {btn_num}, keytimes)")
+        print(f"[MIDI TX] Ch{channel+1} CC{cc}={val} (switch {btn_num})")
         update_status(f"TX CC{cc}={val}")
     elif mtype == "note":
         note = msg.get("note", 60)
         vel = msg.get("velocity", 127)
         if vel > 0:
             midi_send(NoteOn(note, vel), channel=channel)
-            print(f"[MIDI TX] Ch{channel+1} NoteOn{note} vel{vel} (switch {btn_num}, keytimes)")
+            print(f"[MIDI TX] Ch{channel+1} NoteOn{note} vel{vel} (switch {btn_num})")
         else:
             midi_send(NoteOff(note, 0), channel=channel)
-            print(f"[MIDI TX] Ch{channel+1} NoteOff{note} (switch {btn_num}, keytimes)")
+            print(f"[MIDI TX] Ch{channel+1} NoteOff{note} (switch {btn_num})")
         update_status(f"TX Note{note}")
     elif mtype == "pc":
         program = msg.get("program", 0)
         midi_send(ProgramChange(program), channel=channel)
         pc_values[channel] = program
-        print(f"[MIDI TX] Ch{channel+1} PC{program} (switch {btn_num}, keytimes)")
+        print(f"[MIDI TX] Ch{channel+1} PC{program} (switch {btn_num})")
         update_status(f"TX PC{program}")
     elif mtype in ("pc_inc", "pc_dec"):
         step = msg.get("step", 1)
@@ -1396,7 +1396,7 @@ def _dispatch_message(msg, default_channel, btn_num):
             action, amount = "jump", msg.get("page", 0)
         pending_page_target = resolve_page_target(
             config.get("active_page", 0), len(config.get("pages", [])), action, amount)
-        print(f"[PAGE] {mtype} -> page {pending_page_target} (switch {btn_num}, keytimes)")
+        print(f"[PAGE] {mtype} -> page {pending_page_target} (switch {btn_num})")
         update_status(f"PAGE {pending_page_target + 1}")
     elif mtype == "hid":
         action = msg.get("action", "send")
@@ -1405,7 +1405,7 @@ def _dispatch_message(msg, default_channel, btn_num):
         delay_ms = msg.get("delay_ms", 50)
         dispatch_hid(hid_keyboard, hid_mouse, action, key, modifier, delay_ms)
         key_label = key if key else "?"
-        print(f"[HID TX] {action} {key_label} (switch {btn_num}, keytimes)")
+        print(f"[HID TX] {action} {key_label} (switch {btn_num})")
         update_status(f"HID {action}")
 
 

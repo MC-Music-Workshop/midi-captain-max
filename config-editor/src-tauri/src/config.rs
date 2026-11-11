@@ -469,6 +469,17 @@ impl DeviceType {
             _ => None,
         }
     }
+
+    /// Footswitches on this model: every page carries exactly this many buttons.
+    pub fn button_count(self) -> usize {
+        match self {
+            DeviceType::Std10 => 10,
+            DeviceType::Mini6 => 6,
+            DeviceType::Nano4 => 4,
+            DeviceType::Duo2 => 2,
+            DeviceType::One1 => 1,
+        }
+    }
 }
 
 /// Display text size settings
@@ -642,13 +653,7 @@ impl MidiCaptainConfig {
         }
 
         // Expected button count per device — checked per page.
-        let expected_buttons = match self.device {
-            DeviceType::Std10 => 10,
-            DeviceType::Mini6 => 6,
-            DeviceType::Nano4 => 4,
-            DeviceType::Duo2 => 2,
-            DeviceType::One1 => 1,
-        };
+        let expected_buttons = self.device.button_count();
 
         for (p, page) in self.pages.iter().enumerate() {
             // Page-prefix for every message so errors point at the right bank.

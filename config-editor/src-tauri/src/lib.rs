@@ -1,8 +1,10 @@
+pub mod agent;
 mod commands;
 mod config_files;
 mod config;
 mod device;
 mod installer;
+pub mod mcp;
 mod reflash;
 mod templates;
 

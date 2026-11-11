@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Configuration editor for MIDI Captain foot controllers"
 authors = ["Maximilian Cascone <max@mcmusicworkshop.com>"]
 edition = "2021"
+# Two binaries (the app and `mcm-mcp`): `cargo run` / `tauri dev` start the app.
+default-run = "config-editor"
 license = "Proprietary"
 homepage = "https://github.com/mcascone/midi-captain-max"
 repository = "https://github.com/mcascone/midi-captain-max"
@@ -32,6 +34,9 @@ dirs = "5"
 serialport = "4"
 md-5 = "0.10"
 hex = "0.4"
+# mcm-mcp (#230): MCP stdio server. Tools are listed by hand from agent/tools.json, so no macros/schemars.
+rmcp = { version = "3", default-features = false, features = ["server", "transport-io"] }
+tokio = { version = "1", features = ["rt"] }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["fileapi", "winbase", "winnt", "minwindef"] }

@@ -31,6 +31,9 @@ The config editor is a desktop app built with **SvelteKit 5 + Tauri 2 (Rust back
 | `src-tauri/src/device.rs` | USB device detection and watcher (cross-platform) |
 | `src-tauri/src/installer.rs` | Firmware installer (mirrors `deploy.sh` copy order) |
 | `src-tauri/src/config_files.rs` | Whole-config file IO with no device: open/save/default config, device type probe (#36) |
+| `agent/tools.json`, `agent/prompt.md` | MCM agent (#230): tool definitions and model instructions, shared by the MCP server and the planned in-app chat. See [`agent/README.md`](agent/README.md) |
+| `src-tauri/src/agent.rs` | The agent tools: `get_schema`, `get_config`, `validate`, `merge_changes`, `apply_changes` (merge → validate → backup → raw-JSON write) |
+| `src-tauri/src/mcp.rs`, `src-tauri/src/bin/mcm-mcp.rs` | `mcm-mcp`: the agent tools as an `rmcp` stdio MCP server. Second binary in the crate, hence `default-run` in `Cargo.toml`; not bundled into the app |
 
 ## Save Flow
 

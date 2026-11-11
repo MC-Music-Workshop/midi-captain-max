@@ -77,7 +77,7 @@ If you want the same extras on every press, use **Momentary**.
 
 **Momentary** doesn't hold the key while your foot is down. To do that, use **Keytimes**, below.
 
-A **Delay** on its own doesn't light the LED, since nothing visible happened.
+A **Delay** on its own doesn't light the LED, since nothing visible happened. It doesn't turn a **Toggle** button on or off either, so every press sends the **when turned on** list and the **when turned off** list never goes out.
 
 ## HID in message lists
 
@@ -102,6 +102,8 @@ In a list, pick **HID** as the message type. The **Action**, **Key**, **Modifier
 A quick tap releases through **short_up**. Holding past the long-press threshold skips **short_up**, so the long entry's **long_up** releases instead. Without it, a long hold leaves the key stuck down.
 
 The modifier matters: a **Release** without one lets go of the key but leaves the modifier down, so **Press** Ctrl+A followed by **Release** A leaves Ctrl held. If nothing else should stay held, **Release** with key `all` in both places is simpler: it lets go of every key, modifier and mouse button.
+
+Don't change pages while holding. If the page changes before you lift your foot (another switch's page button, or the host jumping pages), the pedal ignores that switch until it's released, so neither **short_up** nor **long_up** fires and the key stays down. A button with **Release** and key `all` clears it.
 
 **Two keys in a row.** **Type** HID, **Mode** Momentary, key `Esc`. Under **Also send**, add HID **Delay** of 100 ms, then HID **Send** with key `Space`. One press sends Esc, waits, then sends Space.
 

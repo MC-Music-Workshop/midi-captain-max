@@ -116,7 +116,8 @@ def dispatch_hid(keyboard, mouse, action, key, modifier=None, delay_ms=50):
         key:      OEM key name string (case-insensitive), or "all" for release-all.
                   Ignored when action == "delay".
         modifier: Optional modifier name ("ctrl", "shift", "alt", "option", "windows").
-                  Applied only for "send" and "press" actions.
+                  Applied for "send", "press" and "release" (release lets go of
+                  the modifier too). Ignored for mouse buttons and "delay".
         delay_ms: Delay in milliseconds, used only when action == "delay".
 
     Returns:

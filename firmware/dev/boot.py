@@ -19,7 +19,8 @@ USB DRIVE — two modes, controlled by config.json:
     Convenient when iterating on firmware locally.
 
 To reload after config/code changes:
-- Send Ctrl+D over serial console
+- Send Ctrl+D over serial console (re-runs code.py only; settings read here,
+  such as dev_mode, need a power cycle)
 - Or power-cycle the device
 """
 
@@ -42,12 +43,12 @@ microcontroller.nvm[_BOOT_FLAG_BYTE] = 1
 # CP 7.x uses supervisor.disable_autoreload(), not runtime.autoreload
 supervisor.disable_autoreload()
 
-# Load config settings needed at boot time (drive name, dev mode, HID enable).
+# Load config settings needed at boot time (drive name, dev mode, HID set).
 # boot.py runs before normal module search paths are established,
 # so we add /core to sys.path explicitly.
 usb_drive_name = "MIDICAPTAIN"  # Default fallback
 dev_mode = False                # Default: performance mode
-hid_enabled = False             # Default: HID not enabled
+hid_enabled = False             # Default: keep CircuitPython's HID set (kbd + mouse + consumer)
 try:
     import sys
     sys.path.insert(0, "/core")
@@ -74,7 +75,7 @@ try:
         for btn in _page_buttons(page)
     )
 except Exception:
-    # If config fails to load, use safe defaults (performance mode, no HID)
+    # If config fails to load, use safe defaults (performance mode, default HID set)
     pass
 
 # Compile-check code.py — only when the previous boot didn't complete.

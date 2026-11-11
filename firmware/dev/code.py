@@ -559,7 +559,7 @@ try:
         except Exception as _e:
             print(f"HID Mouse init failed: {_e}")
 except Exception:
-    pass  # usb_hid not available — no HID buttons in config
+    pass  # usb_hid module unavailable (not a CircuitPython device build)
 
 # Encoder/expression config — placeholders; switch_page() sets real values at boot.
 enc_config = {}

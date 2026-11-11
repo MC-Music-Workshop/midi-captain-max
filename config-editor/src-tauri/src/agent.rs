@@ -1,6 +1,6 @@
 //! Tools the MCM agent uses to configure a pedal from plain language (#230).
 //!
-//! One implementation, two front ends: the `mcm-mcp` stdio server (`mcp.rs`)
+//! One implementation, two front ends: the `mcm-mcp` stdio server (`mcm-mcp/` crate)
 //! and the Config Editor's chat panel. Tool names, descriptions and input
 //! schemas live in `config-editor/agent/tools.json` and the instructions in
 //! `agent/prompt.md`, so both front ends hand the model the same thing.

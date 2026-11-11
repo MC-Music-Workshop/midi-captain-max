@@ -7,7 +7,7 @@
 | `tools.json` | Tool names, descriptions and input schemas. Read by the MCP server and the Config Editor's Assistant panel, so both give the model the same tools. |
 | `prompt.md` | Instructions for the model: the MCP server's `instructions` and the start of the Assistant's system prompt. |
 | `../src-tauri/src/agent.rs` | The tools themselves. Reuses the editor's read, validate and write code. |
-| `../src-tauri/src/mcp.rs`, `../src-tauri/src/bin/mcm-mcp.rs` | `mcm-mcp`: the tools as an MCP server on stdio (`rmcp`). |
+| `../src-tauri/mcm-mcp/` | `mcm-mcp`: the tools as an MCP server on stdio (`rmcp`). Its own workspace crate so the app bundle doesn't include it. |
 | `../src/lib/agent.ts`, `../src/lib/components/AgentChat.svelte` | The in-app Assistant: Claude tool loop (`@anthropic-ai/sdk`) and its panel. |
 
 ## Try it from Claude Code or Claude Desktop
@@ -16,7 +16,7 @@
 
 ```bash
 cd config-editor/src-tauri
-cargo build --release --bin mcm-mcp     # → target/release/mcm-mcp
+cargo build --release -p mcm-mcp     # → target/release/mcm-mcp
 ```
 
 A fresh worktree needs `tools/bundle-firmware-for-dev.sh` first (the crate's build script wants the staged firmware resources).

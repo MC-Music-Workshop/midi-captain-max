@@ -1,10 +1,15 @@
-//! `mcm-mcp`: the agent tools (`agent.rs`) as an MCP server on stdio (#230), so
-//! Claude Desktop / Claude Code can configure a pedal from plain language.
+//! `mcm-mcp`: the agent tools (`config_editor_lib::agent`) as an MCP server on
+//! stdio (#230), so Claude Desktop / Claude Code can configure a pedal from plain
+//! language. See `config-editor/agent/README.md` for client setup.
+//!
+//! A separate crate, not a second binary of the app: Tauri's bundler packages
+//! every binary of the app crate, which broke the universal macOS build and put
+//! this server inside the app on the other platforms.
 //!
 //! The tool list is `agent/tools.json` rather than `rmcp`'s `#[tool]` macros:
 //! the Config Editor's chat hands the model the same file.
 
-use crate::agent;
+use config_editor_lib::agent;
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation, ListToolsResult,
     PaginatedRequestParams,
@@ -73,11 +78,19 @@ impl ServerHandler for McmServer {
 }
 
 /// Serve on stdin/stdout until the client disconnects.
-pub fn serve_stdio() -> Result<(), Box<dyn std::error::Error>> {
+fn serve_stdio() -> Result<(), Box<dyn std::error::Error>> {
     tokio::runtime::Builder::new_current_thread().enable_all().build()?.block_on(async {
         McmServer.serve(rmcp::transport::stdio()).await?.waiting().await?;
         Ok(())
     })
+}
+
+fn main() {
+    if let Err(e) = serve_stdio() {
+        // stdout carries the protocol; errors go to stderr.
+        eprintln!("mcm-mcp: {e}");
+        std::process::exit(1);
+    }
 }
 
 #[cfg(test)]

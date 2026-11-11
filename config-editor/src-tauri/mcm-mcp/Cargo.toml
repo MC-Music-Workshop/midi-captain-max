@@ -1,0 +1,13 @@
+[package]
+name = "mcm-mcp"
+version = "0.1.0"
+description = "MCP server for configuring MIDI Captain pedals in plain language (#230)"
+edition = "2021"
+license = "Proprietary"
+publish = false
+
+[dependencies]
+config-editor = { path = ".." }
+rmcp = { version = "3", default-features = false, features = ["server", "transport-io"] }
+tokio = { version = "1", features = ["rt"] }
+serde_json = "1"

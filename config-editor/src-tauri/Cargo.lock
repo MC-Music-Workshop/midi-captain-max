@@ -582,7 +582,6 @@ dependencies = [
  "keyring",
  "md-5",
  "notify",
- "rmcp",
  "serde",
  "serde_json",
  "serialport",
@@ -592,7 +591,6 @@ dependencies = [
  "tauri-plugin-fs",
  "tauri-plugin-opener",
  "tempfile",
- "tokio",
  "winapi",
 ]
 
@@ -2425,6 +2423,16 @@ name = "matches"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2532096657941c2fea9c289d370a250971c689d4f143798ff67113ec042024a5"
+
+[[package]]
+name = "mcm-mcp"
+version = "0.1.0"
+dependencies = [
+ "config-editor",
+ "rmcp",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "md-5"

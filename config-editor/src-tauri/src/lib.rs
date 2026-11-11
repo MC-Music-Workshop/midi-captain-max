@@ -4,7 +4,6 @@ mod config_files;
 mod config;
 mod device;
 mod installer;
-pub mod mcp;
 mod reflash;
 mod secrets;
 mod templates;

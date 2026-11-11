@@ -37,7 +37,7 @@ step "pytest (Python)"
 python3 -m pytest tests/
 
 step "cargo test (Rust)"
-(cd config-editor/src-tauri && cargo test)
+(cd config-editor/src-tauri && cargo test --workspace)
 
 step "svelte-check (TypeScript)"
 # Self-heal: fresh worktrees / clones won't have config-editor/node_modules,
@@ -74,7 +74,7 @@ step "mpy-cross parse check (CircuitPython 7.x)"
 step "cargo clippy (Rust lint)"
 # Warnings-only: the codebase has 2 pre-existing clippy warnings on untouched
 # code. Don't promote them to errors here — that's a separate cleanup pass.
-(cd config-editor/src-tauri && cargo clippy --lib --no-deps)
+(cd config-editor/src-tauri && cargo clippy --lib --no-deps && cargo clippy -p mcm-mcp --no-deps)
 
 echo
 echo "${GREEN}${BOLD}ALL GREEN${RESET}"

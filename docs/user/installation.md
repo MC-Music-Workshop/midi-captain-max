@@ -65,6 +65,14 @@ By default, the installer preserves your existing `config.json`. Enable **Reset 
 
 The app will copy the firmware, reload the device, and update it in place.
 
+### When the Pedal Is Behind the Config Editor
+
+Each Config Editor release ships with matching firmware. When you connect a pedal running older firmware, a notice at the top of the window says so, for example "Pedal firmware v1.14.0 is older than this editor (v1.15.0)". Until you update, settings for newer features can save without error and still do nothing on the pedal.
+
+Click **Update Firmware** on the notice to run the same install as the **Firmware Installation** section; your `config.json` is kept. **Dismiss** hides the notice for that pedal and version. Saving to an out-of-date pedal also reminds you in the status bar.
+
+A pedal running *newer* firmware than the Config Editor (for example after a development deploy) gets no notice.
+
 ## First Run of the Config Editor
 
 The first time you use the page-template feature (**Edit Pages… → Save as template… / Add from template…**), the editor creates `Documents/MIDICaptainMAX/templates` for your saved page templates. The save dialog and the template picker both point here by default.

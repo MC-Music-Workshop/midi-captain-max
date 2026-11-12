@@ -7,7 +7,11 @@
 # message forces a repaint.
 #
 #   paced: one message every 60 ms (control: the pedal must keep up)
-#   burst: all N messages in a single sendmidi call (back to back at 31250 baud)
+#   burst: all N messages in a single sendmidi command (back to back at 31250 baud)
+#
+# Everything goes through one long-running `sendmidi --` process: on macOS 27,
+# starting a new MIDI client per message fails every ~10 s with a ~5 s stall,
+# from the OS, not the pedal.
 #
 # Pass: paced N/N and burst N/N. Exits nonzero on FAIL.
 #
@@ -30,7 +34,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --pedal-port) pedal_port="$2"; shift 2 ;;
     --din-port) din_port="$2"; shift 2 ;;
-    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
     *) n="$1"; shift ;;
   esac
 done
@@ -44,19 +48,37 @@ for tool in sendmidi receivemidi; do
   command -v "$tool" >/dev/null || fail "$tool not installed (brew install gbevin/tools/$tool)"
 done
 
-ports="$(sendmidi list)"
-for port in "$pedal_port" "$din_port"; do
-  # -x: whole-line match, -F: literal (port names contain [ ] and .)
-  grep -qxF "$port" <<<"$ports" || fail "MIDI port '$port' not found (sendmidi list)"
-done
+# has_ports: are both ports listed? -x: whole-line match, -F: literal (port
+# names contain [ ] and .)
+has_ports() {
+  local ports
+  ports="$(sendmidi list)"
+  grep -qxF "$pedal_port" <<<"$ports" && grep -qxF "$din_port" <<<"$ports"
+}
+# Retried: `sendmidi list` is a short-lived MIDI client too, so macOS 27 can
+# fail it and briefly report no ports.
+has_ports || { sleep 3; has_ports; } || { sleep 3; has_ports; } ||
+  fail "MIDI port '$pedal_port' or '$din_port' not found (sendmidi list)"
 
 log="$(mktemp -t din-count)"
+tx_err="$(mktemp -t din-count-tx)"
 rx_pid=""
 cleanup() {
   if [ -n "$rx_pid" ]; then kill "$rx_pid" 2>/dev/null || true; fi
-  rm -f "$log"
+  exec 3>&- 2>/dev/null || true
+  rm -f "$log" "$tx_err"
 }
 trap cleanup EXIT
+
+# One sendmidi for the whole run, fed on fd 3. `--` reads commands from stdin
+# until it closes; >(...) is process substitution: fd 3 writes into its stdin.
+exec 3> >(sendmidi dev "$din_port" -- 2>"$tx_err")
+
+# send CMD...: one sendmidi command line; fails the run on any sendmidi error.
+send() {
+  echo "$*" >&3 || fail "sendmidi to '$din_port' exited"
+  if [ -s "$tx_err" ]; then fail "sendmidi to '$din_port': $(head -1 "$tx_err")"; fi
+}
 
 # Runs one mode and sets $count to how many notes the pedal forwarded back.
 # Not called via $(...): a subshell would hide rx_pid from the EXIT trap.
@@ -70,10 +92,10 @@ count_mode() {
   if [ "$mode" = burst ]; then
     args=(ch 4)
     for ((i = 0; i < n; i++)); do args+=(on 60 $((i % 2 ? 0 : 127))); done
-    sendmidi dev "$din_port" "${args[@]}" || fail "sendmidi to '$din_port' failed"
+    send "${args[@]}"
   else
     for ((i = 0; i < n; i++)); do
-      sendmidi dev "$din_port" ch 4 on 60 $((i % 2 ? 0 : 127)) || fail "sendmidi to '$din_port' failed"
+      send ch 4 on 60 $((i % 2 ? 0 : 127))
       sleep 0.06
     done
   fi

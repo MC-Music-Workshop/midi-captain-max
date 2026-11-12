@@ -60,6 +60,14 @@ export async function loadApp(page: Page, config: unknown) {
           case 'plugin:app|version': return '0.0.0-e2e';
           case 'plugin:event|listen': return ++nextId;
           case 'plugin:event|unlisten': return null;
+          case 'check_for_update':
+            // Tests opt in by setting __E2E_UPDATE__ (an UpdateInfo, or null for "up to date").
+            if ((window as any).__E2E_UPDATE__ === undefined) throw new Error('no update feed');
+            return (window as any).__E2E_UPDATE__;
+          case 'install_update':
+            if ((window as any).__E2E_UPDATE_FAILS__) throw new Error('signature mismatch');
+            // A real install restarts the app, so the call never returns.
+            return new Promise(() => {});
           case 'plugin:dialog|message': return null;
           case 'plugin:dialog|ask': return false;
           case 'scan_devices':
@@ -71,14 +79,6 @@ export async function loadApp(page: Page, config: unknown) {
             }];
           case 'start_device_watcher': return null;
           case 'rpi_rp2_mount_path': return null;
-          case 'check_for_update':
-            // Tests opt in by setting __E2E_UPDATE__ (an UpdateInfo, or null for "up to date").
-            if ((window as any).__E2E_UPDATE__ === undefined) throw new Error('no update feed');
-            return (window as any).__E2E_UPDATE__;
-          case 'install_update':
-            if ((window as any).__E2E_UPDATE_FAILS__) throw new Error('signature mismatch');
-            // A real install restarts the app, so the call never returns.
-            return new Promise(() => {});
           case 'read_config_raw': return JSON.stringify(cfg);
           case 'write_config_raw':
             (window as any).__E2E_WRITES__.push(args);

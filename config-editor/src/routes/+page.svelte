@@ -11,9 +11,9 @@
     scanDevices, startDeviceWatcher, readConfigRaw, writeConfigRaw,
     onDeviceConnected, onDeviceDisconnected, restartDevice, ejectDevice,
     rpiRp2MountPath, detectOemV5Port, configsDir, openConfigFile, saveConfigFile,
-    defaultConfig, deviceConfigType, checkForUpdate, installUpdate
+    defaultConfig, deviceConfigType
   } from '$lib/api';
-  import type { DetectedDevice, DeviceType, UpdateInfo } from '$lib/types';
+  import type { DetectedDevice, DeviceType } from '$lib/types';
   import {
     buttonStates, afterSaveToDevice, afterSaveToFileAs, fileName, workingOnLabel,
     type WorkingOn
@@ -33,6 +33,8 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
   import ReflashCircuitPython from '$lib/components/ReflashCircuitPython.svelte';
   import { loadConfig, validate, normalizeConfig, markSaved, isDirty, config, currentPage } from '$lib/formStore';
   import { validateAllPages } from '$lib/validation';
+  import { checkForUpdate, installUpdate } from '$lib/api';
+  import type { UpdateInfo } from '$lib/types';
 
   let appVersion = $state('');
 

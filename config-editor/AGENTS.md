@@ -30,6 +30,7 @@ The config editor is a desktop app built with **SvelteKit 5 + Tauri 2 (Rust back
 | `src-tauri/src/commands.rs` | Tauri commands: read/write/validate config, restart device, path security |
 | `src-tauri/src/device.rs` | USB device detection and watcher (cross-platform) |
 | `src-tauri/src/installer.rs` | Firmware installer (mirrors `deploy.sh` copy order) |
+| `src-tauri/src/updates.rs` | In-app editor updates (#18): `check_for_update` / `install_update` over `tauri-plugin-updater`; feed, channel and signing pipeline in [`.github/AGENTS.md`](../.github/AGENTS.md) "In-app updates" |
 | `src-tauri/src/config_files.rs` | Whole-config file IO with no device: open/save/default config, device type probe (#36) |
 
 ## Save Flow

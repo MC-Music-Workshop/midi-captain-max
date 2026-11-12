@@ -57,10 +57,18 @@ jobs:
             exit 0
           fi
           VERSION="${TAG#v}"
-          gh release download "$TAG" -R "${{ github.repository }}" \
-            -p "MIDI-Captain-MAX-Config-Editor-${TAG}.dmg" -O cask.dmg
-          SHA256=$(sha256sum cask.dmg | cut -d' ' -f1)
-          rm cask.dmg
+          # The casks install the same archive the in-app updater does (#18);
+          # releases from before it only have the DMG.
+          if gh release download "$TAG" -R "${{ github.repository }}" \
+            -p "MIDI-Captain-MAX-Config-Editor-${TAG}.app.tar.gz" -O cask.download; then
+            EXT=".app.tar.gz"
+          else
+            gh release download "$TAG" -R "${{ github.repository }}" \
+              -p "MIDI-Captain-MAX-Config-Editor-${TAG}.dmg" -O cask.download
+            EXT=".dmg"
+          fi
+          SHA256=$(sha256sum cask.download | cut -d' ' -f1)
+          rm cask.download
 
           # Tag format is v{major}.{minor}.{patch}[-{prerelease}]; any "-" means prerelease.
           CASKS=("Casks/midi-captain-max@beta.rb")
@@ -71,7 +79,21 @@ jobs:
           sed -i -E \
             -e "s/^  version \".*\"/  version \"${VERSION}\"/" \
             -e "s/^  sha256 \".*\"/  sha256 \"${SHA256}\"/" \
+            -e "s/^(  url \".*-v#\{version\})(\.dmg|\.app\.tar\.gz)\"/\1${EXT}\"/" \
             "${CASKS[@]}"
+          # The app updates itself: tell Homebrew, so `brew upgrade` checks the
+          # installed app's own version instead of fighting the updater.
+          if [ "$EXT" = ".app.tar.gz" ]; then
+            for cask in "${CASKS[@]}"; do
+              if ! grep -q '^  auto_updates true' "$cask"; then
+                # Cask stanza order: auto_updates goes before conflicts_with / depends_on
+                # (same group, no blank line) or app (new group, blank line).
+                awk '!done && /^  (conflicts_with|depends_on|app) / { print "  auto_updates true" ($1 == "app" ? "\n" : ""); done = 1 } { print }' \
+                  "$cask" > "$cask.tmp"
+                mv "$cask.tmp" "$cask"
+              fi
+            done
+          fi
           git diff
 
           if git diff --quiet; then
@@ -84,3 +106,56 @@ jobs:
           git commit -am "midi-captain-max ${VERSION}"
           git push
           echo "✓ Homebrew casks bumped to ${VERSION} (sha256 ${SHA256}): ${CASKS[*]}" >> "$GITHUB_STEP_SUMMARY"
+
+  update-feeds:
+    name: Update in-app update feeds
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write  # push to the `updater` branch
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - name: Publish latest.json to the stable/beta feeds
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Same channels as the casks: beta.json follows beta, rc and stable
+          # releases, stable.json stable only, alphas neither. The editor reads
+          # https://raw.githubusercontent.com/<repo>/updater/{stable,beta}.json
+          # (config-editor/src-tauri/src/updates.rs).
+          if [[ "$TAG" == *-alpha* ]]; then
+            echo "Alpha release ${TAG}: not published to the update feeds" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if ! gh release download "$TAG" -R "${{ github.repository }}" -p latest.json -O "$RUNNER_TEMP/latest.json"; then
+            echo "::warning::${TAG} has no latest.json (built without TAURI_SIGNING_PRIVATE_KEY?); feeds unchanged"
+            exit 0
+          fi
+
+          # The feeds live on an orphan branch so they never touch main's history.
+          git init -q feeds && cd feeds
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          if git fetch -q --depth 1 origin updater; then
+            git checkout -q -b updater FETCH_HEAD
+          else
+            git checkout -q --orphan updater
+          fi
+
+          FEEDS=(beta.json)
+          if [[ "$TAG" != *-* ]]; then
+            FEEDS+=(stable.json)
+          fi
+          for feed in "${FEEDS[@]}"; do
+            cp "$RUNNER_TEMP/latest.json" "$feed"
+          done
+          git add "${FEEDS[@]}"
+          if git diff --cached --quiet; then
+            echo "Feeds already at ${TAG}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "Update feeds: ${TAG} (${FEEDS[*]})"
+          git push -q origin updater
+          echo "✓ In-app update feeds now offer ${TAG}: ${FEEDS[*]}" >> "$GITHUB_STEP_SUMMARY"

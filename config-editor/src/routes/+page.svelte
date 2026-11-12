@@ -11,9 +11,9 @@
     scanDevices, startDeviceWatcher, readConfigRaw, writeConfigRaw,
     onDeviceConnected, onDeviceDisconnected, restartDevice, ejectDevice,
     rpiRp2MountPath, detectOemV5Port, configsDir, openConfigFile, saveConfigFile,
-    defaultConfig, deviceConfigType
+    defaultConfig, deviceConfigType, checkForUpdate, installUpdate
   } from '$lib/api';
-  import type { DetectedDevice, DeviceType } from '$lib/types';
+  import type { DetectedDevice, DeviceType, UpdateInfo } from '$lib/types';
   import {
     buttonStates, afterSaveToDevice, afterSaveToFileAs, fileName, workingOnLabel,
     type WorkingOn
@@ -80,6 +80,41 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
   }
 
   const errText = (e: any) => e?.message ?? String(e);
+
+  // A newer Config Editor on this build's channel (#18): checked quietly at
+  // startup, and on demand from the header.
+  let update = $state<UpdateInfo | null>(null);
+  let updateDismissed = $state(false);
+  let updateProgress = $state<string | null>(null);
+
+  async function checkUpdates(manual: boolean) {
+    try {
+      update = await checkForUpdate();
+      updateDismissed = false;
+      if (manual && !update) $statusMessage = "You're on the latest version.";
+    } catch (e: any) {
+      if (manual) $statusMessage = `Couldn't check for updates: ${errText(e)}`;
+    }
+  }
+
+  async function doInstallUpdate() {
+    if (!update) return;
+    if ($isDirty && !(await ask('Updating restarts the Config Editor, and your unsaved edits will be lost. Update anyway?', {
+      title: 'Unsaved Changes', kind: 'warning', okLabel: 'Update', cancelLabel: 'Cancel'
+    }))) return;
+    updateProgress = 'Downloading…';
+    try {
+      // On success the app restarts into the new version; nothing after this runs.
+      await installUpdate(p => {
+        updateProgress = p.phase === 'installing'
+          ? 'Installing…'
+          : p.total ? `Downloading… ${Math.round((p.downloaded / p.total) * 100)}%` : 'Downloading…';
+      });
+    } catch (e: any) {
+      updateProgress = null;
+      await message(`The update could not be installed:\n\n${errText(e)}`, { title: 'Update Failed', kind: 'error' });
+    }
+  }
 
   let deviceConnected = $derived(
     $selectedDevice !== null && $devices.some(d => d.path === $selectedDevice!.path)
@@ -165,6 +200,8 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
       };
       await pollRpiRp2();
       rpiRp2PollTimer = setInterval(pollRpiRp2, 2000);
+
+      checkUpdates(false);
     } catch (e: any) {
       $statusMessage = `Error initializing: ${e.message || e}`;
     }
@@ -471,6 +508,7 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
       {#if appVersion}
         <span class="version">v{appVersion}</span>
       {/if}
+      <button class="link" onclick={() => checkUpdates(true)}>Check for Updates</button>
     </div>
     {#if $workingOn}
       <div class="working-on" title="What you're working on">
@@ -498,6 +536,21 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
       {/if}
     </div>
   </header>
+
+  {#if update && !updateDismissed}
+    <div class="rpi-banner update-banner" role="status">
+      <span class="label">
+        <strong>Config Editor v{update.version} is available</strong> (you have v{update.current}).
+        Updating restarts the app; your settings, configs and templates are kept.
+      </span>
+      {#if updateProgress}
+        <span class="update-progress">{updateProgress}</span>
+      {:else}
+        <button onclick={doInstallUpdate}>Update &amp; Restart</button>
+        <button class="secondary" onclick={() => (updateDismissed = true)}>Later</button>
+      {/if}
+    </div>
+  {/if}
 
   {#if rpiRp2DetectedPath}
     <div class="rpi-banner" role="status">
@@ -770,6 +823,28 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
 
   .working-on .dot {
     color: #dcdcaa;
+  }
+
+  .rpi-banner.update-banner {
+    background: rgba(0, 120, 212, 0.1);
+    border-color: var(--accent);
+  }
+
+  .update-progress {
+    color: var(--text-secondary);
+  }
+
+  button.link {
+    padding: 0;
+    font-size: 12px;
+    background: none;
+    color: var(--accent);
+    border: none;
+  }
+
+  button.link:hover:not(:disabled) {
+    background: none;
+    text-decoration: underline;
   }
 
   .rpi-banner.oem-v5 {

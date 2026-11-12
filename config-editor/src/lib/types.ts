@@ -94,6 +94,18 @@ export interface InstallProgress {
   file: string;
 }
 
+/** A newer Config Editor release on this build's channel (#18). */
+export interface UpdateInfo {
+  /** Version running now. */
+  current: string;
+  /** Version on offer. */
+  version: string;
+}
+
+export type UpdateProgress =
+  | { phase: 'downloading'; downloaded: number; total: number | null }
+  | { phase: 'installing' };
+
 export interface FirmwareVersions {
   /** Version on the device, or `null` for an OEM / unmanaged install. */
   device: string | null;

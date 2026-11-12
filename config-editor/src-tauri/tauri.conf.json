@@ -54,5 +54,10 @@
     "category": "Music",
     "shortDescription": "Configure MIDI Captain foot controllers",
     "longDescription": "A configuration editor for Paint Audio MIDI Captain foot controllers. Edit button labels, MIDI CC mappings, colors, and more."
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDA4QkExQkY3NDZCODJDMkYKUldRdkxMaEc5eHU2Q1BjOVdCbW83RDVmVTNYY2dpUFZIQnp1Z0RQM0dHa0dlM1lGS3pJSG1tU2QK"
+    }
   }
 }

@@ -13,6 +13,7 @@ in CI) no manifest is written.
 """
 
 import argparse
+import base64
 import json
 import sys
 from datetime import datetime, timezone
@@ -35,23 +36,44 @@ PLATFORMS = {
 }
 
 
+def signed_version(signature):
+  """The `version:` a Tauri updater signature records in its trusted comment, if any.
+
+  The updater refuses an update whose signed version differs from the manifest's,
+  and Windows builds carry a WiX-safe version (1.15.0-beta.3 -> 1.15.0-3), so a
+  CLI that records versions would break every Windows update without this check.
+  """
+  text = base64.b64decode(signature).decode()
+  for line in text.splitlines():
+    if line.startswith("trusted comment:"):
+      for field in line.removeprefix("trusted comment:").strip().split("\t"):
+        if field.startswith("version:"):
+          return field.removeprefix("version:").removeprefix("v")
+  return None
+
+
 def build_manifest(tag, repo, sigs_dir, now=None):
   """Return the manifest dict, or None when no installer has a signature."""
   base = f"https://github.com/{repo}/releases/download/{tag}/"
+  version = tag.removeprefix("v")
   platforms = {}
   for suffix, keys in PLATFORMS.items():
     asset = f"{ASSET_PREFIX}{tag}{suffix}"
     sig = Path(sigs_dir) / f"{asset}.sig"
     if not sig.is_file():
       continue
-    entry = {"url": base + asset, "signature": sig.read_text().strip()}
+    signature = sig.read_text().strip()
+    signed = signed_version(signature)
+    if signed is not None and signed != version:
+      raise ValueError(f"{asset} is signed for version {signed}, but the manifest announces {version}")
+    entry = {"url": base + asset, "signature": signature}
     for key in keys:
       platforms[key] = entry
   if not platforms:
     return None
   now = now or datetime.now(timezone.utc)
   return {
-    "version": tag.removeprefix("v"),
+    "version": version,
     "notes": f"https://github.com/{repo}/releases/tag/{tag}",
     "pub_date": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
     "platforms": platforms,

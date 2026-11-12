@@ -29,6 +29,12 @@ export default defineConfig(async () => ({
           port: 1421,
         }
       : undefined,
+    fs: {
+      // SvelteKit only lets the dev server read src/ and node_modules. The
+      // assistant's tool definitions and prompt live in agent/, shared with the
+      // Rust MCP server (src/lib/agent.ts imports them).
+      allow: ["agent"],
+    },
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],

@@ -1,0 +1,88 @@
+[
+  {
+    "name": "list_devices",
+    "description": "List connected MIDI Captain pedals whose drive is mounted: volume name, path, model (std10, mini6, nano4, duo2, one1) and whether a config.json is present. A pedal in performance mode hides its drive and will not appear.",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "get_schema",
+    "description": "Return the config JSON Schema, the reference for every field, its range and default. Pass `definition` for one part (e.g. ButtonConfig, KeytimesMessage, KeytimesEntry, EncoderConfig, PageControl, Page); omit it for the whole schema.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "definition": {
+          "type": "string",
+          "description": "Name of one schema definition. An unknown name returns the list of valid names."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "get_config",
+    "description": "Read a config. Returns the full config JSON, the device model, the page count and the number of buttons every page must have. Call this before changing anything.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "Pedal drive path from list_devices, or the path of a saved config file. Omit to use the config open in the Config Editor, or the only connected pedal."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "validate",
+    "description": "Check a complete config without writing it. Returns ok, or the list of errors.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "config": {
+          "type": "object",
+          "description": "The complete config object, as returned by get_config."
+        }
+      },
+      "required": ["config"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "apply_changes",
+    "description": "Change a config: replace or append whole pages and/or set top-level fields. The merged config is validated first and nothing is written unless it is valid; on failure the errors are returned so you can correct and retry. Pages cannot be deleted or reordered.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "Same as get_config."
+        },
+        "pages": {
+          "type": "array",
+          "description": "Pages to write. Each item replaces the page at `index` (0-based) with `page`; an index equal to the current page count appends a new page (20 pages at most).",
+          "items": {
+            "type": "object",
+            "properties": {
+              "index": { "type": "integer", "minimum": 0 },
+              "page": {
+                "type": "object",
+                "description": "A complete Page object: every button on the page, not only the ones that changed."
+              }
+            },
+            "required": ["index", "page"],
+            "additionalProperties": false
+          }
+        },
+        "globals": {
+          "type": "object",
+          "description": "Top-level config fields to set, e.g. global_channel, midi_thru_usb_to_din, page_control, display. A null value removes the field. `pages` is not allowed here."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+]

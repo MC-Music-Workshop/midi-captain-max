@@ -1377,7 +1377,7 @@ def _dispatch_message(msg, default_channel, btn_num):
         delta = step if mtype == "pc_inc" else -step
         pc_values[channel] = clamp_pc_value(pc_values[channel] + delta)
         midi_send(ProgramChange(pc_values[channel]), channel=channel)
-        print(f"[MIDI TX] Ch{channel+1} PC{pc_values[channel]} (switch {btn_num}, keytimes {mtype})")
+        print(f"[MIDI TX] Ch{channel+1} PC{pc_values[channel]} (switch {btn_num})")
         update_status(f"TX PC{pc_values[channel]}")
     elif mtype in ("cc_inc", "cc_dec"):
         # With its own cc the message carries its own channel/step/range (validated

@@ -150,7 +150,7 @@ jobs:
 
       - name: Run Rust tests
         working-directory: config-editor/src-tauri
-        run: cargo test
+        run: cargo test --workspace
 
   test-site-e2e:
     name: Test Home Page (Playwright)

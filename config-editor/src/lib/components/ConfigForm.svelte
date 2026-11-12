@@ -3,6 +3,8 @@
   import { canUndo, canRedo, undo, redo, validationErrors, config, normalizeConfig } from '$lib/formStore';
   import { saveMode, type SaveMode } from '$lib/stores';
   import type { ButtonStates } from '$lib/workingOn';
+  import AgentChat from './AgentChat.svelte';
+  import { ASSISTANT_ENABLED } from '$lib/features';
 
   interface Props {
     // What each button does for the current "working on" (see workingOn.ts).
@@ -21,6 +23,7 @@
   let hasErrors = $derived($validationErrors.size > 0);
   let showJsonModal = $state(false);
   let jsonText = $state('');
+  let showAssistant = $state(false);
 
   // Split Save button: the main button runs the sticky $saveMode; the caret opens a
   // menu that only changes the mode (GitHub merge-button pattern — choosing an
@@ -157,6 +160,16 @@
     </div>
 
     <div class="toolbar-group">
+      {#if ASSISTANT_ENABLED}
+        <button
+          class="toolbar-btn secondary"
+          onclick={() => (showAssistant = !showAssistant)}
+          aria-pressed={showAssistant}
+          title="Describe a change in plain language"
+        >
+          Assistant
+        </button>
+      {/if}
       <button class="toolbar-btn secondary" onclick={handleViewJson}>
         View JSON
       </button>
@@ -223,6 +236,10 @@
     {@render children()}
   </div>
 </div>
+
+{#if ASSISTANT_ENABLED && showAssistant}
+  <AgentChat onClose={() => (showAssistant = false)} />
+{/if}
 
 <!-- JSON Modal. Backdrop click closes; Escape also closes (see handleKeydown). -->
 {#if showJsonModal}

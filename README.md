@@ -15,7 +15,7 @@ See the [open issues](https://github.com/MC-Music-Workshop/midi-captain-max/issu
 
 - **Bidirectional MIDI**: the host can update LED and display state on the device
 - **GUI Config Editor**: customize button labels, CC numbers, and colors visually — no JSON required
-- **One-click firmware install**: the Config Editor installs and updates the firmware for you
+- **One-click firmware install**: the Config Editor installs and updates the firmware for you, and tells you when your pedal's firmware is older than the editor
 - **Short / long press (keytimes mode)**: each button can fire different messages on a short tap vs. a long hold, with independent multi-state cycles per timing class
 - **HID messages**: send keyboard and mouse events in addition to MIDI
 - **Custom drive names**: useful when managing multiple Captains
@@ -50,7 +50,7 @@ The short version:
 
 1. **Back up your device.** Connect via USB (hold **Switch 1 / KEY0** while plugging in if no drive appears) and copy the entire drive somewhere safe.
 2. **Download the Config Editor** for your OS from the [latest release](https://github.com/MC-Music-Workshop/midi-captain-max/releases/latest) — `.dmg` (macOS), `.exe` / `.msi` (Windows), `.AppImage` / `.deb` (Linux). It bundles the firmware, so there's no separate firmware download. On macOS you can install it with Homebrew instead: `brew install --cask mc-music-workshop/tap/midi-captain-max`.
-3. **Install the firmware:** open the editor, scroll to **Firmware Installation** at the bottom of the window, and click **Install Firmware**. Your `config.json` is preserved unless you enable **Reset config.json to bundled defaults**.
+3. **Install the firmware:** open the editor, scroll to **Firmware Installation** at the bottom of the window, and click **Install Firmware**. Your `config.json` is preserved unless you enable **Reset config.json to bundled defaults**. Later, when the pedal's firmware is older than the editor's, a notice at the top of the window offers **Update Firmware**.
 
 Devices still running the factory Paint Audio firmware need a one-time device-type step first, and 2026-batch devices (CircuitPython 9.2.7) need a **Reflash CircuitPython 7.3.1** first — both are covered in the guide.
 

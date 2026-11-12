@@ -21,6 +21,7 @@ See the [open issues](https://github.com/MC-Music-Workshop/midi-captain-max/issu
 - **Custom drive names**: useful when managing multiple Captains
 - **Dev mode**: quickly test config changes without remounting the device
 - **Signed installation packages**: install without security warnings or manual overrides (macOS and Linux)
+- **Updates itself**: the Config Editor offers each new release and installs it in one click, on every platform
 - **Stage-ready**: no unexpected resets, no crashes, no surprises
 
 ## Use Cases
@@ -53,6 +54,8 @@ The short version:
 3. **Install the firmware:** open the editor, scroll to **Firmware Installation** at the bottom of the window, and click **Install Firmware**. Your `config.json` is preserved unless you enable **Reset config.json to bundled defaults**.
 
 Devices still running the factory Paint Audio firmware need a one-time device-type step first, and 2026-batch devices (CircuitPython 9.2.7) need a **Reflash CircuitPython 7.3.1** first — both are covered in the guide.
+
+After that, the Config Editor keeps itself current: when a new version is out, a banner offers **Update & Restart**. On macOS, `brew upgrade` installs the same update.
 
 > **Prefer the command line, or on an unsupported OS?** Download `MIDI-Captain-MAX-<version>-complete.zip` instead. It contains the firmware plus `deploy.sh` / `deploy.ps1` install scripts — see the bundled [`INSTALL.md`](firmware/dev/INSTALL.md) for usage.
 

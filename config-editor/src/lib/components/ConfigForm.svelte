@@ -4,6 +4,7 @@
   import { saveMode, type SaveMode } from '$lib/stores';
   import type { ButtonStates } from '$lib/workingOn';
   import AgentChat from './AgentChat.svelte';
+  import { ASSISTANT_ENABLED } from '$lib/features';
 
   interface Props {
     // What each button does for the current "working on" (see workingOn.ts).
@@ -159,14 +160,16 @@
     </div>
 
     <div class="toolbar-group">
-      <button
-        class="toolbar-btn secondary"
-        onclick={() => (showAssistant = !showAssistant)}
-        aria-pressed={showAssistant}
-        title="Describe a change in plain language"
-      >
-        Assistant
-      </button>
+      {#if ASSISTANT_ENABLED}
+        <button
+          class="toolbar-btn secondary"
+          onclick={() => (showAssistant = !showAssistant)}
+          aria-pressed={showAssistant}
+          title="Describe a change in plain language"
+        >
+          Assistant
+        </button>
+      {/if}
       <button class="toolbar-btn secondary" onclick={handleViewJson}>
         View JSON
       </button>
@@ -234,7 +237,7 @@
   </div>
 </div>
 
-{#if showAssistant}
+{#if ASSISTANT_ENABLED && showAssistant}
   <AgentChat onClose={() => (showAssistant = false)} />
 {/if}
 

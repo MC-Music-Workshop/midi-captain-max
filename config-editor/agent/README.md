@@ -59,7 +59,7 @@ Then ask for a change. With one pedal connected (drive mounted) no path is neede
 
 ## In the Config Editor (Assistant panel)
 
-The toolbar's **Assistant** button opens a chat panel (`AgentChat.svelte`). User-facing description: [`docs/user/assistant.md`](../../docs/user/assistant.md).
+The toolbar's **Assistant** button opens a chat panel (`AgentChat.svelte`). **Not released yet:** the button is behind `ASSISTANT_ENABLED` (`src/lib/features.ts`). It shows in `tauri dev`; any other build hides it unless built with `VITE_MCM_ASSISTANT=1`, and then the panel and the SDK are dropped from the bundle entirely. To release it, make the flag `true` (or delete it) and relink `docs/user/assistant.md` from `docs/user/index.md`. User-facing description: [`docs/user/assistant.md`](../../docs/user/assistant.md).
 
 | MCP tool | In the editor |
 |----------|---------------|

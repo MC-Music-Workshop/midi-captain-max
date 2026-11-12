@@ -2,6 +2,8 @@
 
 Instead of filling in the fields yourself, you can tell the Config Editor what you want and let the assistant make the edit.
 
+> **Not in released builds yet.** This page is unlinked from the guide index until the Assistant ships.
+>
 > **Early version.** The assistant runs on your own Anthropic API key, and you pay Anthropic for what it uses. Your config is sent to Anthropic with each request.
 
 ## How to use it

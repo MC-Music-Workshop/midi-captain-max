@@ -30,6 +30,7 @@ The config editor is a desktop app built with **SvelteKit 5 + Tauri 2 (Rust back
 | `src-tauri/src/commands.rs` | Tauri commands: read/write/validate config, restart device, path security |
 | `src-tauri/src/device.rs` | USB device detection and watcher (cross-platform) |
 | `src-tauri/src/installer.rs` | Firmware installer (mirrors `deploy.sh` copy order) |
+| `src-tauri/src/updates.rs` | In-app editor updates (#18): `check_for_update` / `install_update` over `tauri-plugin-updater`; feed, channel and signing pipeline in [`.github/AGENTS.md`](../.github/AGENTS.md) "In-app updates" |
 | `src-tauri/src/config_files.rs` | Whole-config file IO with no device: open/save/default config, device type probe (#36) |
 | `agent/tools.json`, `agent/prompt.md` | MCM agent (#230): tool definitions and model instructions, shared by the MCP server and the in-app Assistant. See [`agent/README.md`](agent/README.md) |
 | `src/lib/agent.ts`, `src/lib/components/AgentChat.svelte` | In-app Assistant: Claude tool loop on the open form (edits land as one undo step via `formStore.replaceConfig`) and its panel |

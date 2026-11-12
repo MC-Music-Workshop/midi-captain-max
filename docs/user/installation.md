@@ -52,6 +52,16 @@ brew install --cask --force mc-music-workshop/tap/midi-captain-max
 
 Either way, your settings, saved configs and templates are kept. From then on, `brew upgrade` keeps the app up to date.
 
+### Updating the Config Editor
+
+The Config Editor checks for a newer version each time it starts. When one is out, a banner at the top of the window says so; click **Update & Restart** and the app downloads the new version, installs it and reopens. Your settings, saved configs and templates are kept. **Later** hides the banner until the next start, and **Check for Updates** (next to the version number at the top) checks again whenever you like.
+
+![Banner at the top of the Config Editor: "Config Editor v1.16.0 is available (you have v1.15.0)", with Update & Restart and Later buttons](./img/installation/app-update.png)
+
+A beta or release candidate is offered newer betas, release candidates and stable releases; a stable version is offered stable releases only. This works the same however you installed the app, including with Homebrew: `brew upgrade` and the in-app update install the same file.
+
+After updating the app, connect your pedal: if its firmware is now older than the app's, update the firmware too (see below).
+
 ## Updating an Existing MIDI Captain MAX Install
 
 1. Connect your MIDI Captain via USB and power it on.

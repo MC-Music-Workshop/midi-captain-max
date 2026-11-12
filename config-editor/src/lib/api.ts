@@ -8,6 +8,8 @@ import type {
   FirmwareVersions,
   InstallProgress,
   InstallReport,
+  UpdateInfo,
+  UpdateProgress,
   ReflashProgress,
   Page,
   DeviceType,
@@ -81,6 +83,18 @@ export async function installFirmware(
     deviceTypeOverride,
     onProgress: channel,
   });
+}
+
+// Config Editor updates (#18)
+export async function checkForUpdate(): Promise<UpdateInfo | null> {
+  return invoke('check_for_update');
+}
+
+/** Downloads, verifies and installs the update, then restarts the app; the promise only settles if that fails. */
+export async function installUpdate(onProgress: (p: UpdateProgress) => void): Promise<void> {
+  const channel = new Channel<UpdateProgress>();
+  channel.onmessage = onProgress;
+  return invoke('install_update', { onProgress: channel });
 }
 
 /**

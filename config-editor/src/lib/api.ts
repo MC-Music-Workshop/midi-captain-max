@@ -193,3 +193,29 @@ export async function defaultConfig(device: DeviceType): Promise<string> {
 export async function deviceConfigType(devicePath: string): Promise<DeviceType | null> {
   return invoke('device_config_type', { devicePath });
 }
+
+/**
+ * Run one assistant tool (#230) against `config`, the open form's config.
+ * Nothing is written; a valid `apply_changes` returns the merged config.
+ */
+export async function agentTool(
+  name: string,
+  args: Record<string, unknown>,
+  config: MidiCaptainConfig | Record<string, never>,
+): Promise<Record<string, unknown>> {
+  return invoke('agent_tool', { name, args, config });
+}
+
+// The Assistant's API key, kept in the OS credential store (macOS Keychain,
+// Windows Credential Manager, Secret Service on Linux).
+export async function agentKeyGet(): Promise<string | null> {
+  return invoke('agent_key_get');
+}
+
+export async function agentKeySet(key: string): Promise<void> {
+  return invoke('agent_key_set', { key });
+}
+
+export async function agentKeyDelete(): Promise<void> {
+  return invoke('agent_key_delete');
+}

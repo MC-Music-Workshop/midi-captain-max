@@ -607,6 +607,18 @@ function _commitConfigMutation(mutate: (cfg: MidiCaptainConfig) => boolean | voi
   validate();
 }
 
+/** Replace the whole config as one undo step: the assistant's edits (#230). */
+export function replaceConfig(next: MidiCaptainConfig) {
+  _commitConfigMutation(cfg => {
+    const target = cfg as unknown as Record<string, unknown>;
+    for (const key of Object.keys(target)) delete target[key];
+    Object.assign(target, structuredClone(next));
+    // Same guarantees loadConfig gives the form: display exists, active_page is in range.
+    cfg.display ??= {};
+    cfg.active_page = Math.max(0, Math.min(cfg.pages.length - 1, cfg.active_page ?? 0));
+  });
+}
+
 export function setActivePage(index: number) {
   _commitConfigMutation(cfg => {
     const clamped = Math.max(0, Math.min((cfg.pages?.length ?? 1) - 1, index));

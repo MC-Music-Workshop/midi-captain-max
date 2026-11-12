@@ -1,3 +1,9 @@
+# mcm-mcp (#230) is its own crate so Tauri doesn't bundle it into the app. It
+# shares this Cargo.lock and target/. Not a default member: `cargo run` and
+# `tauri build` stay on the app; `cargo test --workspace` covers both.
+[workspace]
+members = ["mcm-mcp"]
+
 [package]
 name = "config-editor"
 version = "0.1.0"
@@ -34,6 +40,10 @@ md-5 = "0.10"
 hex = "0.4"
 tauri-plugin-updater = "2"
 semver = "1"
+# Agent `validate` (#230) checks configs against config.schema.json; no remote $ref resolving.
+jsonschema = { version = "0.61", default-features = false }
+# The Assistant's API key lives in the OS credential store (secrets.rs).
+keyring = "4"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["fileapi", "winbase", "winnt", "minwindef"] }

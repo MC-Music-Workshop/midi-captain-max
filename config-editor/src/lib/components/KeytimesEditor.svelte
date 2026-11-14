@@ -1,6 +1,7 @@
 <script lang="ts">
   import MessageList from './MessageList.svelte';
-  import type { ButtonLike, KeytimesEntry, CycleEntryColor } from '$lib/types';
+  import LedStyleEditor from './LedStyleEditor.svelte';
+  import type { ButtonLike, KeytimesEntry, CycleEntryColor, LedStyle } from '$lib/types';
   import { BUTTON_COLORS } from '$lib/types';
   import {
     addKeytimesEntry,
@@ -29,6 +30,26 @@
   // Per-entry color picker: shows current value, swatch, and clear-to-inherit option.
   function setEntryColor(cycle: 'short' | 'long', entryIndex: number, color: CycleEntryColor | undefined) {
     updateField(`${buttonPath}.${cycle}[${entryIndex}].color`, color);
+  }
+
+  // DOM id prefix, same scheme as ButtonRow: "buttons[3]" → "btn-3".
+  let idPrefix = $derived(buttonPath.replace(/^buttons\[(\d+)\]$/, 'btn-$1').replace(/\W+/g, '-'));
+
+  function setEntryLed(cycle: 'short' | 'long', entryIndex: number, style: LedStyle | undefined) {
+    updateField(`${buttonPath}.${cycle}[${entryIndex}].led`, style);
+  }
+
+  // What the entry's three LEDs show without custom colors: its color (or the
+  // button's), dark for 'off'.
+  function entryFallback(entry: KeytimesEntry): CycleEntryColor[] {
+    const c = (entry.color ?? button.color ?? 'white') as CycleEntryColor;
+    return [c, c, c];
+  }
+
+  // Custom colors start from the entry's color; 'off' would seed three dark LEDs.
+  function entrySeed(entry: KeytimesEntry): CycleEntryColor[] {
+    const c = (entry.color && entry.color !== 'off' ? entry.color : button.color ?? 'white') as CycleEntryColor;
+    return [c, c, c];
   }
 
   function setEntryDim(cycle: 'short' | 'long', entryIndex: number, dim: boolean) {
@@ -202,6 +223,23 @@
             </button>
           </div>
 
+          {#if hasLed}
+            <div class="kt-entry-led">
+              <LedStyleEditor
+                idPrefix={`${idPrefix}-${cycle}-${ei}-led`}
+                legend="LEDs"
+                style={entry.led}
+                fallbackPixels={entryFallback(entry)}
+                seedPixels={entrySeed(entry)}
+                fallbackDim={entry.dim ?? false}
+                pixelsDim={entry.dim ?? false}
+                errorPath={`${buttonPath}.${cycle}[${ei}].led`}
+                title="Per-LED colors and animation while this entry owns the LED. Dim applies to custom colors too; a short entry with Color 'off' keeps the LEDs dark."
+                onchange={(s) => setEntryLed(cycle as 'short' | 'long', ei, s)}
+              />
+            </div>
+          {/if}
+
           {#each ['down', 'up'] as slot (slot)}
             <MessageList
               {buttonPath}
@@ -305,6 +343,10 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .kt-entry-led {
     margin-bottom: 0.5rem;
   }
 

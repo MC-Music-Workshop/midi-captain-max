@@ -23,6 +23,7 @@ Per entry you get:
 | **Color** | LED color for this state. Leave it on `(inherit)` to use the button's own color, or pick `off` to go dark |
 | **dim** | render that color at low brightness |
 | **Label** | screen text for this state (6 characters max). Blank inherits the button's label |
+| **LEDs** | optional per-LED colors and a Flash or Spin animation for this state. See [LED Styles](./led-styles.md) |
 | **short_down** | messages fired the instant you press |
 | **short_up** | messages fired when you release (before the hold threshold) |
 

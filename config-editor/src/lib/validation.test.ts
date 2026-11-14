@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateConfig, validateAllPages, buttonTurnsOff, keytimesUsesCcStep } from './validation';
+import { validateConfig, validateAllPages, buttonTurnsOff, keytimesUsesCcStep, ledStylesIgnored } from './validation';
 import type { MidiCaptainConfig } from './types';
 
 function twoPageConfig(): MidiCaptainConfig {
@@ -405,5 +405,73 @@ describe('extra messages (messages_on / messages_off)', () => {
   it('ignores messages_off on a button that never turns off (save strips it)', () => {
     const r = validateConfig(withButton({ type: 'pc', program: 1, messages_off: [{ type: 'cc', cc: 200, value: 0 }] }));
     expect(r.isValid).toBe(true);
+  });
+});
+
+describe('per-LED styles (led_on / led_off / entry led)', () => {
+  function withButton(btn: Record<string, unknown>): MidiCaptainConfig {
+    return {
+      device: 'one1', active_page: 0,
+      pages: [{ buttons: [{ label: 'X', color: 'green', cc: 20, ...btn }] as never }],
+    } as never;
+  }
+
+  it('accepts a full style and the speed bounds', () => {
+    const r = validateConfig(withButton({
+      led_on: { pixels: ['red', 'off', 'white'], animation: 'spin', speed_ms: 50 },
+      led_off: { animation: 'flash', speed_ms: 5000 },
+    }));
+    expect(r.isValid).toBe(true);
+  });
+
+  it('rejects speed_ms out of range on a moving animation', () => {
+    const r = validateConfig(withButton({
+      led_on: { animation: 'flash', speed_ms: 49 },
+      led_off: { animation: 'spin', speed_ms: 5001 },
+    }));
+    expect(r.errors.get('buttons[0].led_on.speed_ms')).toContain('between 50 and 5000');
+    expect(r.errors.get('buttons[0].led_off.speed_ms')).toContain('between 50 and 5000');
+  });
+
+  it('ignores a stale speed_ms on a solid style (save strips it)', () => {
+    const r = validateConfig(withButton({ led_on: { speed_ms: 1 } }));
+    expect(r.errors.has('buttons[0].led_on.speed_ms')).toBe(false);
+  });
+
+  it('rejects pixels that are not exactly 3 valid colors', () => {
+    for (const pixels of [['red', 'blue'], ['red', 'blue', 'green', 'white'], ['red', 'pink', 'blue']]) {
+      const r = validateConfig(withButton({ led_on: { pixels } }));
+      expect(r.errors.get('buttons[0].led_on.pixels')).toContain('3 LEDs');
+    }
+  });
+
+  it('rejects an unknown animation', () => {
+    const r = validateConfig(withButton({ led_off: { animation: 'pulse' } }));
+    expect(r.errors.has('buttons[0].led_off.animation')).toBe(true);
+  });
+
+  it('validates keytimes entry led under the entry path', () => {
+    const r = validateConfig(withButton({
+      mode: 'keytimes',
+      short: [{ led: { pixels: ['red'] } }],
+      long: [{ led: { animation: 'flash', speed_ms: 10 } }],
+    }));
+    expect(r.errors.has('buttons[0].short[0].led.pixels')).toBe(true);
+    expect(r.errors.get('buttons[0].long[0].led.speed_ms')).toContain('between 50 and 5000');
+  });
+
+  it('skips led_on/led_off where the firmware ignores them', () => {
+    const bad = { led_on: { pixels: ['red'] }, led_off: { animation: 'flash', speed_ms: 1 } };
+    expect(validateConfig(withButton({ mode: 'keytimes', ...bad })).isValid).toBe(true);
+    expect(validateConfig(withButton({ type: 'cc_inc', cc_slots: 4, ...bad })).isValid).toBe(true);
+    // STEP-mode CC+ honors them.
+    expect(validateConfig(withButton({ type: 'cc_inc', ...bad })).isValid).toBe(false);
+  });
+
+  it('ledStylesIgnored: keytimes and CC+/CC- slot buttons only', () => {
+    expect(ledStylesIgnored({ label: 'X', mode: 'keytimes' } as never)).toBe(true);
+    expect(ledStylesIgnored({ label: 'X', type: 'cc_dec', cc_slots: 3 } as never)).toBe(true);
+    expect(ledStylesIgnored({ label: 'X', type: 'cc_dec' } as never)).toBe(false);
+    expect(ledStylesIgnored({ label: 'X', type: 'pc', mode: 'flash' } as never)).toBe(false);
   });
 });

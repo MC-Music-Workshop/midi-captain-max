@@ -1,0 +1,158 @@
+{
+  "device": "std10",
+  "global_channel": 0,
+  "pages": [
+    {
+      "buttons": [
+        {
+          "label": "RWG",
+          "cc": 20,
+          "color": "white",
+          "led_on": {
+            "pixels": [
+              "red",
+              "white",
+              "green"
+            ]
+          }
+        },
+        {
+          "label": "REC",
+          "cc": 21,
+          "color": "red",
+          "off_mode": "off",
+          "led_on": {
+            "animation": "flash",
+            "speed_ms": 250
+          }
+        },
+        {
+          "label": "SPIN",
+          "cc": 22,
+          "color": "cyan",
+          "led_on": {
+            "animation": "spin",
+            "speed_ms": 120
+          }
+        },
+        {
+          "label": "FLAG",
+          "cc": 23,
+          "color": "blue",
+          "led_on": {
+            "pixels": [
+              "blue",
+              "white",
+              "blue"
+            ],
+            "animation": "spin",
+            "speed_ms": 200
+          },
+          "led_off": {
+            "pixels": [
+              "off",
+              "white",
+              "off"
+            ]
+          }
+        },
+        {
+          "label": "ARM",
+          "cc": 24,
+          "color": "green",
+          "led_off": {
+            "pixels": [
+              "orange",
+              "off",
+              "orange"
+            ],
+            "animation": "flash",
+            "speed_ms": 600
+          }
+        },
+        {
+          "label": "LOOP",
+          "color": "white",
+          "mode": "keytimes",
+          "short_cc_receive": 60,
+          "short": [
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 25,
+                  "value": 127
+                }
+              ],
+              "label": "REC",
+              "rx_value": 1,
+              "led": {
+                "pixels": [
+                  "red",
+                  "red",
+                  "red"
+                ],
+                "animation": "flash",
+                "speed_ms": 250
+              }
+            },
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 25,
+                  "value": 127
+                }
+              ],
+              "label": "PLAY",
+              "rx_value": 2,
+              "color": "green",
+              "led": {
+                "animation": "spin",
+                "speed_ms": 150
+              }
+            },
+            {
+              "down": [
+                {
+                  "type": "cc",
+                  "cc": 25,
+                  "value": 127
+                }
+              ],
+              "label": "STOP",
+              "rx_value": 0,
+              "color": "white",
+              "dim": true
+            }
+          ]
+        },
+        {
+          "label": "7",
+          "cc": 26,
+          "color": "white"
+        },
+        {
+          "label": "8",
+          "cc": 27,
+          "color": "white"
+        },
+        {
+          "label": "9",
+          "cc": 28,
+          "color": "white"
+        },
+        {
+          "label": "10",
+          "cc": 29,
+          "color": "white"
+        }
+      ],
+      "encoder": {
+        "enabled": true,
+        "cc": 11,
+        "label": "ENC"
+      }
+    }
+  ]
+}

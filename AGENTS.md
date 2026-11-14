@@ -77,6 +77,7 @@ New code belongs in `firmware/dev/` or new directories (never in `original_helmu
 | `firmware/dev/core/hid.py` | HID dispatch: `KEY_TABLE`, `MODIFIER_TABLE`, `dispatch_hid()` |
 | `firmware/dev/core/button.py` | `ButtonState`: toggle/momentary mode, keytimes cycling |
 | `firmware/dev/core/colors.py` | Color palette and `get_off_color()` |
+| `firmware/dev/core/led_style.py` | Pure LED style logic: per-LED patterns, flash/spin frames, on/off and keytimes resolution |
 | `firmware/dev/core/display_model.py` | Pure TFT screen model: geometry, button/keytimes visuals — shared by `code.py`, the web demo (MicroPython wasm), and tests |
 | `firmware/dev/core/encoder.py` | Pure encoder value/slot logic (`EncoderState.turn()`) — shared by `code.py`, the web demo, and tests |
 | `firmware/dev/core/cc_step.py` | Pure `cc_inc`/`cc_dec` value math (#11): step/wrap/clamp, equal-size slots, slot color/name lookup |

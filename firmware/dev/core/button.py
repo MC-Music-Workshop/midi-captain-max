@@ -277,6 +277,9 @@ class KeytimesButtonState:
         self.long_dim = False
         self.short_label = None
         self.long_label = None
+        # Entry LedStyle (per-LED colors / animation) for each layer, or None.
+        self.short_led = None
+        self.long_led = None
         # Per-press "did any event from this cycle fire" flags. Cycles advance
         # at press-end (short_up or long_up) if their flag is set.
         self._fired_short = False
@@ -298,15 +301,16 @@ _KEYTIMES_EVENT_MAP = {
 
 
 def apply_keytimes_entry_render(state, cycle_name, entry):
-    """Copy an entry's color/dim/label onto the state's short_* or long_* layer.
+    """Copy an entry's color/dim/label/led onto the state's short_* or long_* layer.
 
-    color/dim/label are all per-entry with no carry-forward — a missing field
+    color/dim/label/led are all per-entry with no carry-forward — a missing field
     clears the layer's state so the render falls back to the button-level
     color/label. Matches the UI's "(inherit)" reading.
     """
     setattr(state, cycle_name + "_color", entry.get("color"))
     setattr(state, cycle_name + "_dim", bool(entry.get("dim", False)))
     setattr(state, cycle_name + "_label", entry.get("label"))
+    setattr(state, cycle_name + "_led", entry.get("led"))
 
 
 def dispatch_keytimes_events(events, state, btn_config, message_callback, callback_args=()):

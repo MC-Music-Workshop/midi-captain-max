@@ -1,6 +1,6 @@
 import { writable, derived, get } from 'svelte/store';
-import type { MidiCaptainConfig, ButtonConfig, ButtonLike, EncoderConfig, EncoderPush, DeviceType, KeytimesEntry, KeytimesMessage, MessageType, Page } from './types';
-import { validateConfig, keytimesUsesCcStep, buttonTurnsOff } from './validation';
+import type { MidiCaptainConfig, ButtonConfig, ButtonLike, EncoderConfig, EncoderPush, DeviceType, KeytimesEntry, KeytimesMessage, LedStyle, MessageType, Page } from './types';
+import { validateConfig, keytimesUsesCcStep, buttonTurnsOff, ledStylesIgnored } from './validation';
 
 interface FormState {
   config: MidiCaptainConfig;
@@ -727,10 +727,56 @@ function ccStepFields(btn: ButtonLike): Partial<ButtonLike> {
   };
 }
 
+// Save shape of a LedStyle: 'solid' is the default animation and speed_ms only
+// applies to flash/spin, so both drop; an all-default style drops entirely.
+export function normalizeLedStyle(style: LedStyle | undefined): LedStyle | undefined {
+  if (!style) return undefined;
+  const moving = style.animation === 'flash' || style.animation === 'spin';
+  const out: LedStyle = {
+    ...(style.pixels !== undefined && { pixels: style.pixels }),
+    ...(moving && { animation: style.animation }),
+    ...(moving && style.speed_ms !== undefined && { speed_ms: style.speed_ms }),
+  };
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+// Per-LED styles: led_on/led_off go where the firmware ignores them (keytimes
+// and CC+/CC- SLOT buttons, see ledStylesIgnored); keytimes entries keep a
+// normalized `led`. Runs on the type-normalized button, keeping key order.
+function normalizeButtonLeds(btn: ButtonLike): ButtonLike {
+  const out: ButtonLike = { ...btn };
+  const ignored = ledStylesIgnored(btn);
+  for (const field of ['led_on', 'led_off'] as const) {
+    if (!(field in out)) continue;
+    const style = ignored ? undefined : normalizeLedStyle(out[field]);
+    if (style) out[field] = style;
+    else delete out[field];
+  }
+  if (btn.mode === 'keytimes') {
+    for (const cycle of ['short', 'long'] as const) {
+      const entries = out[cycle];
+      if (!entries) continue;
+      out[cycle] = entries.map((entry) => {
+        if (!('led' in entry)) return entry;
+        const e = { ...entry };
+        const style = normalizeLedStyle(e.led);
+        if (style) e.led = style;
+        else delete e.led;
+        return e;
+      });
+    }
+  }
+  return out;
+}
+
+function normalizeButton(btn: ButtonLike): ButtonLike {
+  return normalizeButtonLeds(normalizeButtonFields(btn));
+}
+
 // Strip type-specific fields that don't belong to the button's current type.
 // Prevents stale cc/note/program/etc. from accumulating in the saved JSON when
 // the user switches a button's type.
-function normalizeButton(btn: ButtonLike): ButtonLike {
+function normalizeButtonFields(btn: ButtonLike): ButtonLike {
   // mode: "keytimes" carries its message data inside short[]/long[] entries,
   // not at the top of the button. Strip all legacy per-type fields here so
   // serialized JSON stays clean if the user toggled the button through other

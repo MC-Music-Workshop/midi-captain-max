@@ -31,13 +31,13 @@
 - Downloads artifacts from the CI run for the same commit (by SHA)
 - Polls for up to 30 minutes waiting for CI to complete
 - Fails fast if CI fails or is cancelled
-- Creates a **draft** GitHub Release with artifacts
-- Auto-detects alpha/beta for pre-release flag
+- Creates and publishes the GitHub Release with artifacts (no drafts)
+- Auto-detects alpha/beta/rc for the pre-release flag; stable releases are marked Latest
 
-### Homebrew (`homebrew.yml`) — Triggered on `release: published` (or manual dispatch with a tag)
+### Homebrew (`homebrew.yml`) — Dispatched by `release.yml` (also runs on `release: published` or manual dispatch with a tag)
 
-- Bumps `version` + `sha256` from the published DMG in [`MC-Music-Workshop/homebrew-tap`](https://github.com/MC-Music-Workshop/homebrew-tap): `Casks/midi-captain-max@beta.rb` on beta, rc and stable releases, `Casks/midi-captain-max.rb` on stable releases only (no `-` in the tag). **Alpha tags are skipped** (no cask moves), so `@beta` users never get an alpha. The beta cask `conflicts_with` the stable one and ends up on the stable version after each stable release
-- Two entry points: stable (and alpha) releases are published by hand from the draft, which fires `release: published`. Beta/rc releases are published by `GITHUB_TOKEN`, which doesn't fire workflow events, so `release.yml` dispatches `homebrew.yml` for them (needs `actions: write`; `workflow_dispatch` is exempt from the `GITHUB_TOKEN` rule)
+- Bumps `version` + `sha256` from the published DMG in [`MC-Music-Workshop/homebrew-tap`](https://github.com/MC-Music-Workshop/homebrew-tap): `Casks/midi-captain-max@alpha.rb` on every release, `Casks/midi-captain-max@beta.rb` on beta, rc and stable releases (never alphas), `Casks/midi-captain-max.rb` on stable releases only (no `-` in the tag). The three casks `conflicts_with` each other; `@alpha` and `@beta` end up on the stable version after each stable release
+- `release.yml` publishes every release with `GITHUB_TOKEN`, which doesn't fire workflow events, so it dispatches `homebrew.yml` (needs `actions: write`; `workflow_dispatch` is exempt from the `GITHUB_TOKEN` rule). `release: published` still covers a release published by hand
 - Needs `HOMEBREW_TAP_TOKEN`: fine-grained PAT with **Contents: read and write** on `homebrew-tap` only (`GITHUB_TOKEN` can't push to another repo). Unset → warning, no bump
 - Backfill or retry: `gh workflow run homebrew.yml -f tag=v1.14.0`
 - Maintainer installs of any release (alphas and unpublished drafts included) don't go through Homebrew: `tools/install-release.sh [alpha|beta|rc|stable|latest|<tag>]` downloads the DMG with your `gh` login and replaces the app in `/Applications` (see `tools/AGENTS.md`)
@@ -74,12 +74,11 @@ git push origin v1.0.0-alpha.1
 1. Before tagging a firmware release, run `tools/bench/run.sh` on at least one device and paste its table into the release notes (setup in [docs/bench-tests.md](../docs/bench-tests.md))
 2. Push tag `v1.x.0` (CI must trigger on tags so version is baked in correctly)
 3. CI builds artifacts with clean version
-4. Release workflow creates a **draft** release — download and test artifacts
-5. Publish via GitHub UI when satisfied; delete draft + tag if not
+4. Release workflow publishes the release (stable releases become Latest) and updates the Homebrew casks — test with a beta or rc tag first
 
 **Tauri binary versions are baked at build time.** They cannot be patched post-build due to code signing. This is why CI must run on the tag.
 
-**Beta tags are usually unnecessary** — the draft release IS the test mechanism. Only use beta tags when you expect multiple test cycles or want a published (non-draft) beta for external testers.
+**Test with beta/rc tags** — releases publish immediately, so a stable tag ships straight to Homebrew and the Gumroad `latest` links. Beta/rc releases go to `@beta` and `@alpha` only; alphas go to `@alpha` only.
 
 **Promoting a beta to final requires re-tagging the same commit.** Tag `v1.10.0` on the same commit as `v1.10.0-beta1` and let CI rebuild — otherwise artifacts will still say `1.10.0-beta1` internally.
 

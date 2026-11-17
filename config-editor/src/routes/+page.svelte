@@ -11,9 +11,10 @@
     scanDevices, startDeviceWatcher, readConfigRaw, writeConfigRaw,
     onDeviceConnected, onDeviceDisconnected, restartDevice, ejectDevice,
     rpiRp2MountPath, detectOemV5Port, configsDir, openConfigFile, saveConfigFile,
-    defaultConfig, deviceConfigType
+    defaultConfig, deviceConfigType, getFirmwareVersions
   } from '$lib/api';
-  import type { DetectedDevice, DeviceType } from '$lib/types';
+  import type { DetectedDevice, DeviceType, FirmwareVersions } from '$lib/types';
+  import { firmwareSync, needsFirmwareNotice } from '$lib/firmwareSync';
   import {
     buttonStates, afterSaveToDevice, afterSaveToFileAs, fileName, workingOnLabel,
     type WorkingOn
@@ -85,6 +86,38 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
     $selectedDevice !== null && $devices.some(d => d.path === $selectedDevice!.path)
   );
   let states = $derived($workingOn ? buttonStates($workingOn, deviceConnected) : null);
+
+  // Pedal firmware vs the firmware this editor ships (#192). The notice stays up
+  // until the pedal is updated or the user dismisses it for this version pair.
+  let firmwareVersions = $state<FirmwareVersions | null>(null);
+  let installer = $state<ReturnType<typeof FirmwareInstaller>>();
+  let dismissedFwNotice = $state('');
+  let fwSync = $derived(firmwareVersions ? firmwareSync(firmwareVersions) : null);
+  let fwNoticeKey = $derived(
+    firmwareVersions && $selectedDevice
+      ? `${$selectedDevice.path}|${firmwareVersions.device}|${firmwareVersions.bundled}`
+      : ''
+  );
+  let showFwNotice = $derived(
+    fwSync !== null && needsFirmwareNotice(fwSync) && fwNoticeKey !== dismissedFwNotice
+  );
+
+  async function refreshFirmwareVersions(device: DetectedDevice | null) {
+    let v: FirmwareVersions | null = null;
+    if (device) {
+      try {
+        v = await getFirmwareVersions(device.path);
+      } catch {
+        // Unreadable (mid-mount, ejected): no notice rather than a wrong one.
+      }
+    }
+    // Drop a stale answer if the selection changed while we were reading.
+    if (($selectedDevice?.path ?? null) === (device?.path ?? null)) firmwareVersions = v;
+  }
+
+  $effect(() => {
+    refreshFirmwareVersions(deviceConnected ? $selectedDevice : null);
+  });
   let workingOnDevice = $derived(
     $workingOn?.kind === 'device' && $selectedDevice !== null && $workingOn.device.path === $selectedDevice.path
   );
@@ -323,6 +356,10 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
     $isLoading = true;
     try {
       await writeConfigRaw(device.config_path, configJson);
+      await refreshFirmwareVersions(device);
+      const fwNote = fwSync === 'older'
+        ? `. Pedal firmware ${firmwareVersions!.device} is older than this editor's ${firmwareVersions!.bundled}: update it so new features work.`
+        : '';
 
       const outcome = afterSaveToDevice(working, device);
       $workingOn = outcome.working;
@@ -337,8 +374,9 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
       if (restart) {
         $statusMessage = 'Config saved';
         await doRestartDevice();
+        $statusMessage += fwNote;
       } else {
-        $statusMessage = 'Config saved — restart device to apply';
+        $statusMessage = 'Config saved — restart device to apply' + fwNote;
       }
     } catch (e: any) {
       $statusMessage = `Error saving config: ${errText(e)}`;
@@ -393,6 +431,7 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
   // the user is working on.
   async function onFirmwareInstalled() {
     const device = $selectedDevice;
+    await refreshFirmwareVersions(device);
     if (device && ($workingOn === null || workingOnDevice)) {
       await loadFromDevice(device, 'Firmware installed; config reloaded from device');
     } else {
@@ -549,6 +588,24 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
   {/if}
 
 
+  {#if showFwNotice && firmwareVersions}
+    <div class="rpi-banner" role="status">
+      <span class="label">
+        {#if fwSync === 'older'}
+          <strong>Pedal firmware {firmwareVersions.device} is older than this editor ({firmwareVersions.bundled}).</strong>
+          Newer features you set up here may do nothing on the pedal until you update its firmware.
+        {:else}
+          <strong>This pedal isn't running MIDI Captain MAX firmware.</strong>
+          Install it so the pedal can use what you set up here.
+        {/if}
+      </span>
+      <button onclick={() => installer?.install()} disabled={!installer || $isLoading}>
+        {fwSync === 'older' ? 'Update Firmware' : 'Install Firmware'}
+      </button>
+      <button class="secondary" onclick={() => (dismissedFwNotice = fwNoticeKey)}>Dismiss</button>
+    </div>
+  {/if}
+
   <div class="editor-container">
     {#if $workingOn && states && !$isLoading}
       <ConfigForm
@@ -575,6 +632,7 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
         <PageControlSection />
         {#if $selectedDevice}
           <FirmwareInstaller
+            bind:this={installer}
             device={$selectedDevice}
             hasUnsavedChanges={$isDirty && workingOnDevice}
             onInstalled={onFirmwareInstalled}
@@ -593,6 +651,7 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
         <p>Or connect a MIDI Captain device and select it above.</p>
         {#if $selectedDevice}
           <FirmwareInstaller
+            bind:this={installer}
             device={$selectedDevice}
             hasUnsavedChanges={false}
             onInstalled={onFirmwareInstalled}

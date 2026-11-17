@@ -71,7 +71,20 @@ export async function loadApp(page: Page, config: unknown) {
             }];
           case 'start_device_watcher': return null;
           case 'rpi_rp2_mount_path': return null;
+          case 'get_firmware_versions':
+            // Tests opt in by setting __E2E_FW__ ({ device, bundled }).
+            if (!(window as any).__E2E_FW__) throw new Error('no firmware versions');
+            return (window as any).__E2E_FW__;
+          case 'install_firmware': {
+            const fw = (window as any).__E2E_FW__;
+            if (fw) fw.device = fw.bundled;
+            return {
+              device_type: 'one1', files_copied: 1, files_skipped: 0, files_deleted: 0,
+              version: fw?.bundled ?? 'dev', config_preserved: true,
+            };
+          }
           case 'read_config_raw': return JSON.stringify(cfg);
+          case 'device_config_type': return (cfg as any).device ?? null;
           case 'write_config_raw':
             (window as any).__E2E_WRITES__.push(args);
             return null;

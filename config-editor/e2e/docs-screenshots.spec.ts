@@ -176,3 +176,13 @@ test('page control: all three slots configured', async ({ page }) => {
   await section.scrollIntoViewIfNeeded();
   await section.screenshot({ path: `${PC}/page-control.png` });
 });
+
+test('firmware notice: the pedal is behind the editor', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 600 });
+  await page.addInitScript(() => {
+    (window as any).__E2E_FW__ = { device: 'v1.14.0', bundled: 'v1.15.0' };
+  });
+  await loadApp(page, config([]));
+  await page.getByRole('status').filter({ hasText: 'is older than this editor' })
+    .screenshot({ path: '../docs/user/img/installation/firmware-notice.png' });
+});

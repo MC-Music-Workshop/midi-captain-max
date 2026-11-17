@@ -11,8 +11,8 @@ description = "Configuration editor for MIDI Captain foot controllers"
 authors = ["Maximilian Cascone <max@mcmusicworkshop.com>"]
 edition = "2021"
 license = "Proprietary"
-homepage = "https://github.com/mcascone/midi-captain-max"
-repository = "https://github.com/mcascone/midi-captain-max"
+homepage = "https://mc-music-workshop.github.io/midi-captain-max/"
+repository = "https://github.com/MC-Music-Workshop/midi-captain-max"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

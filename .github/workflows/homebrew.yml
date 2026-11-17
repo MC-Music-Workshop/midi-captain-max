@@ -1,13 +1,12 @@
 name: Homebrew
 
 # Bumps the casks in MC-Music-Workshop/homebrew-tap for a published release:
-#   - midi-captain-max@beta tracks beta, rc and stable releases (alphas never reach Homebrew;
-#     maintainers install those with tools/install-release.sh)
+#   - midi-captain-max@alpha tracks every release (alpha, beta, rc, stable)
+#   - midi-captain-max@beta tracks beta, rc and stable releases
 #   - midi-captain-max tracks stable releases only
-# Stable releases start as drafts (release.yml) and are published by hand in
-# the GitHub UI, which fires `release: published`. Beta/rc releases are
-# published by GITHUB_TOKEN, which doesn't fire workflow events, so release.yml
-# dispatches this workflow for them instead.
+# release.yml publishes every release with GITHUB_TOKEN, which doesn't fire
+# workflow events, so it dispatches this workflow. `release: published` still
+# covers a release published by hand (e.g. an old draft).
 on:
   release:
     types: [published]
@@ -51,11 +50,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Alphas stay off Homebrew so @beta users only get betas, rcs and stables.
-          if [[ "$TAG" == *-alpha* ]]; then
-            echo "Alpha release ${TAG}: not published to Homebrew (tools/install-release.sh alpha installs it)" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
           VERSION="${TAG#v}"
           # The casks install the same archive the in-app updater does (#18);
           # releases from before it only have the DMG.
@@ -71,7 +65,11 @@ jobs:
           rm cask.download
 
           # Tag format is v{major}.{minor}.{patch}[-{prerelease}]; any "-" means prerelease.
-          CASKS=("Casks/midi-captain-max@beta.rb")
+          # @alpha gets everything, @beta everything but alphas, the stable cask stables only.
+          CASKS=("Casks/midi-captain-max@alpha.rb")
+          if [[ "$TAG" != *-alpha* ]]; then
+            CASKS+=("Casks/midi-captain-max@beta.rb")
+          fi
           if [[ "$TAG" != *-* ]]; then
             CASKS+=("Casks/midi-captain-max.rb")
           fi

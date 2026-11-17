@@ -46,7 +46,7 @@ With `Stop`, an unresolvable command name (e.g. bare `pip` when only the `py` la
 
 ## `install-release.sh` — install any release on a Mac (maintainers)
 
-`tools/install-release.sh [alpha|beta|rc|stable|latest|<tag>]` picks the newest release of that kind (by creation date, drafts included), downloads its DMG with the `gh` login, and replaces `/Applications/MIDI Captain MAX Config Editor.app`. `list` shows recent releases; `--dry-run` downloads and mounts without installing. Alphas aren't on Homebrew (`homebrew.yml` skips them), so this is how to put one on a test machine. Drafts are only visible to repo members, which is why it needs `gh` rather than a public URL.
+`tools/install-release.sh [alpha|beta|rc|stable|latest|<tag>]` picks the newest release of that kind (by creation date, drafts included), downloads its DMG with the `gh` login, and replaces `/Applications/MIDI Captain MAX Config Editor.app`. `list` shows recent releases; `--dry-run` downloads and mounts without installing. Alphas are also on Homebrew as `midi-captain-max@alpha`; this script is for putting a specific release, or an old draft, on a test machine. Drafts are only visible to repo members, which is why it needs `gh` rather than a public URL.
 
 - **Newest = creation date, not version sort.** A mistyped tag (`v1.140.0-beta.1` exists) would win a version sort forever.
 - **Homebrew copies:** overwriting a cask-installed app leaves Homebrew believing the old version, so the script offers to `brew uninstall` the cask first (`--yes` skips the prompt).

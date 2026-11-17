@@ -122,6 +122,16 @@
     }
   }
 
+  let section: HTMLElement;
+
+  // Lets the main screen's out-of-sync notice (#192) run this same install flow
+  // (unsaved-changes prompt, progress, error CTAs) and bring it into view.
+  export function install() {
+    if (installing) return;
+    section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    startInstall();
+  }
+
   function phaseLabel(phase: string): string {
     switch (phase) {
       case 'planning': return 'Preparing';
@@ -135,7 +145,7 @@
   }
 </script>
 
-<section class="installer">
+<section class="installer" bind:this={section}>
   <h3>Firmware Installation</h3>
 
   {#if versions}

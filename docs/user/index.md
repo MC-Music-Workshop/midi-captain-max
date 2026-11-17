@@ -4,7 +4,7 @@ User guides for **MIDI Captain MAX (MCM)** — open-source firmware and a deskto
 
 ## Guides
 
-- [Installation](./installation.md) — install or update the firmware, first install on OEM devices, recovery
+- [Installation](./installation.md) — install the Config Editor and keep it updated, install or update the firmware, first install on OEM devices, recovery
 - [Saving and Loading Configs](./configs.md) — edit and save configs on your computer with no device attached
 - [Multiple Messages](./multiple-messages.md) — send several messages from one button press or release
 - [HID: Keyboard and Mouse](./hid.md) — type keys, shortcuts and mouse clicks from a footswitch

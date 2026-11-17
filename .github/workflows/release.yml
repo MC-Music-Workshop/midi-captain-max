@@ -90,6 +90,12 @@ jobs:
         run: |
           mkdir -p dist
 
+          # In-app updates (#18): keep each installer's Tauri updater signature
+          # under its release asset name; make-update-manifest.py inlines them
+          # into latest.json, so they aren't release assets themselves.
+          mkdir -p sigs
+          updater_sig() { if [ -f "$1.sig" ]; then cp "$1.sig" "sigs/$2.sig"; fi; }
+
           echo "Downloaded artifacts:"
           ls -la ci-artifacts/
 
@@ -123,6 +129,7 @@ jobs:
           MSI_FILE=$(find ci-artifacts -name "*.msi" | head -1)
           if [ -n "$MSI_FILE" ]; then
             cp "$MSI_FILE" "dist/MIDI-Captain-MAX-Config-Editor-${VERSION}.msi"
+            updater_sig "$MSI_FILE" "MIDI-Captain-MAX-Config-Editor-${VERSION}.msi"
             echo "✓ Config Editor MSI: MIDI-Captain-MAX-Config-Editor-${VERSION}.msi" >> $GITHUB_STEP_SUMMARY
           else
             echo "::warning::Config Editor MSI not found in CI artifacts"
@@ -134,6 +141,7 @@ jobs:
           NSIS_FILE=$(find ci-artifacts -name "*-setup.exe" | grep -i "config-editor\|captain" | head -1)
           if [ -n "$NSIS_FILE" ]; then
             cp "$NSIS_FILE" "dist/MIDI-Captain-MAX-Config-Editor-${VERSION}-setup.exe"
+            updater_sig "$NSIS_FILE" "MIDI-Captain-MAX-Config-Editor-${VERSION}-setup.exe"
             echo "✓ Config Editor NSIS: MIDI-Captain-MAX-Config-Editor-${VERSION}-setup.exe" >> $GITHUB_STEP_SUMMARY
           else
             echo "::warning::Config Editor NSIS installer not found in CI artifacts"
@@ -150,6 +158,7 @@ jobs:
             APPIMAGE_FILE=$(find "ci-artifacts/config-editor-appimage-${arch}" -name "*.AppImage" 2>/dev/null | head -1)
             if [ -n "$APPIMAGE_FILE" ]; then
               cp "$APPIMAGE_FILE" "dist/MIDI-Captain-MAX-Config-Editor-${VERSION}_${arch}.AppImage"
+              updater_sig "$APPIMAGE_FILE" "MIDI-Captain-MAX-Config-Editor-${VERSION}_${arch}.AppImage"
               echo "✓ Config Editor AppImage (${arch}): MIDI-Captain-MAX-Config-Editor-${VERSION}_${arch}.AppImage" >> $GITHUB_STEP_SUMMARY
               if [ -f "${APPIMAGE_FILE}.asc" ]; then
                 cp "${APPIMAGE_FILE}.asc" "dist/MIDI-Captain-MAX-Config-Editor-${VERSION}_${arch}.AppImage.asc"
@@ -162,6 +171,7 @@ jobs:
             DEB_FILE=$(find "ci-artifacts/config-editor-deb-${arch}" -name "*.deb" 2>/dev/null | head -1)
             if [ -n "$DEB_FILE" ]; then
               cp "$DEB_FILE" "dist/MIDI-Captain-MAX-Config-Editor-${VERSION}_${arch}.deb"
+              updater_sig "$DEB_FILE" "MIDI-Captain-MAX-Config-Editor-${VERSION}_${arch}.deb"
               echo "✓ Config Editor deb (${arch}): MIDI-Captain-MAX-Config-Editor-${VERSION}_${arch}.deb" >> $GITHUB_STEP_SUMMARY
               if [ -f "${DEB_FILE}.asc" ]; then
                 cp "${DEB_FILE}.asc" "dist/MIDI-Captain-MAX-Config-Editor-${VERSION}_${arch}.deb.asc"
@@ -171,6 +181,19 @@ jobs:
               echo "::warning::Config Editor deb (${arch}) not found in CI artifacts"
             fi
           done
+
+          # macOS in-app update archive; the Homebrew casks install this same file.
+          UPDATE_ARCHIVE=$(find ci-artifacts/config-editor-updater-macos -name "*.app.tar.gz" 2>/dev/null | head -1)
+          if [ -n "$UPDATE_ARCHIVE" ]; then
+            cp "$UPDATE_ARCHIVE" "dist/MIDI-Captain-MAX-Config-Editor-${VERSION}.app.tar.gz"
+            updater_sig "$UPDATE_ARCHIVE" "MIDI-Captain-MAX-Config-Editor-${VERSION}.app.tar.gz"
+            echo "✓ Config Editor update archive: MIDI-Captain-MAX-Config-Editor-${VERSION}.app.tar.gz" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "::warning::Config Editor update archive not found in CI artifacts (TAURI_SIGNING_PRIVATE_KEY unset?)"
+          fi
+
+          python3 tools/make-update-manifest.py --tag "$VERSION" --repo "${{ github.repository }}" \
+            --sigs sigs --out dist/latest.json | tee -a $GITHUB_STEP_SUMMARY
 
           ls -la dist/
 

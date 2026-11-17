@@ -310,7 +310,8 @@ jobs:
   build-config-editor-macos:
     name: Build Config Editor (macOS)
     runs-on: macos-latest
-    timeout-minutes: 30
+    # The app is notarized during the build and the DMG again after it.
+    timeout-minutes: 45
     needs: [lint, build-zip]
     permissions:
       contents: read
@@ -383,10 +384,45 @@ jobs:
       - name: Build Tauri app (universal binary)
         env:
           APPLE_SIGNING_IDENTITY: "Developer ID Application: Maximilian Cascone (9WNXKEF4SM)"
+          MCM_VERSION: ${{ needs.lint.outputs.semver }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          NOTARY_APPLE_ID: ${{ secrets.APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          NOTARY_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          # Notarize the .app during the build so the in-app update archive
+          # (and the Homebrew casks, which install it) carry a stapled ticket.
+          # Exported only when set: Tauri treats an empty APPLE_ID as "notarize".
+          if [ -n "$NOTARY_APPLE_ID" ] && [ -n "$NOTARY_PASSWORD" ]; then
+            export APPLE_ID="$NOTARY_APPLE_ID" APPLE_PASSWORD="$NOTARY_PASSWORD" APPLE_TEAM_ID="$NOTARY_TEAM_ID"
+          fi
+          # In-app update archives (#18) need the updater signing key; skip them without it.
+          UPDATER=()
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            UPDATER=(--config '{"bundle":{"createUpdaterArtifacts":true}}')
+          else
+            echo "⚠️ TAURI_SIGNING_PRIVATE_KEY not set - no in-app update archive" >> $GITHUB_STEP_SUMMARY
+          fi
           cd config-editor
-          npm run tauri build -- --target universal-apple-darwin
-          ls -lah src-tauri/target/universal-apple-darwin/release/bundle/
+          npm run tauri build -- --target universal-apple-darwin "${UPDATER[@]}"
+          ls -lah src-tauri/target/universal-apple-darwin/release/bundle/ src-tauri/target/universal-apple-darwin/release/bundle/macos/
+
+      - name: Verify update archive is notarized
+        env:
+          NOTARY_APPLE_ID: ${{ secrets.APPLE_ID }}
+        run: |
+          ARCHIVE=$(find config-editor/src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz" | head -1)
+          if [ -z "$ARCHIVE" ] || [ -z "$NOTARY_APPLE_ID" ]; then
+            echo "No update archive or no notarization credentials - skipping check"
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/archive-check"
+          tar -xzf "$ARCHIVE" -C "$RUNNER_TEMP/archive-check"
+          APP=$(find "$RUNNER_TEMP/archive-check" -maxdepth 1 -name "*.app" | head -1)
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute --verbose "$APP"
+          echo "✓ Update archive app is notarized and stapled" >> $GITHUB_STEP_SUMMARY
 
       - name: Notarize DMG
         env:
@@ -429,6 +465,16 @@ jobs:
         with:
           name: config-editor-app
           path: config-editor/src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app
+          retention-days: 90
+
+      - name: Upload update archive artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: config-editor-updater-macos
+          path: |
+            config-editor/src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            config-editor/src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+          if-no-files-found: ignore
           retention-days: 90
 
   build-config-editor-windows:
@@ -490,23 +536,37 @@ jobs:
           semver: ${{ steps.wix-version.outputs.SEMVER }}
 
       - name: Build Tauri app
+        shell: bash
+        env:
+          MCM_VERSION: ${{ needs.lint.outputs.semver }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
+          # In-app update signatures (#18) need the updater signing key; skip them without it.
+          UPDATER=()
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            UPDATER=(--config '{"bundle":{"createUpdaterArtifacts":true}}')
+          fi
           cd config-editor
-          npm run tauri build
-          Get-ChildItem -Path src-tauri\target\release\bundle\ -Recurse
+          npm run tauri build -- "${UPDATER[@]}"
+          ls -R src-tauri/target/release/bundle/
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v7
         with:
           name: config-editor-msi
-          path: config-editor/src-tauri/target/release/bundle/msi/*.msi
+          path: |
+            config-editor/src-tauri/target/release/bundle/msi/*.msi
+            config-editor/src-tauri/target/release/bundle/msi/*.msi.sig
           retention-days: 90
 
       - name: Upload NSIS artifact
         uses: actions/upload-artifact@v7
         with:
           name: config-editor-nsis
-          path: config-editor/src-tauri/target/release/bundle/nsis/*.exe
+          path: |
+            config-editor/src-tauri/target/release/bundle/nsis/*.exe
+            config-editor/src-tauri/target/release/bundle/nsis/*.exe.sig
           retention-days: 90
 
       - name: Build summary
@@ -603,9 +663,17 @@ jobs:
           # Run the bundler's linuxdeploy AppImage by extraction instead of via
           # FUSE — GitHub runners have no FUSE device.
           APPIMAGE_EXTRACT_AND_RUN: "1"
+          MCM_VERSION: ${{ needs.lint.outputs.semver }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
+          # In-app update signatures (#18) need the updater signing key; skip them without it.
+          UPDATER=()
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            UPDATER=(--config '{"bundle":{"createUpdaterArtifacts":true}}')
+          fi
           cd config-editor
-          npm run tauri build -- --bundles appimage,deb
+          npm run tauri build -- --bundles appimage,deb "${UPDATER[@]}"
           ls -lah src-tauri/target/release/bundle/appimage/ src-tauri/target/release/bundle/deb/
 
       - name: Import GPG key
@@ -662,6 +730,7 @@ jobs:
           path: |
             config-editor/src-tauri/target/release/bundle/appimage/*.AppImage
             config-editor/src-tauri/target/release/bundle/appimage/*.AppImage.asc
+            config-editor/src-tauri/target/release/bundle/appimage/*.AppImage.sig
           retention-days: 90
 
       - name: Upload deb artifact
@@ -671,6 +740,7 @@ jobs:
           path: |
             config-editor/src-tauri/target/release/bundle/deb/*.deb
             config-editor/src-tauri/target/release/bundle/deb/*.deb.asc
+            config-editor/src-tauri/target/release/bundle/deb/*.deb.sig
           retention-days: 90
 
       - name: Build summary

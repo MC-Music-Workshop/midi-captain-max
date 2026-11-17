@@ -39,6 +39,16 @@ test('state sync: a plain toggle button', async ({ page }) => {
   await shoot(page, [0], `${OUT}/state-sync-toggle.png`);
 });
 
+test('app update: a newer Config Editor is available', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 600 });
+  await page.addInitScript(() => {
+    (window as any).__E2E_UPDATE__ = { current: '1.15.0', version: '1.16.0' };
+  });
+  await loadApp(page, config([]));
+  await page.getByRole('status').filter({ hasText: 'is available' })
+    .screenshot({ path: '../docs/user/img/installation/app-update.png' });
+});
+
 test('listen CC: send on one CC, listen on another', async ({ page }) => {
   await loadApp(page, config([
     { label: 'LOOP', cc: 20, cc_receive: 21, mode: 'toggle', color: 'blue' },

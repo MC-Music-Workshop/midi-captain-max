@@ -114,18 +114,14 @@ jobs:
     env:
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
-      - name: Publish latest.json to the stable/beta feeds
+      - name: Publish latest.json to the stable/beta/alpha feeds
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Same channels as the casks: beta.json follows beta, rc and stable
-          # releases, stable.json stable only, alphas neither. The editor reads
-          # https://raw.githubusercontent.com/<repo>/updater/{stable,beta}.json
+          # Same channels as the casks: alpha.json follows every release,
+          # beta.json everything but alphas, stable.json stables only. The editor
+          # reads https://raw.githubusercontent.com/<repo>/updater/<channel>.json
           # (config-editor/src-tauri/src/updates.rs).
-          if [[ "$TAG" == *-alpha* ]]; then
-            echo "Alpha release ${TAG}: not published to the update feeds" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
           if ! gh release download "$TAG" -R "${{ github.repository }}" -p latest.json -O "$RUNNER_TEMP/latest.json"; then
             echo "::warning::${TAG} has no latest.json (built without TAURI_SIGNING_PRIVATE_KEY?); feeds unchanged"
             exit 0
@@ -140,7 +136,10 @@ jobs:
             git checkout -q --orphan updater
           fi
 
-          FEEDS=(beta.json)
+          FEEDS=(alpha.json)
+          if [[ "$TAG" != *-alpha* ]]; then
+            FEEDS+=(beta.json)
+          fi
           if [[ "$TAG" != *-* ]]; then
             FEEDS+=(stable.json)
           fi

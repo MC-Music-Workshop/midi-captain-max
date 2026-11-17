@@ -3,8 +3,8 @@
 //!
 //! The feeds are written by `.github/workflows/homebrew.yml` from the same
 //! release, and under the same rules, as the Homebrew casks: `stable.json`
-//! follows stable releases, `beta.json` follows betas, rcs and stables. A build
-//! follows the feed of the channel it was released on.
+//! follows stable releases, `beta.json` betas, rcs and stables, `alpha.json`
+//! every release. A build follows the feed of the channel it was released on.
 
 use semver::Version;
 use serde::Serialize;
@@ -17,6 +17,8 @@ const STABLE_FEED: &str =
     "https://raw.githubusercontent.com/MC-Music-Workshop/midi-captain-max/updater/stable.json";
 const BETA_FEED: &str =
     "https://raw.githubusercontent.com/MC-Music-Workshop/midi-captain-max/updater/beta.json";
+const ALPHA_FEED: &str =
+    "https://raw.githubusercontent.com/MC-Music-Workshop/midi-captain-max/updater/alpha.json";
 
 /// The version this build was released as. CI passes it in `MCM_VERSION`
 /// because a Windows build's own version is WiX-safe (`1.15.0-beta.3` becomes
@@ -28,10 +30,13 @@ fn release_version(package_version: &Version) -> Version {
         .unwrap_or_else(|| package_version.clone())
 }
 
-/// Prereleases follow the beta feed, stable releases the stable feed.
+/// Alphas follow the alpha feed, other prereleases (beta, rc) the beta feed,
+/// stable releases the stable feed.
 fn feed_url(version: &Version) -> &'static str {
     if version.pre.is_empty() {
         STABLE_FEED
+    } else if version.pre.as_str().starts_with("alpha") {
+        ALPHA_FEED
     } else {
         BETA_FEED
     }
@@ -130,6 +135,11 @@ mod tests {
     fn prerelease_builds_follow_the_beta_feed() {
         assert_eq!(feed_url(&v("1.15.0-beta.3")), BETA_FEED);
         assert_eq!(feed_url(&v("1.15.0-rc.1")), BETA_FEED);
+    }
+
+    #[test]
+    fn alpha_builds_follow_the_alpha_feed() {
+        assert_eq!(feed_url(&v("1.16.0-alpha.1")), ALPHA_FEED);
     }
 
     #[test]

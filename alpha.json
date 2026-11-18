@@ -1,0 +1,51 @@
+{
+  "version": "1.16.0-alpha.2",
+  "notes": "https://github.com/MC-Music-Workshop/midi-captain-max/releases/tag/v1.16.0-alpha.2",
+  "pub_date": "2026-11-18T03:26:23Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "url": "https://github.com/MC-Music-Workshop/midi-captain-max/releases/download/v1.16.0-alpha.2/MIDI-Captain-MAX-Config-Editor-v1.16.0-alpha.2.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRdkxMaEc5eHU2Q0VLQStXWk9DSTgrTDBmbzNoamFKQVZsdllNdmZRekpVZitSUkIrU3YvV0s5cElGdlEweWwzUVh0d0F4OEFhOVZEY0FLUlpZcks3RlFHWVpkQlJlQUFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTcyMjQ5CWZpbGU6TUlESSBDYXB0YWluIE1BWCBDb25maWcgRWRpdG9yLmFwcC50YXIuZ3oKZmg3QXJabkhhM0d6SFlLN0FrUi81TGMwU0VOakNVV3lJSXFJQVArVFZjRmVrTGYxL21RZytIY1ZiZGQxK3hXaHU2WVUrczVyaUdON2pkTGtFd2prQ2c9PQo="
+    },
+    "darwin-x86_64": {
+      "url": "https://github.com/MC-Music-Workshop/midi-captain-max/releases/download/v1.16.0-alpha.2/MIDI-Captain-MAX-Config-Editor-v1.16.0-alpha.2.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRdkxMaEc5eHU2Q0VLQStXWk9DSTgrTDBmbzNoamFKQVZsdllNdmZRekpVZitSUkIrU3YvV0s5cElGdlEweWwzUVh0d0F4OEFhOVZEY0FLUlpZcks3RlFHWVpkQlJlQUFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTcyMjQ5CWZpbGU6TUlESSBDYXB0YWluIE1BWCBDb25maWcgRWRpdG9yLmFwcC50YXIuZ3oKZmg3QXJabkhhM0d6SFlLN0FrUi81TGMwU0VOakNVV3lJSXFJQVArVFZjRmVrTGYxL21RZytIY1ZiZGQxK3hXaHU2WVUrczVyaUdON2pkTGtFd2prQ2c9PQo="
+    },
+    "windows-x86_64-nsis": {
+      "url": "https://github.com/MC-Music-Workshop/midi-captain-max/releases/download/v1.16.0-alpha.2/MIDI-Captain-MAX-Config-Editor-v1.16.0-alpha.2-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRdkxMaEc5eHU2Q0FTcklqcFRjWlNCcDh1eFJpZVNJY0FkbCtiUG42SDZXZjROSUhHYTZScWMwK3hyTng2MEpWNUpkdHJWYjJLZWVXSVJzSS9rdERRREM2WXh4d3d3TWc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTcyMTg0CWZpbGU6TUlESSBDYXB0YWluIE1BWCBDb25maWcgRWRpdG9yXzEuMTYuMC0yX3g2NC1zZXR1cC5leGUKY0IvY1JMZXpPOTRoSFpmYTZaZkVlQjg2SHcvR3ZPanVBOGp0bk42M1FzdWNZOENoT3Zvem1ZV1FWZm9YUWdNc0xyRkJzMmkzdUVzRTVxOG1Eb0ZQREE9PQo="
+    },
+    "windows-x86_64": {
+      "url": "https://github.com/MC-Music-Workshop/midi-captain-max/releases/download/v1.16.0-alpha.2/MIDI-Captain-MAX-Config-Editor-v1.16.0-alpha.2-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRdkxMaEc5eHU2Q0FTcklqcFRjWlNCcDh1eFJpZVNJY0FkbCtiUG42SDZXZjROSUhHYTZScWMwK3hyTng2MEpWNUpkdHJWYjJLZWVXSVJzSS9rdERRREM2WXh4d3d3TWc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTcyMTg0CWZpbGU6TUlESSBDYXB0YWluIE1BWCBDb25maWcgRWRpdG9yXzEuMTYuMC0yX3g2NC1zZXR1cC5leGUKY0IvY1JMZXpPOTRoSFpmYTZaZkVlQjg2SHcvR3ZPanVBOGp0bk42M1FzdWNZOENoT3Zvem1ZV1FWZm9YUWdNc0xyRkJzMmkzdUVzRTVxOG1Eb0ZQREE9PQo="
+    },
+    "windows-x86_64-msi": {
+      "url": "https://github.com/MC-Music-Workshop/midi-captain-max/releases/download/v1.16.0-alpha.2/MIDI-Captain-MAX-Config-Editor-v1.16.0-alpha.2.msi",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRdkxMaEc5eHU2Q05PWGVDZ01BenA1aVBlRjE4TkNTcWR4Y2Z2dmwyKzFIMER0ZjRMdHBXRFU5NTN5Ukd3MTY1VlZqRWZwdDU3c3lNeGU2dFJhZTNpN25wUy9adGJjYkFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTcyMTg0CWZpbGU6TUlESSBDYXB0YWluIE1BWCBDb25maWcgRWRpdG9yXzEuMTYuMC0yX3g2NF9lbi1VUy5tc2kKc0NmTElKTG5nNFJHN3NJdEd3UUlIMENBVTd5VUk0S09aY2lpYmIxVXJVRTFFMnEzbjZ1UkpPVlp2b3FNVnY2RVNNbFhaOHJDNVpUSU9jUWM0VGZFQkE9PQo="
+    },
+    "linux-x86_64-appimage": {
+      "url": "https://github.com/MC-Music-Workshop/midi-captain-max/releases/download/v1.16.0-alpha.2/MIDI-Captain-MAX-Config-Editor-v1.16.0-alpha.2_amd64.AppImage",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRdkxMaEc5eHU2Q1BERHROQUc2TU1PbTQyY0NnN2Y1dWFaNVVCMm9vZ2pMVzVRdzRQaW1rWndhODRqM1lYSzZVQmtCSGVmQllMemE4bDMyQVZUbjBoazNmamNmcEh6SXdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTcyMTU5CWZpbGU6TUlESSBDYXB0YWluIE1BWCBDb25maWcgRWRpdG9yXzEuMTYuMC1hbHBoYS4yX2FtZDY0LkFwcEltYWdlCmdxOW14bmxPTUFKeWZEQ0d4bWNhQ0I5TFF4V08wbWZMdDNFWmh4OEhzcWJLMEhmRjE4R2d6U1lMSVdENWdYbWhocFRLMTdlMW5qNGsrMHpLNlJ2WkJ3PT0K"
+    },
+    "linux-x86_64": {
+      "url": "https://github.com/MC-Music-Workshop/midi-captain-max/releases/download/v1.16.0-alpha.2/MIDI-Captain-MAX-Config-Editor-v1.16.0-alpha.2_amd64.AppImage",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRdkxMaEc5eHU2Q1BERHROQUc2TU1PbTQyY0NnN2Y1dWFaNVVCMm9vZ2pMVzVRdzRQaW1rWndhODRqM1lYSzZVQmtCSGVmQllMemE4bDMyQVZUbjBoazNmamNmcEh6SXdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTcyMTU5CWZpbGU6TUlESSBDYXB0YWluIE1BWCBDb25maWcgRWRpdG9yXzEuMTYuMC1hbHBoYS4yX2FtZDY0LkFwcEltYWdlCmdxOW14bmxPTUFKeWZEQ0d4bWNhQ0I5TFF4V08wbWZMdDNFWmh4OEhzcWJLMEhmRjE4R2d6U1lMSVdENWdYbWhocFRLMTdlMW5qNGsrMHpLNlJ2WkJ3PT0K"
+    },
+    "linux-x86_64-deb": {
+      "url": "https://github.com/MC-Music-Workshop/midi-captain-max/releases/download/v1.16.0-alpha.2/MIDI-Captain-MAX-Config-Editor-v1.16.0-alpha.2_amd64.deb",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRdkxMaEc5eHU2Q0FJOW44eW5mSXFSZVVXVXRwOXNIY3hvTTlzN210YU1QbTN1aW1xQjd6YktIMlBNWkV6ZmQ2V0NXRE4wenNoamVJQ0h3NjRFaUI0MXM4dnkzZFdCOEF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTcyMTU5CWZpbGU6TUlESSBDYXB0YWluIE1BWCBDb25maWcgRWRpdG9yXzEuMTYuMC1hbHBoYS4yX2FtZDY0LmRlYgpseWk5MEdremkrZjBoNlBOOWVHZXNUNkRYa3hoN2ZZNlZ4NnREVXkwdk45dWI0R2svSGZHbEJMNHo3eXlMUUF5eGFZVkw0WHFLYmVKV1p3aCtLSUVCZz09Cg=="
+    },
+    "linux-aarch64-appimage": {
+      "url": "https://github.com/MC-Music-Workshop/midi-captain-max/releases/download/v1.16.0-alpha.2/MIDI-Captain-MAX-Config-Editor-v1.16.0-alpha.2_arm64.AppImage",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRdkxMaEc5eHU2Q0VxQUI2Z2NFSGtKOUliNTVVVE1pQUZ1RXJBaVJJWkgwdm9IU3Fsbmdad3FMZlVuYkdzcEdEa1JndEtUSGI0OWhjUWFDQnkwSkZGNGhWaCtvK1JMbWdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTcyMTg0CWZpbGU6TUlESSBDYXB0YWluIE1BWCBDb25maWcgRWRpdG9yXzEuMTYuMC1hbHBoYS4yX2FhcmNoNjQuQXBwSW1hZ2UKZ2x6UytidnFnS1V6aURlTGRHenVsUmNSMDRPbmJaa0d2dnpEek4zcnNKMHFnM3p1VkpKOEE0SXQzclR1c2dZb29hQys2TUdiQTFRY2xtM0lqcWsyQ1E9PQo="
+    },
+    "linux-aarch64": {
+      "url": "https://github.com/MC-Music-Workshop/midi-captain-max/releases/download/v1.16.0-alpha.2/MIDI-Captain-MAX-Config-Editor-v1.16.0-alpha.2_arm64.AppImage",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRdkxMaEc5eHU2Q0VxQUI2Z2NFSGtKOUliNTVVVE1pQUZ1RXJBaVJJWkgwdm9IU3Fsbmdad3FMZlVuYkdzcEdEa1JndEtUSGI0OWhjUWFDQnkwSkZGNGhWaCtvK1JMbWdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTcyMTg0CWZpbGU6TUlESSBDYXB0YWluIE1BWCBDb25maWcgRWRpdG9yXzEuMTYuMC1hbHBoYS4yX2FhcmNoNjQuQXBwSW1hZ2UKZ2x6UytidnFnS1V6aURlTGRHenVsUmNSMDRPbmJaa0d2dnpEek4zcnNKMHFnM3p1VkpKOEE0SXQzclR1c2dZb29hQys2TUdiQTFRY2xtM0lqcWsyQ1E9PQo="
+    },
+    "linux-aarch64-deb": {
+      "url": "https://github.com/MC-Music-Workshop/midi-captain-max/releases/download/v1.16.0-alpha.2/MIDI-Captain-MAX-Config-Editor-v1.16.0-alpha.2_arm64.deb",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRdkxMaEc5eHU2Q0JCWVdDV21QK2tYTWkwL2MzTlNzYndlbnk5bGJGeUxyWTZqeHpYUkhXdkNnRTFuVmp1dFZRL25CWkJkd1lMV1kxMDl2bnZ0eEQvL2FOaEJjVVFWM0E0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTcyMTg0CWZpbGU6TUlESSBDYXB0YWluIE1BWCBDb25maWcgRWRpdG9yXzEuMTYuMC1hbHBoYS4yX2FybTY0LmRlYgpXbjZoYmJLVXA0OEtZak8wQjgxZ3BnbHA5d2RjRnJUUmF4ME4vSEFLcllsQ3VESW5rSlhucUNQOFArUUplb3A3Uy9zaGdFdGF0d1R4enZGaEVsbDlCZz09Cg=="
+    }
+  }
+}

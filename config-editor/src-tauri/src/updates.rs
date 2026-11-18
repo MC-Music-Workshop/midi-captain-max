@@ -115,7 +115,38 @@ pub async fn install_update(
         )
         .await
         .map_err(updater_error)?;
+    #[cfg(target_os = "macos")]
+    if relaunch_via_launch_services() {
+        app.exit(0);
+        return Ok(());
+    }
     app.restart();
+}
+
+/// The `.app` bundle holding `exe` (`X.app/Contents/MacOS/<binary>`), if any.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn app_bundle(exe: &std::path::Path) -> Option<std::path::PathBuf> {
+    exe.ancestors()
+        .nth(3)
+        .filter(|p| p.extension().is_some_and(|ext| ext == "app"))
+        .map(std::path::Path::to_path_buf)
+}
+
+/// Open the updated app through Launch Services (`open -n`), as a click in
+/// Finder would. `AppHandle::restart` spawns the new binary as a child of this
+/// process instead; once this one exits, macOS shows "… is running in the
+/// background" for the orphaned copy. False when not running from a bundle.
+#[cfg(target_os = "macos")]
+fn relaunch_via_launch_services() -> bool {
+    let Some(bundle) = std::env::current_exe().ok().and_then(|exe| app_bundle(&exe)) else {
+        return false;
+    };
+    // -n: start a new instance even though this (old) one is still running.
+    std::process::Command::new("/usr/bin/open")
+        .arg("-n")
+        .arg(bundle)
+        .spawn()
+        .is_ok()
 }
 
 #[cfg(test)]
@@ -135,6 +166,21 @@ mod tests {
     fn prerelease_builds_follow_the_beta_feed() {
         assert_eq!(feed_url(&v("1.15.0-beta.3")), BETA_FEED);
         assert_eq!(feed_url(&v("1.15.0-rc.1")), BETA_FEED);
+    }
+
+    #[test]
+    fn app_bundle_is_found_from_the_binary_path() {
+        let exe = std::path::Path::new("/Applications/MIDI Captain MAX Config Editor.app/Contents/MacOS/config-editor");
+        assert_eq!(
+            app_bundle(exe).as_deref(),
+            Some(std::path::Path::new("/Applications/MIDI Captain MAX Config Editor.app"))
+        );
+    }
+
+    #[test]
+    fn no_app_bundle_outside_one() {
+        // `cargo run` / `tauri dev` binaries live in target/, not a bundle.
+        assert_eq!(app_bundle(std::path::Path::new("/repo/target/debug/config-editor")), None);
     }
 
     #[test]

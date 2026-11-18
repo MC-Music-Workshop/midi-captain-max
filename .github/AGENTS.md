@@ -55,6 +55,7 @@ The Config Editor checks `https://raw.githubusercontent.com/<repo>/updater/{stab
 - **`MCM_VERSION`** (the clean semver) is set for every editor build and compiled in. Windows builds carry a WiX-safe version (`1.15.0-beta.3` → `1.15.0-3`) that sorts *below* the real one, so comparing it against the feed would offer the same update forever; `updates.rs` compares against `MCM_VERSION` instead
 - **`release.yml`** copies each installer's `.sig` to `sigs/<asset>.sig` and runs `tools/make-update-manifest.py`, which writes `latest.json` (a release asset; the release fails if a signature records a version other than the tag's, because the updater rejects that as `SignedVersionMismatch` — a future Tauri CLI signing Windows builds with the WiX-safe version would otherwise break every Windows update) with per-installer keys (`windows-x86_64-msi` / `-nsis`, `linux-x86_64-appimage` / `-deb`, …) plus a plain `{os}-{arch}` fallback
 - Dev builds (`npm run tauri dev`, debug) never check for updates
+- **macOS relaunch goes through Launch Services** (`open -n <bundle>`), not `AppHandle::restart`. `restart` spawns the new binary as a child of the old process; once the old one quits, macOS showed "MIDI Captain MAX Config Editor.app is running in the background" after the first real in-app update (v1.16.0-alpha.2 → alpha.3). Windows' installer and Linux still use `restart`
 
 ---
 

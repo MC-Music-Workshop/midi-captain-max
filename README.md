@@ -11,6 +11,11 @@ MIDI Captain MAX turns your MIDI Captain into a **bidirectional MIDI controller*
 
 See the [open issues](https://github.com/MC-Music-Workshop/midi-captain-max/issues) and the [prioritized Kanban board](https://github.com/orgs/MC-Music-Workshop/projects/1/views/1) for what's coming next.
 
+<!--
+## What It Costs
+
+MIDI Captain MAX is free to use, but donations are welcome to support ongoing development and maintenance.
+-->
 ## Key Features
 
 - **Bidirectional MIDI**: the host can update LED and display state on the device

@@ -9,6 +9,7 @@ User guides for **MIDI Captain MAX (MCM)** — open-source firmware and a deskto
 - [Multiple Messages](./multiple-messages.md) — send several messages from one button press or release
 - [HID: Keyboard and Mouse](./hid.md) — type keys, shortcuts and mouse clicks from a footswitch
 - [Keytimes](./keytimes.md) — multi-state buttons, short taps vs. long holds, per-state LEDs and labels
+- [LED Styles](./led-styles.md) — multi-color LEDs, flash and spin animations per button state
 - [Inbound MIDI](./inbound-midi.md) — host-to-device button sync: state mode and select mode
 - [Page Control (MIDI-IN)](./page-control.md) — let an inbound CC jump or step through pages
 - [MIDI Routing Matrix](./midi-thru.md) — routing MIDI between USB, 5-pin DIN and the pedal itself, including ring rigs

@@ -45,6 +45,18 @@ export type DeviceType = NonNullable<MIDICaptainConfig['device']>;
 // CycleEntryColor includes "off" in addition to the named palette colors. Used by KeytimesEntry.color.
 export type CycleEntryColor = NonNullable<import('./types.generated').KeytimesEntry['color']>;
 
+// Per-LED colors + animation for one switch state: ButtonConfig.led_on / led_off and
+// KeytimesEntry.led share the LedStyle schema definition. Derived from the field (not
+// the generated interface name, which json2ts renames as $ref descriptions change).
+export type LedStyle = NonNullable<ButtonConfig['led_on']>;
+export type LedAnimation = NonNullable<LedStyle['animation']>;
+
+export const LED_ANIMATION_LABELS = {
+  solid: 'Solid',
+  flash: 'Flash',
+  spin:  'Spin',
+} as const satisfies Record<LedAnimation, string>;
+
 // Human-readable labels for every message type.
 // `satisfies` ensures this map stays in sync with the MessageType union —
 // if a new type is added to config.schema.json and types are regenerated,

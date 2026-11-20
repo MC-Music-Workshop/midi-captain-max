@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage, deletePage, movePage, updatePageField, PAGE_CAP, addPageFromTemplate, markSaved, updateField, addMessage, removeMessage, setMessageType, addKeytimesEntry, removeKeytimesEntry, syncButtonStates, selectGroupNames } from './formStore';
+import { formState, loadConfig, normalizeConfig, setActivePage, isDirty, canUndo, undo, currentPage, addPage, duplicatePage, deletePage, movePage, updatePageField, PAGE_CAP, addPageFromTemplate, markSaved, updateField, addMessage, removeMessage, setMessageType, addKeytimesEntry, removeKeytimesEntry, syncButtonStates, selectGroupNames, normalizeLedStyle } from './formStore';
 import type { MidiCaptainConfig, DeviceType, Page } from './types';
 
 // Minimal valid config: one1 = 1 button per page, so validation stays green.
@@ -487,5 +487,68 @@ describe('encoder push uses the button helpers', () => {
     loadConfig(withPush({ enabled: false, cc: 14 }));
     const out = normalizeConfig(get(formState).config).pages[0].encoder!.push!;
     expect(out).toEqual({ enabled: false, label: 'PUSH', cc: 14 });
+  });
+});
+
+describe('per-LED style normalization (led_on / led_off / entry led)', () => {
+  function withButton(btn: Record<string, unknown>): MidiCaptainConfig {
+    return {
+      device: 'one1', active_page: 0,
+      pages: [{ buttons: [{ label: 'X', color: 'green', ...btn } as never] }],
+    };
+  }
+  const normalized = () => normalizeConfig(get(formState).config).pages[0].buttons[0];
+
+  it('normalizeLedStyle drops solid, solid speed, and all-default styles', () => {
+    expect(normalizeLedStyle(undefined)).toBeUndefined();
+    expect(normalizeLedStyle({})).toBeUndefined();
+    expect(normalizeLedStyle({ animation: 'solid', speed_ms: 300 })).toBeUndefined();
+    expect(normalizeLedStyle({ pixels: ['red', 'off', 'blue'], animation: 'solid', speed_ms: 300 }))
+      .toEqual({ pixels: ['red', 'off', 'blue'] });
+    expect(normalizeLedStyle({ animation: 'spin', speed_ms: 300 })).toEqual({ animation: 'spin', speed_ms: 300 });
+    expect(normalizeLedStyle({ animation: 'flash' })).toEqual({ animation: 'flash' });
+  });
+
+  it('keeps led_on/led_off on a plain button, cleaned', () => {
+    loadConfig(withButton({
+      cc: 20,
+      led_on: { pixels: ['red', 'white', 'green'], animation: 'solid', speed_ms: 100 },
+      led_off: { animation: 'flash', speed_ms: 400 },
+    }));
+    const out = normalized();
+    expect(out.led_on).toEqual({ pixels: ['red', 'white', 'green'] });
+    expect(out.led_off).toEqual({ animation: 'flash', speed_ms: 400 });
+  });
+
+  it('drops empty styles', () => {
+    loadConfig(withButton({ cc: 20, led_on: {}, led_off: { animation: 'solid' } }));
+    const out = normalized();
+    expect('led_on' in out).toBe(false);
+    expect('led_off' in out).toBe(false);
+  });
+
+  it('strips led_on/led_off on keytimes buttons and keeps a cleaned entry led', () => {
+    loadConfig(withButton({
+      mode: 'keytimes', led_on: { animation: 'flash' }, led_off: { animation: 'spin' },
+      short: [{ color: 'red', led: { animation: 'spin', speed_ms: 120 } }, { led: { animation: 'solid', speed_ms: 9 } }],
+      long: [{ led: { pixels: ['red', 'red', 'off'], animation: 'solid' } }],
+    }));
+    const out = normalized();
+    expect(out.led_on).toBeUndefined();
+    expect(out.led_off).toBeUndefined();
+    expect(out.short?.[0].led).toEqual({ animation: 'spin', speed_ms: 120 });
+    expect(out.short?.[1] && 'led' in out.short[1]).toBe(false);
+    expect(out.long?.[0].led).toEqual({ pixels: ['red', 'red', 'off'] });
+  });
+
+  it('strips led_on/led_off on CC+/CC- slot buttons but keeps them in step mode', () => {
+    loadConfig(withButton({ type: 'cc_inc', cc: 20, cc_slots: 4, led_on: { animation: 'flash' }, led_off: { animation: 'spin' } }));
+    let out = normalized();
+    expect(out.led_on).toBeUndefined();
+    expect(out.led_off).toBeUndefined();
+
+    loadConfig(withButton({ type: 'cc_dec', cc: 20, led_on: { animation: 'flash' } }));
+    out = normalized();
+    expect(out.led_on).toEqual({ animation: 'flash' });
   });
 });

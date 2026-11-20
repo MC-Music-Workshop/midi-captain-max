@@ -151,11 +151,12 @@ class Pedal:
         return out
 
     def loop(self):
-        """One main-loop pass of the button work (switches, deferred repaints, flash timers)."""
+        """One main-loop pass of the button work (switches, deferred repaints, flash timers, LED animations)."""
         with contextlib.redirect_stdout(self._serial):
             self.ns["handle_switches"]()
             self.ns["flush_cc_step_updates"]()
             self.ns["update_pc_flash_timers"]()
+            self.ns["update_led_animations"]()
 
     def set(self, switch, pressed):
         self.ns["switches"][switch].io.value = not pressed

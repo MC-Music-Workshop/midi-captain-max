@@ -26,6 +26,11 @@ LONG_PRESS_THRESHOLD_MAX_MS = 5000
 # Valid colors for keytimes-mode cycle entries (button palette plus "off" for explicit LED-dark).
 _CYCLE_ENTRY_COLORS = ("red", "green", "blue", "yellow", "cyan", "magenta", "orange", "purple", "white", "off")
 
+# LedStyle animation step bounds (led_on / led_off / keytimes entry led). Mirrors core/led_style.py.
+LED_SPEED_MS_DEFAULT = 250
+LED_SPEED_MS_MIN = 50
+LED_SPEED_MS_MAX = 5000
+
 
 def load_config(config_path="/config.json", button_count=10):
     """Load button configuration from JSON file.
@@ -404,6 +409,32 @@ def _validate_message_list(messages, channel=0, index=0):
     return validated
 
 
+def validate_led_style(style):
+    """Validate a LedStyle (led_on / led_off / keytimes entry led).
+
+    Returns a clean dict, or None when nothing survives or the result would
+    render exactly like no style at all (no pixels, solid). Invalid pieces are
+    dropped individually: a bad pixels array falls back to the state's color,
+    an unknown animation to solid.
+    """
+    if not isinstance(style, dict):
+        return None
+    out = {}
+    pixels = style.get("pixels")
+    if isinstance(pixels, list) and len(pixels) == 3:
+        names = [p.lower() for p in pixels if isinstance(p, str) and p.lower() in _CYCLE_ENTRY_COLORS]
+        if len(names) == 3:
+            out["pixels"] = names
+    animation = style.get("animation", "solid")
+    if animation in ("flash", "spin"):
+        out["animation"] = animation
+        speed = style.get("speed_ms", LED_SPEED_MS_DEFAULT)
+        if not isinstance(speed, int) or isinstance(speed, bool):
+            speed = LED_SPEED_MS_DEFAULT
+        out["speed_ms"] = max(LED_SPEED_MS_MIN, min(LED_SPEED_MS_MAX, speed))
+    return out or None
+
+
 def _validate_keytimes_entry(entry, channel=0, index=0):
     """Validate one cycle entry inside a keytimes-mode short[] or long[] array."""
     if not isinstance(entry, dict):
@@ -424,6 +455,9 @@ def _validate_keytimes_entry(entry, channel=0, index=0):
     rx_value = entry.get("rx_value")
     if isinstance(rx_value, int) and not isinstance(rx_value, bool):
         out["rx_value"] = max(0, min(127, rx_value))
+    led = validate_led_style(entry.get("led"))
+    if led:
+        out["led"] = led
     return out
 
 
@@ -658,6 +692,14 @@ def validate_button(btn, index=0, global_channel=None):
         hid_delay_ms = btn.get("hid_delay_ms")
         if isinstance(hid_delay_ms, int):
             validated["hid_delay_ms"] = max(1, min(5000, hid_delay_ms))
+
+    # Per-LED colors / animation for the on and off states. A SLOT-mode
+    # cc_inc/cc_dec button's slot table owns its LED, so the styles don't apply.
+    if not validated.get("cc_slots"):
+        for key in ("led_on", "led_off"):
+            led = validate_led_style(btn.get(key))
+            if led:
+                validated[key] = led
 
     # Extra messages sent alongside the button's own on/off message. Same Message
     # shape as keytimes entries, except a cc_inc/cc_dec needs its own cc: these

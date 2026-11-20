@@ -3,10 +3,11 @@
   import KeytimesEditor from './KeytimesEditor.svelte';
   import CcStepFields from './CcStepFields.svelte';
   import MessageList from './MessageList.svelte';
-  import type { ButtonLike, ButtonColor, ButtonMode, OffMode, MessageType } from '$lib/types';
+  import LedStyleEditor from './LedStyleEditor.svelte';
+  import type { ButtonLike, ButtonColor, ButtonMode, OffMode, MessageType, CycleEntryColor, LedStyle } from '$lib/types';
   import { MESSAGE_TYPE_LABELS, BUTTON_MODE_LABELS, BUTTON_COLORS } from '$lib/types';
   import { validationErrors, syncButtonStates, selectGroupNames, config } from '$lib/formStore';
-  import { keytimesUsesCcStep, buttonTurnsOff } from '$lib/validation';
+  import { keytimesUsesCcStep, buttonTurnsOff, ledStylesIgnored } from '$lib/validation';
 
   interface Props {
     button: ButtonLike;
@@ -86,6 +87,28 @@
     return { on: 'on press', off: '' };
   });
   let datalistId = $derived(`${idPrefix}-select-groups`);
+
+  // Per-LED styles (led_on / led_off). Not on keytimes buttons (each entry has its
+  // own) or CC+/CC- Slots buttons (the slot colors own the LED).
+  let showLedStyles = $derived(hasLed && !ledStylesIgnored(button));
+  let onColor = $derived((button.color ?? 'white') as CycleEntryColor);
+  let ledOnFallback = $derived<CycleEntryColor[]>([onColor, onColor, onColor]);
+  // The off look without led_off pixels, as the firmware resolves it: off_color,
+  // else off_mode 'off' (dark), else led_on's pixels or the color, dimmed.
+  let ledOffFallback = $derived.by<CycleEntryColor[]>(() => {
+    if (button.off_color) return [button.off_color, button.off_color, button.off_color];
+    if (button.off_mode === 'off') return ['off', 'off', 'off'];
+    return button.led_on?.pixels ?? ledOnFallback;
+  });
+  let ledOffFallbackDim = $derived(!button.off_color && button.off_mode !== 'off');
+  let ledOffSeed = $derived.by<CycleEntryColor[]>(() => {
+    if (button.off_color) return [button.off_color, button.off_color, button.off_color];
+    return button.led_on?.pixels ?? ledOnFallback;
+  });
+
+  function handleLedStyleChange(field: 'led_on' | 'led_off', style: LedStyle | undefined) {
+    onUpdate(field, style);
+  }
 
   function handleLabelChange(e: Event) {
     const target = e.target as HTMLInputElement;
@@ -658,6 +681,33 @@
     {/if}
   {/if}
 
+  {#if showLedStyles}
+    <div class="led-styles">
+      <LedStyleEditor
+        idPrefix={fieldId('led-on')}
+        legend="LED when on"
+        style={button.led_on}
+        fallbackPixels={ledOnFallback}
+        errorPath={`${basePath}.led_on`}
+        {disabled}
+        title="Per-LED colors and animation while the button is on (or flashing after a press). The screen tile keeps the LED Color."
+        onchange={(s) => handleLedStyleChange('led_on', s)}
+      />
+      <LedStyleEditor
+        idPrefix={fieldId('led-off')}
+        legend="LED when off"
+        style={button.led_off}
+        fallbackPixels={ledOffFallback}
+        fallbackDim={ledOffFallbackDim}
+        seedPixels={ledOffSeed}
+        errorPath={`${basePath}.led_off`}
+        {disabled}
+        title="Per-LED colors and animation while the button is off. Custom colors show at full brightness and replace LED Off Color / Off Mode."
+        onchange={(s) => handleLedStyleChange('led_off', s)}
+      />
+    </div>
+  {/if}
+
   {#if !isKeytimesMode && !disabled}
     <div class="extra-messages">
       <MessageList
@@ -976,6 +1026,14 @@
     color: #888;
     font-style: italic;
     margin-top: 2px;
+  }
+
+  .led-styles {
+    flex-basis: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: flex-start;
   }
 
   .color-swatch {

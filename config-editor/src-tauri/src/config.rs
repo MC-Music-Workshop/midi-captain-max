@@ -51,6 +51,30 @@ pub enum CycleEntryColor {
     Off,
 }
 
+/// How a switch's three LEDs move (`LedStyle.animation`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum LedAnimation {
+    #[default]
+    Solid,
+    Flash,
+    Spin,
+}
+
+/// Per-LED colors and animation for one switch state (`led_on` / `led_off` on a
+/// button, `led` on a keytimes entry). Every field is optional; without `pixels`
+/// the state's usual color fills all three LEDs.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct LedStyle {
+    /// Exactly three colors (one per LED, strip order); length checked by `validate_led_style`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pixels: Option<Vec<CycleEntryColor>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub animation: Option<LedAnimation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speed_ms: Option<u16>,
+}
+
 /// Behavior when re-pressing the already-active member of a select group.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -208,6 +232,9 @@ pub struct KeytimesEntry {
     /// selects this entry (#200). Entries without it can't be reached from MIDI.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rx_value: Option<u8>,
+    /// Per-LED colors / animation while this entry owns the LED.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub led: Option<LedStyle>,
 }
 
 /// Per-state overrides for keytimes cycling
@@ -261,6 +288,12 @@ pub struct ButtonConfig {
     /// Distinct off-state color. When set it overrides `off_mode`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub off_color: Option<ButtonColor>,
+    /// Per-LED colors / animation for the on and off states. Ignored by the firmware
+    /// on keytimes buttons and cc_inc/cc_dec SLOT buttons.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub led_on: Option<LedStyle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub led_off: Option<LedStyle>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel: Option<u8>,
     // CC fields
@@ -905,7 +938,16 @@ fn validate_button(button: &ButtonConfig, name: &str, label_max: usize, page_cou
                     errors.push(format!("{} {} entry {} rx_value {} exceeds 127", name, cycle, e + 1, v));
                 }
             }
+            if let Some(ref led) = entry.led {
+                validate_led_style(led, &format!("{} {} entry {} led", name, cycle, e + 1), errors);
+            }
         }
+    }
+    if let Some(ref led) = button.led_on {
+        validate_led_style(led, &format!("{} led_on", name), errors);
+    }
+    if let Some(ref led) = button.led_off {
+        validate_led_style(led, &format!("{} led_off", name), errors);
     }
     if let Some(ms) = button.flash_ms {
         if !(50..=5000).contains(&ms) {
@@ -987,6 +1029,21 @@ fn validate_button(button: &ButtonConfig, name: &str, label_max: usize, page_cou
         }
         if button.states.is_some() {
             errors.push(format!("{} 'states' field is not allowed on mode='keytimes' (use short[]/long[])", name));
+        }
+    }
+}
+
+/// Schema constraints serde can't express: `pixels` has exactly 3 entries and
+/// `speed_ms` is 50-5000. `name` is the full prefix, e.g. "Page 1, Button 3 led_on".
+fn validate_led_style(led: &LedStyle, name: &str, errors: &mut Vec<String>) {
+    if let Some(ref pixels) = led.pixels {
+        if pixels.len() != 3 {
+            errors.push(format!("{} pixels must have exactly 3 colors (got {})", name, pixels.len()));
+        }
+    }
+    if let Some(ms) = led.speed_ms {
+        if !(50..=5000).contains(&ms) {
+            errors.push(format!("{} speed_ms {} out of range (50-5000)", name, ms));
         }
     }
 }
@@ -1593,7 +1650,7 @@ mod tests {
                 color: ButtonColor::Red,
                 message_type: MessageType::Cc,
                 mode: ButtonMode::Toggle,
-                off_mode: OffMode::Dim, off_color: None,
+                off_mode: OffMode::Dim, off_color: None, led_on: None, led_off: None,
                 channel: None, cc: Some(20 + i as u8), cc_on: None, cc_off: None, cc_receive: None,
                 note: None, velocity_on: None, velocity_off: None,
                 program: None, pc_step: None, page_step: None, page: None, flash_ms: None,
@@ -2086,5 +2143,73 @@ mod tests {
             "active_page": 0
         }"#;
         assert!(parse_migrated(json).validate().is_ok());
+    }
+
+    // --- Per-LED styles (led_on / led_off / keytimes entry led) ---
+
+    #[test]
+    fn test_led_style_roundtrips() {
+        let json = r#"{
+            "device": "one1",
+            "pages": [{"buttons": [
+                {"label": "X", "color": "green", "cc": 20,
+                 "led_on": {"pixels": ["red", "off", "white"], "animation": "spin", "speed_ms": 120},
+                 "led_off": {"animation": "flash"}}
+            ]}],
+            "active_page": 0
+        }"#;
+        let config = parse_migrated(json);
+        let b = &config.pages[0].buttons[0];
+        let on = b.led_on.as_ref().unwrap();
+        assert_eq!(on.pixels, Some(vec![CycleEntryColor::Red, CycleEntryColor::Off, CycleEntryColor::White]));
+        assert_eq!(on.animation, Some(LedAnimation::Spin));
+        assert_eq!(on.speed_ms, Some(120));
+        assert_eq!(b.led_off.as_ref().unwrap().pixels, None);
+        config.validate().unwrap();
+        let out = serde_json::to_value(&config).unwrap();
+        assert_eq!(out["pages"][0]["buttons"][0]["led_off"], serde_json::json!({"animation": "flash"}));
+        assert!(out["pages"][0]["buttons"][0]["led_on"]["pixels"].is_array());
+    }
+
+    #[test]
+    fn test_led_style_rejects_bad_animation_and_color() {
+        let base = r#"{"device": "one1", "pages": [{"buttons": [
+            {"label": "X", "color": "green", "led_on": LED}]}], "active_page": 0}"#;
+        let parse = |led: &str| {
+            let v = migrate_to_pages(serde_json::from_str(&base.replace("LED", led)).unwrap());
+            serde_json::from_value::<MidiCaptainConfig>(v)
+        };
+        assert!(parse(r#"{"animation": "pulse"}"#).is_err());
+        assert!(parse(r#"{"pixels": ["red", "pink", "blue"]}"#).is_err());
+    }
+
+    #[test]
+    fn test_validate_led_style_ranges() {
+        let json = r#"{
+            "device": "one1",
+            "pages": [{"buttons": [
+                {"label": "X", "color": "green", "cc": 20,
+                 "led_on": {"pixels": ["red", "blue"], "animation": "flash", "speed_ms": 49},
+                 "led_off": {"pixels": ["red", "blue", "green", "white"], "speed_ms": 5001}},
+                {"label": "Y", "color": "green", "mode": "keytimes",
+                 "short": [{"led": {"pixels": ["red"]}}, {"led": {"speed_ms": 6000}}]}
+            ]}],
+            "active_page": 0
+        }"#;
+        let mut v: serde_json::Value = serde_json::from_str(json).unwrap();
+        v["device"] = serde_json::json!("duo2");
+        let errs = parse_migrated(&v.to_string()).validate().unwrap_err();
+        assert!(errs.iter().any(|e| e == "Page 1, Button 1 led_on pixels must have exactly 3 colors (got 2)"), "{errs:?}");
+        assert!(errs.iter().any(|e| e == "Page 1, Button 1 led_on speed_ms 49 out of range (50-5000)"), "{errs:?}");
+        assert!(errs.iter().any(|e| e == "Page 1, Button 1 led_off pixels must have exactly 3 colors (got 4)"), "{errs:?}");
+        assert!(errs.iter().any(|e| e == "Page 1, Button 1 led_off speed_ms 5001 out of range (50-5000)"), "{errs:?}");
+        assert!(errs.iter().any(|e| e == "Page 1, Button 2 short entry 1 led pixels must have exactly 3 colors (got 1)"), "{errs:?}");
+        assert!(errs.iter().any(|e| e == "Page 1, Button 2 short entry 2 led speed_ms 6000 out of range (50-5000)"), "{errs:?}");
+
+        // Boundaries are accepted.
+        let ok = r#"{"device": "one1", "pages": [{"buttons": [
+            {"label": "X", "color": "green", "led_on": {"speed_ms": 50}, "led_off": {"speed_ms": 5000}}]}],
+            "active_page": 0}"#;
+        parse_migrated(ok).validate().unwrap();
     }
 }

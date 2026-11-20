@@ -1,4 +1,4 @@
-import type { MidiCaptainConfig, Page, ButtonConfig, ButtonLike, KeytimesMessage } from './types';
+import type { MidiCaptainConfig, Page, ButtonConfig, ButtonLike, KeytimesMessage, LedStyle } from './types';
 
 // True when any short/long entry on a keytimes button fires a direction-only
 // cc_inc/cc_dec (#11, no cc of its own). Such a button carries the button-level
@@ -101,6 +101,39 @@ function validateMessages(messages: KeytimesMessage[], listPath: string, pageCou
       if (cherr) errors.set(`${mp}.channel`, cherr);
     }
   });
+}
+
+// True when the firmware ignores a button's led_on / led_off: keytimes buttons
+// (each entry's `led` owns the LED) and cc_inc/cc_dec SLOT buttons (slot colors do).
+export function ledStylesIgnored(btn: ButtonLike): boolean {
+  if (btn.mode === 'keytimes') return true;
+  const type = btn.type ?? 'cc';
+  return (type === 'cc_inc' || type === 'cc_dec') && btn.cc_slots !== undefined;
+}
+
+const LED_PIXEL_COLORS = ['red', 'green', 'blue', 'yellow', 'cyan', 'magenta', 'orange', 'purple', 'white', 'off'];
+export const LED_SPEED_MS_MIN = 50;
+export const LED_SPEED_MS_MAX = 5000;
+export const LED_SPEED_MS_DEFAULT = 250;
+
+// Validate one LedStyle at `path` (e.g. "buttons[3].led_on", "buttons[3].short[0].led").
+// speed_ms only counts with a moving animation: on 'solid' it's stale form state that
+// save strips, like flash_ms outside flash mode.
+function validateLedStyle(style: LedStyle | undefined, path: string, errors: Map<string, string>) {
+  if (!style) return;
+  if (style.pixels !== undefined) {
+    const px = style.pixels as unknown[];
+    if (!Array.isArray(px) || px.length !== 3 || !px.every(c => LED_PIXEL_COLORS.includes(c as string))) {
+      errors.set(`${path}.pixels`, 'Pick a color (or off) for each of the 3 LEDs');
+    }
+  }
+  if (style.animation !== undefined && !['solid', 'flash', 'spin'].includes(style.animation)) {
+    errors.set(`${path}.animation`, 'Animation must be solid, flash or spin');
+  }
+  if (style.speed_ms !== undefined && (style.animation === 'flash' || style.animation === 'spin')) {
+    const e = validators.ledSpeedMs(style.speed_ms);
+    if (e) errors.set(`${path}.speed_ms`, e);
+  }
 }
 
 export const CC_SLOTS_MIN = 2;
@@ -207,6 +240,12 @@ export const validators = {
     return null;
   },
 
+  ledSpeedMs: (value: number): string | null => {
+    if (!Number.isInteger(value) || value < LED_SPEED_MS_MIN || value > LED_SPEED_MS_MAX) {
+      return `Speed must be between ${LED_SPEED_MS_MIN} and ${LED_SPEED_MS_MAX} ms`;
+    }
+    return null;
+  },
   flashMs: (value: number): string | null => {
     if (!Number.isInteger(value)) return 'Flash duration must be an integer';
     if (value < 50 || value > 5000) return 'Flash duration must be between 50 and 5000 ms';
@@ -410,6 +449,7 @@ function validateButton(btn: ButtonLike, bp: string, pageCount: number,
           const e = validators.withinRange(entry.rx_value, 0, 127);
           if (e) errors.set(`${bp}.${cycle}[${ei}].rx_value`, e);
         }
+        validateLedStyle(entry.led, `${bp}.${cycle}[${ei}].led`, errors);
         for (const slot of ['down', 'up'] as const) {
           const messages = entry[slot];
           if (!messages) continue;
@@ -417,6 +457,12 @@ function validateButton(btn: ButtonLike, bp: string, pageCount: number,
         }
       });
     }
+  }
+
+  // Per-LED styles. Skipped where the firmware ignores them (save strips them there).
+  if (!ledStylesIgnored(btn)) {
+    validateLedStyle(btn.led_on, `${bp}.led_on`, errors);
+    validateLedStyle(btn.led_off, `${bp}.led_off`, errors);
   }
 
   // Extra messages on non-keytimes modes. messages_off only counts when the

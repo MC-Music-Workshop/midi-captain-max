@@ -182,6 +182,7 @@ while True:
     handle_switches()   # TX: scan footswitches, dispatch MIDI on change
     flush_cc_step_updates()  # deferred LED/status repaints for cc_inc/cc_dec (#11)
     update_pc_flash_timers()
+    update_led_animations()  # advance flash/spin LED styles; no-op when none run
     if HAS_ENCODER:
         handle_encoder()
     if HAS_EXPRESSION:
@@ -229,7 +230,7 @@ Per-loop flow for a keytimes-mode button:
 1. `state.tracker.update(sw.pressed, time.monotonic())` returns timing events (`short_down`/`short_up`/`long_down`/`long_up`)
 2. `dispatch_keytimes_events(events, state, btn_config, callback, callback_args)` — pure function in `core/button.py`, calls `callback(msg, *callback_args)` for each Message to dispatch, updates state's inherited color/dim/label, advances cycles on press-end. `code.py` passes `_dispatch_message` and `(default_channel, btn_num)` directly — not a lambda adapter — to keep one frame off the pystack (see "Keep `label.text =` off deep call chains")
 3. `_dispatch_message(msg, default_channel, btn_num)` routes by `msg["type"]` to ControlChange/ProgramChange/NoteOn/NoteOff/dispatch_hid
-4. `_render_keytimes_led(btn_num, state, btn_config)` resolves both the LED and the label color via `resolve_keytimes_render_color()` (in `core/colors.py`), which wraps `compute_keytimes_led_color()`'s two-layer rule (short.color == "off" kills; else long.color if set; else short.color; else off)
+4. `_render_keytimes_led(btn_num, state, btn_config)` resolves the LED via `resolve_keytimes_led()` (`core/led_style.py`, adds entry LED styles, see LED Styles below) and the label color via `resolve_keytimes_render_color()` (in `core/colors.py`), which wraps `compute_keytimes_led_color()`'s two-layer rule (short.color == "off" kills; else long.color if set; else short.color; else off)
 
 Cycle state lives in RAM only — resets on power cycle / config reload. Per-page persistence (when #15 lands) keys the state table on `(page_id, button_idx)`.
 
@@ -315,6 +316,16 @@ PC buttons support four LED modes (`mode` field); MIDI is always sent on press r
 - **`select`**: radio-group exclusivity (see Select Mode below).
 
 Flash timers store **expiry time** as `time.monotonic() + flash_ms / 1000.0` (not loop-tick counting — the main loop has no sleep so tick count is unreliable).
+
+### LED Styles: per-LED colors and animations
+
+Each switch drives three NeoPixels. A `LedStyle` (`pixels`: three color names incl. `"off"`, `animation`: `solid`/`flash`/`spin`, `speed_ms` 50–5000, default 250) can sit on a button as `led_on` / `led_off` or on a keytimes entry as `led`. `validate_led_style()` (`core/config.py`) cleans one and returns `None` for anything that would render like no style (no pixels and solid), so `btn.get("led_on")` being truthy means "this button has a style". `validate_button` drops both styles on SLOT-mode `cc_inc`/`cc_dec` (the slot table owns the LED); keytimes buttons never get them (entries own the LED).
+
+Resolution is pure, in `core/led_style.py`: `resolve_button_led(btn_config, on, color_rgb)` and `resolve_keytimes_led(...)` return `(pattern, animation, speed_ms)`, where pattern is three RGB tuples. Rules: without `pixels`, the state's usual color fills all three LEDs. The off state uses `led_off.pixels`, else `off_color`, else `off_mode` applied to `led_on.pixels` (dimmed multi-color) or to `color`. Keytimes keeps the `resolve_keytimes_render_color` layer rules (last-fired gating, `long_overlay`, short `"off"` kill switch), and an entry whose `led` has pixels counts as setting a color. Entry `dim` dims the pixels.
+
+`code.py`: `set_button_state()` and `_render_keytimes_led()` both end in `paint_led(led_idx, pattern, animation, speed_ms)`, which builds the frames (`style_frames`) and stores running animations in `led_anims[led_idx] = [frames, speed_ms, start, shown_frame]`. `update_led_animations()` runs every main-loop pass: it computes each running animation's frame from `time.monotonic()` and writes pixels only for switches whose frame changed, then one `pixels.show()`. Idle cost is one loop over `BUTTON_COUNT` `None`s. A repaint with identical frames keeps the running phase (a chatty host resending "on" doesn't freeze a flash in its on phase) but still rewrites the current frame, because the boot splash `pixels.fill()` paints over everything. The TFT tile is not animated: it keeps following `color`. When the #208 render step lands, `update_led_animations()` belongs inside it.
+
+Tests: `tests/test_led_style.py` (pure module + validator), `tests/test_code_led_style.py` (real `code.py` on the harness; `Pedal.loop()` calls `update_led_animations()`, so `advance()` steps animations). Example: `config-example-led-styles.json`.
 
 ### Select Mode (Radio Group)
 

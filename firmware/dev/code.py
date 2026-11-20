@@ -64,6 +64,7 @@ from core.config import (
 )
 from core.button import Switch, ButtonState, KeytimesButtonState, dispatch_keytimes_events, apply_keytimes_entry_render
 from core.display_model import build_screen, button_visual, keytimes_visual
+from core.led_style import style_frames, frame_index, resolve_button_led, resolve_keytimes_led
 from core.encoder import EncoderState
 from core.midi_rx import find_cc_rx_action, find_note_rx_target
 from core.cc_step import (
@@ -608,6 +609,10 @@ BUTTON_SLOTS = BUTTON_COUNT + (1 if HAS_ENCODER else 0)
 pc_flash_timers = [0.0] * BUTTON_SLOTS  # Expiry time (monotonic) for PC button flash; 0 = inactive
 hid_flash_timers = [0.0] * BUTTON_SLOTS  # Same for HID buttons
 PC_FLASH_DURATION_MS = 200              # Default PC/HID button flash duration in ms
+# Running LED animations (led_on / led_off / keytimes entry led), one slot per
+# switch's LED group: [frames, speed_ms, start, shown_frame] or None. Set by
+# paint_led(), advanced by update_led_animations() in the main loop.
+led_anims = [None] * BUTTON_COUNT
 
 
 # =============================================================================
@@ -810,17 +815,19 @@ def set_button_state(switch_idx, on):
     # Update LED
     led_idx = switch_to_led(switch_idx)
     if led_idx is not None:
-        if on:
-            rgb = color_rgb
-        elif off_color:
-            rgb = get_color(off_color)
+        if btn_config.get("led_on") or btn_config.get("led_off"):
+            # Per-LED colors / animation (LedStyle). The validator already
+            # dropped these for SLOT-mode cc_inc/cc_dec.
+            pattern, animation, speed_ms = resolve_button_led(btn_config, on, color_rgb)
         else:
-            rgb = get_off_color(color_rgb, off_mode)
-        base = led_idx * 3
-        for j in range(3):
-            if base + j < LED_COUNT:
-                pixels[base + j] = rgb
-        pixels.show()
+            if on:
+                rgb = color_rgb
+            elif off_color:
+                rgb = get_color(off_color)
+            else:
+                rgb = get_off_color(color_rgb, off_mode)
+            pattern, animation, speed_ms = (rgb, rgb, rgb), "solid", 0
+        paint_led(led_idx, pattern, animation, speed_ms)
 
     # Update display. Pass a config whose color is already resolved to the
     # current keytime state; button_visual() then applies the on/off rule
@@ -835,6 +842,56 @@ def set_button_state(switch_idx, on):
         if idx < len(button_boxes):
             _, box_palette = button_boxes[idx]
             box_palette[1] = visual["box_color"]
+
+
+def _write_led_frame(led_idx, frame):
+    base = led_idx * 3
+    for j in range(3):
+        if base + j < LED_COUNT:
+            pixels[base + j] = frame[j]
+
+
+def paint_led(led_idx, pattern, animation, speed_ms):
+    """Show a switch's three-LED pattern and start (or keep) its animation.
+
+    A repaint with the same frames and speed keeps the running animation's
+    phase, so a host that resends the same state many times a second doesn't
+    restart a flash on every message and freeze it in its on phase. It still
+    rewrites the current frame: something else (the boot splash) may have
+    painted over these pixels.
+    """
+    frames = style_frames(pattern, animation)
+    frame = frames[0]
+    if len(frames) > 1:
+        current = led_anims[led_idx]
+        if current is not None and current[0] == frames and current[1] == speed_ms:
+            frame = frames[current[3]]
+        else:
+            led_anims[led_idx] = [frames, speed_ms, time.monotonic(), 0]
+    else:
+        led_anims[led_idx] = None
+    _write_led_frame(led_idx, frame)
+    pixels.show()
+
+
+def update_led_animations():
+    """Advance running LED animations. Call each main loop; cheap when idle.
+
+    Writes only the switches whose frame changed, then one pixels.show().
+    """
+    now = time.monotonic()
+    changed = False
+    for led_idx in range(BUTTON_COUNT):
+        anim = led_anims[led_idx]
+        if anim is None:
+            continue
+        i = frame_index(anim[2], now, anim[1], len(anim[0]))
+        if i != anim[3]:
+            anim[3] = i
+            _write_led_frame(led_idx, anim[0][i])
+            changed = True
+    if changed:
+        pixels.show()
 
 
 def init_leds():
@@ -1446,20 +1503,17 @@ def _render_keytimes_led(btn_num, state, btn_config):
 
     # LED: last_fired gates which layer wins, so a stale long color can't stick (#157),
     # unless long_overlay opts into the latching-modifier behavior (long decorates short).
+    # resolve_keytimes_led() applies the same rules plus each entry's LedStyle.
     long_overlay = btn_config.get("long_overlay", False)
-    rgb = resolve_keytimes_render_color(state.last_fired,
-                                        state.short_color, state.short_dim,
-                                        state.long_color, state.long_dim,
-                                        btn_config.get("color"),
-                                        long_overlay)
+    pattern, animation, speed_ms = resolve_keytimes_led(state.last_fired,
+                                                        state.short_color, state.short_dim, state.short_led,
+                                                        state.long_color, state.long_dim, state.long_led,
+                                                        btn_config.get("color"),
+                                                        long_overlay)
 
     led_idx = switch_to_led(btn_num)
     if led_idx is not None:
-        base = led_idx * 3
-        for j in range(3):
-            if base + j < LED_COUNT:
-                pixels[base + j] = rgb
-        pixels.show()
+        paint_led(led_idx, pattern, animation, speed_ms)
 
     if HAS_TFT and idx < len(button_labels):
         # Label text + colors follow the shared #143/#157 rules in
@@ -1905,6 +1959,7 @@ while True:
     handle_switches()
     flush_cc_step_updates()
     update_pc_flash_timers()
+    update_led_animations()
     if HAS_ENCODER:
         handle_encoder()
     if HAS_EXPRESSION:

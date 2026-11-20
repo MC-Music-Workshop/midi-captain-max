@@ -4,6 +4,20 @@
  * Run: npm run generate:types
  */
 
+/**
+ * Color for a keytimes cycle entry. 'off' explicitly means LED dark; missing ('(inherit)' in the editor) means no override — the LED falls back to the button-level 'color' field for this entry.
+ */
+export type CycleEntryColor =
+  | "red"
+  | "green"
+  | "blue"
+  | "yellow"
+  | "cyan"
+  | "magenta"
+  | "orange"
+  | "purple"
+  | "white"
+  | "off";
 export type ButtonColor = "red" | "green" | "blue" | "yellow" | "cyan" | "magenta" | "orange" | "purple" | "white";
 /**
  * SLOT mode: LED color per slot (index 0 = first slot). Slots without an entry use the button's color. The LED stays lit at the current slot's color.
@@ -258,6 +272,8 @@ export interface ButtonConfig {
    * Distinct LED color for the off state (e.g. green when on, blue when off). Overrides off_mode: when set, the off state renders this color at full brightness instead of a dimmed/extinguished 'color'. Omit for the off_mode behavior. Ignored on mode='keytimes' buttons — their cycle entries own the LED.
    */
   off_color?: "red" | "green" | "blue" | "yellow" | "cyan" | "magenta" | "orange" | "purple" | "white";
+  led_on?: LedOn;
+  led_off?: LedOff;
   /**
    * Per-button MIDI channel override. Inherits global_channel if omitted.
    */
@@ -379,6 +395,46 @@ export interface ButtonConfig {
   hid_delay_ms?: number;
 }
 /**
+ * Per-LED colors and animation for the on state (including a flash-mode press). Without pixels, all three LEDs show 'color'. Ignored on mode='keytimes' buttons (use each entry's 'led') and on cc_inc/cc_dec SLOT buttons (the slot colors own the LED).
+ */
+export interface LedOn {
+  /**
+   * Color of each of the switch's three LEDs, in strip order (e.g. ["red", "white", "green"]). 'off' leaves that LED dark. Rendered at full brightness.
+   *
+   * @minItems 3
+   * @maxItems 3
+   */
+  pixels?: [CycleEntryColor, CycleEntryColor, CycleEntryColor];
+  /**
+   * Animation for this state. Default: 'solid'.
+   */
+  animation?: "solid" | "flash" | "spin";
+  /**
+   * Animation step in milliseconds: the on (and off) time for 'flash', the time per position for 'spin'. Ignored for 'solid'. Default: 250.
+   */
+  speed_ms?: number;
+}
+/**
+ * Per-LED colors and animation for the off state. Pixels render at full brightness and replace off_color / off_mode. Without pixels, the usual off look is used: off_color, else led_on's pixels (or 'color') dimmed or extinguished per off_mode. Same exclusions as led_on.
+ */
+export interface LedOff {
+  /**
+   * Color of each of the switch's three LEDs, in strip order (e.g. ["red", "white", "green"]). 'off' leaves that LED dark. Rendered at full brightness.
+   *
+   * @minItems 3
+   * @maxItems 3
+   */
+  pixels?: [CycleEntryColor, CycleEntryColor, CycleEntryColor];
+  /**
+   * Animation for this state. Default: 'solid'.
+   */
+  animation?: "solid" | "flash" | "spin";
+  /**
+   * Animation step in milliseconds: the on (and off) time for 'flash', the time per position for 'spin'. Ignored for 'solid'. Default: 250.
+   */
+  speed_ms?: number;
+}
+/**
  * Per-state overrides applied when cycling through keytimes. All fields optional — only specified fields override the base button config.
  */
 export interface StateOverride {
@@ -413,7 +469,7 @@ export interface KeytimesEntry {
    */
   up?: KeytimesMessage[];
   /**
-   * Color for this entry. Missing ('(inherit)' in the editor) means no override — the LED falls back to the button-level 'color' field for this entry. 'off' explicitly forces LED dark (kill-switch when on short layer).
+   * Color for a keytimes cycle entry. 'off' explicitly means LED dark; missing ('(inherit)' in the editor) means no override — the LED falls back to the button-level 'color' field for this entry.
    */
   color?: "red" | "green" | "blue" | "yellow" | "cyan" | "magenta" | "orange" | "purple" | "white" | "off";
   /**
@@ -428,6 +484,27 @@ export interface KeytimesEntry {
    * Standard MIDI byte value (0-127).
    */
   rx_value?: number;
+  led?: LedStyle;
+}
+/**
+ * Per-LED colors and animation while this entry owns the LED. Follows the same short/long precedence as 'color' (an entry with pixels counts as setting a color). 'dim' applies to the pixels too. A short entry whose color is 'off' still turns the LEDs off.
+ */
+export interface LedStyle {
+  /**
+   * Color of each of the switch's three LEDs, in strip order (e.g. ["red", "white", "green"]). 'off' leaves that LED dark. Rendered at full brightness.
+   *
+   * @minItems 3
+   * @maxItems 3
+   */
+  pixels?: [CycleEntryColor, CycleEntryColor, CycleEntryColor];
+  /**
+   * Animation for this state. Default: 'solid'.
+   */
+  animation?: "solid" | "flash" | "spin";
+  /**
+   * Animation step in milliseconds: the on (and off) time for 'flash', the time per position for 'spin'. Ignored for 'solid'. Default: 250.
+   */
+  speed_ms?: number;
 }
 /**
  * Per-page rotary encoder configuration. Only supported on STD10.
@@ -518,6 +595,8 @@ export interface EncoderPush {
    * Distinct LED color for the off state (e.g. green when on, blue when off). Overrides off_mode: when set, the off state renders this color at full brightness instead of a dimmed/extinguished 'color'. Omit for the off_mode behavior. Ignored on mode='keytimes' buttons — their cycle entries own the LED.
    */
   off_color?: "red" | "green" | "blue" | "yellow" | "cyan" | "magenta" | "orange" | "purple" | "white";
+  led_on?: LedOn;
+  led_off?: LedOff;
   /**
    * Per-button MIDI channel override. Inherits global_channel if omitted.
    */

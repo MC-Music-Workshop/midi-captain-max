@@ -7,6 +7,7 @@ Tests for the hardware bench suite in tools/bench/ (pure logic only, no device).
 
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -64,15 +65,57 @@ def test_count_page_lines():
   assert serial_stall.count_page_lines(b"") == 0
 
 
-@pytest.mark.parametrize("mode,flips,lines,slow,passed", [
-  ("read", 200, 200, 0, True),
-  ("read", 200, 198, 0, True),   # within default tolerance
-  ("read", 200, 197, 0, False),  # lines lost
-  ("read", 200, 200, 1, False),  # one slow send
-  ("hold", 2000, 1726, 0, True),  # host dropped output: informational only
-  ("hold", 2000, 1726, 3, False),
+@pytest.mark.parametrize("mode,flips,lines,slow,probe,passed", [
+  ("read", 200, 200, 0, None, True),
+  ("read", 200, 198, 0, None, True),   # within default tolerance
+  ("read", 200, 197, 0, None, False),  # lines lost
+  ("read", 200, 200, 1, None, False),  # one slow send
+  ("hold", 2000, 1726, 0, 10, True),   # host dropped output: informational only
+  ("hold", 2000, 50, 0, 10, True),
+  ("hold", 2000, 1726, 3, 10, False),
+  ("hold", 2000, 1726, 0, 0, False),   # pedal silent after the hold: wedged
+  ("hold", 2000, 1726, 0, None, False),
 ])
-def test_evaluate(mode, flips, lines, slow, passed):
-  ok, summary = serial_stall.evaluate(mode, flips, lines, slow)
+def test_evaluate(mode, flips, lines, slow, probe, passed):
+  ok, summary = serial_stall.evaluate(mode, flips, lines, slow, probe=probe)
   assert ok is passed
   assert f"{flips} flips" in summary and f"lines {lines}" in summary
+  if mode == "hold":
+    assert f"probe {probe}/{serial_stall.PROBE_FLIPS}" in summary
+
+
+class FakeSender:
+  """Stands in for the sendmidi Popen: a pipe for stdin, a pipe for stderr."""
+
+  def __init__(self, returncode=None):
+    self.returncode = returncode
+    r, w = os.pipe()
+    self.stdin = os.fdopen(w, "wb")
+    self._stdin_r = r
+    er, self._err_w = os.pipe()
+    os.set_blocking(er, False)
+    self.stderr = os.fdopen(er, "rb")
+
+  def poll(self):
+    return self.returncode
+
+  def sent(self):
+    self.stdin.flush()
+    os.set_blocking(self._stdin_r, False)
+    return os.read(self._stdin_r, 4096)
+
+
+def test_send_writes_one_command_line():
+  sender = FakeSender()
+  assert serial_stall.send(sender, 1) is None
+  assert sender.sent() == b"ch 4 cc 100 1\n"
+
+
+def test_send_reports_sendmidi_errors():
+  sender = FakeSender()
+  os.write(sender._err_w, b"Couldn't find MIDI output port\n")
+  assert "Couldn't find MIDI output" in serial_stall.send(sender, 0)
+
+
+def test_send_reports_sendmidi_exit():
+  assert serial_stall.send(FakeSender(returncode=1), 0) == "sendmidi exited rc=1"

@@ -4,14 +4,15 @@
 #
 # Tests: din-count.sh, serial-stall.py read, serial-stall.py hold (~10 min total,
 #   mostly the hold run). Exits nonzero if any test fails.
-# Config: tools/bench/configs/nano4-207-serial-din-test.json on the pedal.
+# Config: tools/bench/configs/nano4-207-serial-din-test.json (or std10-207-...) on the pedal.
 # Setup: one pedal on USB; USB-to-DIN cable OUT -> pedal MIDI IN; nothing else
 #   holding the pedal's serial console open.
 # Firmware version: --fw-version, else VERSION.txt from a mounted CircuitPython
 #   drive, else "unknown" (performance mode hides the drive).
 #
 # Usage: tools/bench/run.sh [--pedal-port NAME] [--din-port NAME]
-#          [--serial /dev/cu.usbmodemXXXX] [--fw-version X.Y.Z]
+#          [--serial /dev/cu.usbmodemXXXX] [--fw-version X.Y.Z] [--gap S]
+#   --gap: serial-stall seconds per flip (default 0.25; use 0.4 on an STD10)
 
 set -uo pipefail
 
@@ -25,9 +26,9 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --pedal-port) pedal_args=("$1" "$2"); shift 2 ;;
     --din-port) din_args=("$1" "$2"); shift 2 ;;
-    --serial) serial_args+=("$1" "$2"); shift 2 ;;
+    --serial|--gap) serial_args+=("$1" "$2"); shift 2 ;;
     --fw-version) fw_version="$2"; shift 2 ;;
-    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done

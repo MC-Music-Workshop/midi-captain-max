@@ -932,10 +932,13 @@ def get_display_config(cfg):
     if expression_size not in valid_sizes:
         expression_size = "medium"
 
+    label_off_mode = display.get("label_off_mode", "dim")
+
     return {
         "button_text_size": button_size,
         "status_text_size": status_size,
         "expression_text_size": expression_size,
+        "label_off_mode": label_off_mode if label_off_mode in ("none", "invert") else "dim",
     }
 
 

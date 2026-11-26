@@ -71,22 +71,6 @@ def get_off_color(color_rgb, off_mode="dim"):
     return dim_color(color_rgb)
 
 
-def get_off_color_for_display(color_rgb, off_mode="dim"):
-    """Get the color to use for display labels when button is off.
-
-    Labels should always be visible regardless of off_mode setting.
-
-    Args:
-        color_rgb: The button's on-state RGB color
-        off_mode: Ignored - labels always show dim for visibility
-
-    Returns:
-        RGB tuple for the off state (always dimmed for visibility)
-    """
-    # Always return dim color to keep labels visible on display
-    return dim_color(color_rgb)
-
-
 def compute_keytimes_led_color(short_color, short_dim, long_color, long_dim, button_color=None):
     """Resolve the LED color for a mode: "keytimes" button per the two-layer render rule.
 

@@ -53,6 +53,19 @@
         <option value="large">Large</option>
       </select>
     </div>
+
+    <div class="field-row">
+      <label for="display-label-off-mode">Button label when off:</label>
+      <select
+        id="display-label-off-mode"
+        value={display?.label_off_mode ?? 'dim'}
+        onchange={(e) => handleField('label_off_mode', e)}
+      >
+        <option value="dim">Dim</option>
+        <option value="none">None (always lit)</option>
+        <option value="invert">Invert (filled when on)</option>
+      </select>
+    </div>
   </div>
 </Accordion>
 

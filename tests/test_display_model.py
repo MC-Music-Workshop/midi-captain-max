@@ -91,11 +91,6 @@ class TestButtonVisual:
         v = button_visual({"color": "green", "off_color": "blue"}, False, "invert")
         assert v["label_color"] == 0x0000FF
 
-    def test_build_screen_boots_in_label_off_mode(self):
-        cfg = [{"label": "A", "color": "green"}]
-        assert build_screen(cfg, 1, 20, False, "", "", "none")["buttons"][0]["label_color"] == 0x00FF00
-        assert build_screen(cfg, 1, 20, False, "", "")["buttons"][0]["label_color"] == 0x002600
-
 
 def _kt_state(**kw):
     st = KeytimesButtonState(threshold_ms=500, short_length=2, long_length=2)
@@ -208,6 +203,10 @@ class TestBuildScreen:
         assert b0["label_color"] == 0x002600     # boots in off state (dim green)
         # Missing config beyond the provided list falls back to numbered white
         assert s["buttons"][2]["text"] == "3"
+
+    def test_boots_in_label_off_mode(self):
+        s = build_screen(self.BUTTONS, 10, 20, False, "EXP1", "EXP2", "none")
+        assert s["buttons"][0]["label_color"] == 0x00FF00
 
     def test_expression_entries(self):
         s = build_screen(self.BUTTONS, 10, 20, True, "VOL", "WAH")

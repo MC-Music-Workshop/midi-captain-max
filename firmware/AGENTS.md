@@ -354,7 +354,7 @@ USB HID (keyboard + mouse) via the `"hid"` message type:
 
 ### Config Loading (`firmware/dev/core/config.py`)
 
-- `get_display_config(config)` — returns display settings with defaults (`"medium"` for all sizes)
+- `get_display_config(config)` — returns display settings with defaults (`"medium"` for all sizes, `"dim"` for `label_off_mode`)
 - `get_usb_drive_name(config)` — validated USB volume label; defaults to `"MIDICAPTAIN"`
 - `get_dev_mode(config)` — `bool(config.get("dev_mode", False))`, always safe to call
 - `validate_usb_drive_name(name)` — enforces FAT32 label rules: uppercase, alphanumeric + underscore, max 11 chars

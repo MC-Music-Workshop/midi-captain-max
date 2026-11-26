@@ -87,4 +87,3 @@ class TestGetOffColor:
         color = (0, 255, 0)  # Green
         result = get_off_color(color, off_mode="dim")
         assert result == dim_color(color)
-

@@ -834,7 +834,7 @@ def set_button_state(switch_idx, on):
         paint_tile(idx, button_visual(resolved, on, LABEL_OFF_MODE), slot_label)
 
 
-def paint_tile(idx, visual, text=None):
+def paint_tile(idx, visual, text):
     """Draw a display_model visual onto screen tile idx (label + box)."""
     if text is not None:
         button_labels[idx].text = text[:6]

@@ -696,7 +696,7 @@ export interface DisplayConfig {
    */
   expression_text_size?: "small" | "medium" | "large";
   /**
-   * How a button's screen label shows its off state. 'dim' = dimmed label, 'none' = label always lit (never changes with state), 'invert' = on shows dark text on a filled box, off shows the plain lit label. Keytimes-mode buttons keep their own label colors.
+   * How a button's screen label shows its off state. 'dim' = dimmed label, 'none' = label always lit (never changes with state), 'invert' = on shows dark text on a filled box, off shows the plain lit label.
    */
   label_off_mode?: "dim" | "none" | "invert";
 }
@@ -717,7 +717,7 @@ export interface DisplayConfig1 {
    */
   expression_text_size?: "small" | "medium" | "large";
   /**
-   * How a button's screen label shows its off state. 'dim' = dimmed label, 'none' = label always lit (never changes with state), 'invert' = on shows dark text on a filled box, off shows the plain lit label. Keytimes-mode buttons keep their own label colors.
+   * How a button's screen label shows its off state. 'dim' = dimmed label, 'none' = label always lit (never changes with state), 'invert' = on shows dark text on a filled box, off shows the plain lit label.
    */
   label_off_mode?: "dim" | "none" | "invert";
 }

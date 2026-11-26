@@ -914,7 +914,7 @@ def get_display_config(cfg):
         cfg: Full config dict
 
     Returns:
-        Display config dict with text size settings
+        Display config dict with text sizes and label_off_mode
     """
     display = cfg.get("display", {})
 

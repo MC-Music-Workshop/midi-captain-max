@@ -752,7 +752,7 @@
           "type": "string",
           "enum": ["dim", "none", "invert"],
           "default": "dim",
-          "description": "How a button's screen label shows its off state. 'dim' = dimmed label, 'none' = label always lit (never changes with state), 'invert' = on shows dark text on a filled box, off shows the plain lit label. Keytimes-mode buttons keep their own label colors."
+          "description": "How a button's screen label shows its off state. 'dim' = dimmed label, 'none' = label always lit (never changes with state), 'invert' = on shows dark text on a filled box, off shows the plain lit label."
         }
       },
       "additionalProperties": false

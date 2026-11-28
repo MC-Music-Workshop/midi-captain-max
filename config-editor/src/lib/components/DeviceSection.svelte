@@ -95,12 +95,12 @@
         value={usbDriveName}
         onblur={handleUsbDriveNameChange}
         maxlength="11"
-        placeholder="MIDICAPTAIN"
+        placeholder="Keep current name"
       />
       <p class="help-text">
-        Set this to the device's USB drive name (max 11 chars, letters/numbers/underscores).
-        Renaming the physical drive must be done manually for now.
-        Leave blank to use "MIDICAPTAIN".
+        The name the pedal's drive shows on your computer (up to 11 letters, numbers or underscores).
+        Save to Device &amp; Restart, or Restart Device after saving, renames the drive: it disappears for a few seconds and comes back with the new name.
+        Leave blank to keep the drive's current name. Clearing it doesn't rename the drive back.
       </p>
     </div>
 

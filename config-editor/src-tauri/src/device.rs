@@ -1,16 +1,12 @@
 //! Device detection via volume mounting
 
-#[cfg(not(target_os = "windows"))]
-use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher, Event, EventKind};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Sender, Receiver};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{command, AppHandle, Emitter};
-
-#[cfg(target_os = "windows")]
-use std::collections::HashSet;
 
 /// Known device volume names
 const DEVICE_VOLUMES: &[&str] = &["CIRCUITPY", "MIDICAPTAIN"];
@@ -31,27 +27,6 @@ pub fn is_midi_captain_config(config_path: &std::path::Path) -> bool {
         .and_then(|v| v.as_str())
         .and_then(crate::config::DeviceType::from_name)
         .is_some()
-}
-
-/// Parse a config.json and return the explicitly declared `usb_drive_name` if set,
-/// or `None` if the config is not a valid MIDI Captain config or has no custom name.
-///
-/// Returns `None` if:
-/// - the file doesn't exist, isn't valid JSON, or isn't a MIDI Captain config
-/// - the config is valid but has no `usb_drive_name` (no custom name declared)
-pub fn parse_midi_captain_config(config_path: &std::path::Path) -> Option<String> {
-    if !config_path.exists() {
-        return None;
-    }
-    let contents = std::fs::read_to_string(config_path).ok()?;
-    let value: serde_json::Value = serde_json::from_str(&contents).ok()?;
-    let device = value.get("device").and_then(|v| v.as_str())?;
-    crate::config::DeviceType::from_name(device)?;
-    // Return usb_drive_name only if explicitly set — no default fallback
-    value
-        .get("usb_drive_name")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
 }
 
 /// Get the volumes directory for the current platform
@@ -83,25 +58,24 @@ pub(crate) fn get_volumes_path() -> PathBuf {
     }
 }
 
-/// Scan for devices on Windows by checking all drive letters
-#[cfg(target_os = "windows")]
-fn scan_windows_drives() -> Vec<DetectedDevice> {
-    let mut devices = Vec::new();
-    
-    // Check drive letters A-Z
-    for letter in b'A'..=b'Z' {
-        let drive = format!("{}:\\", letter as char);
-        let path = PathBuf::from(&drive);
-        
-        if path.exists() {
-            // Get volume label
-            if let Some(device) = check_volume(&path) {
-                devices.push(device);
-            }
-        }
-    }
-    
-    devices
+/// Every mounted volume root right now, with its volume name: drive letters
+/// on Windows, the entries of `get_volumes_path()` elsewhere.
+fn list_mounts() -> Vec<(PathBuf, String)> {
+    #[cfg(target_os = "windows")]
+    let roots: Vec<PathBuf> = (b'A'..=b'Z')
+        .map(|letter| PathBuf::from(format!("{}:\\", letter as char)))
+        .filter(|p| p.exists())
+        .collect();
+
+    #[cfg(not(target_os = "windows"))]
+    let roots: Vec<PathBuf> = std::fs::read_dir(get_volumes_path())
+        .map(|entries| entries.flatten().map(|e| e.path()).collect())
+        .unwrap_or_default();
+
+    roots
+        .into_iter()
+        .filter_map(|p| get_volume_name(&p).map(|name| (p, name)))
+        .collect()
 }
 
 /// Detected device info
@@ -186,26 +160,87 @@ fn check_volume(path: &Path) -> Option<DetectedDevice> {
 /// Scan for connected devices
 #[command]
 pub fn scan_devices() -> Vec<DetectedDevice> {
-    #[cfg(target_os = "windows")]
+    list_mounts()
+        .into_iter()
+        .filter_map(|(path, _)| check_volume(&path))
+        .collect()
+}
+
+/// How often the watcher rescans the mounted volumes.
+const POLL_INTERVAL: Duration = Duration::from_secs(2);
+
+/// How many polls a newly mounted, unrecognized volume is re-checked before
+/// it's ignored until it unmounts. A custom-named device is only recognized
+/// by reading its config.json, which often isn't readable for the first
+/// second or two after the mount, so one check at mount time missed it.
+const MATCH_RETRIES: u32 = 5;
+
+/// What the watcher tells the frontend.
+#[derive(Debug, Clone)]
+pub(crate) enum DeviceEvent {
+    Connected(DetectedDevice),
+    /// The volume root that went away.
+    Disconnected(PathBuf),
+}
+
+/// Diffs successive volume listings into connect/disconnect events.
+///
+/// A volume is identified by its root path *and* its name, so a drive that
+/// comes back at the same path under a new name (a Windows drive letter
+/// after a rename) reads as disconnect + connect, same as on macOS where the
+/// path itself changes.
+#[derive(Default)]
+pub(crate) struct MountTracker {
+    /// Volumes reported to the frontend as connected devices.
+    known: HashSet<(PathBuf, String)>,
+    /// New volumes not recognized yet, with how many checks they've had.
+    pending: HashMap<(PathBuf, String), u32>,
+    /// Volumes that ran out of retries; skipped until they unmount.
+    ignored: HashSet<(PathBuf, String)>,
+}
+
+impl MountTracker {
+    /// One poll. `mounts` is every volume mounted now; `check` says whether
+    /// one is a device. Disconnects come before connects, so a device that
+    /// changed name at the same path is removed before it's added back.
+    pub(crate) fn poll<F>(&mut self, mounts: &[(PathBuf, String)], mut check: F) -> Vec<DeviceEvent>
+    where
+        F: FnMut(&Path) -> Option<DetectedDevice>,
     {
-        scan_windows_drives()
-    }
-    
-    #[cfg(not(target_os = "windows"))]
-    {
-        let volumes_path = get_volumes_path();
-        let mut devices = Vec::new();
-        
-        if let Ok(entries) = std::fs::read_dir(&volumes_path) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Some(device) = check_volume(&path) {
-                    devices.push(device);
+        let current: HashSet<&(PathBuf, String)> = mounts.iter().collect();
+        let mut events = Vec::new();
+
+        let mut gone: Vec<(PathBuf, String)> =
+            self.known.iter().filter(|m| !current.contains(m)).cloned().collect();
+        gone.sort();
+        for mount in gone {
+            self.known.remove(&mount);
+            events.push(DeviceEvent::Disconnected(mount.0));
+        }
+        self.pending.retain(|m, _| current.contains(m));
+        self.ignored.retain(|m| current.contains(m));
+
+        for mount in mounts {
+            if self.known.contains(mount) || self.ignored.contains(mount) {
+                continue;
+            }
+            match check(&mount.0) {
+                Some(device) => {
+                    self.pending.remove(mount);
+                    self.known.insert(mount.clone());
+                    events.push(DeviceEvent::Connected(device));
+                }
+                None => {
+                    let tries = self.pending.entry(mount.clone()).or_insert(0);
+                    *tries += 1;
+                    if *tries >= MATCH_RETRIES {
+                        self.pending.remove(mount);
+                        self.ignored.insert(mount.clone());
+                    }
                 }
             }
         }
-        
-        devices
+        events
     }
 }
 
@@ -215,8 +250,15 @@ static WATCHER_STARTED: AtomicBool = AtomicBool::new(false);
 // Global shutdown signal sender (allows stopping the watcher thread)
 static SHUTDOWN_TX: Mutex<Option<Sender<()>>> = Mutex::new(None);
 
-/// Start watching for device connections
-/// Emits "device-connected" and "device-disconnected" events
+/// Start watching for device connections.
+///
+/// Emits "device-connected" (a `DetectedDevice`) and "device-disconnected"
+/// (the volume root path). Polls the mounted volumes every `POLL_INTERVAL`
+/// on every platform. macOS/Linux used filesystem events on the volumes
+/// folder before, which checked a new volume once, at mount time: a
+/// custom-named drive whose config.json wasn't readable yet was never
+/// detected until the app restarted.
+///
 /// Note: Only one watcher can run at a time to prevent thread leaks
 #[command]
 pub fn start_device_watcher(app: AppHandle) -> Result<(), String> {
@@ -224,164 +266,32 @@ pub fn start_device_watcher(app: AppHandle) -> Result<(), String> {
     if WATCHER_STARTED.swap(true, Ordering::SeqCst) {
         return Ok(()); // Already running
     }
-    
-    #[cfg(target_os = "windows")]
-    {
-        start_windows_watcher(app)
-    }
-    
-    #[cfg(not(target_os = "windows"))]
-    {
-        start_unix_watcher(app)
-    }
-}
 
-/// Windows-specific watcher using polling
-#[cfg(target_os = "windows")]
-fn start_windows_watcher(app: AppHandle) -> Result<(), String> {
     let (shutdown_tx, shutdown_rx): (Sender<()>, Receiver<()>) = mpsc::channel();
-    
-    // Store shutdown sender for later use
     if let Ok(mut guard) = SHUTDOWN_TX.lock() {
         *guard = Some(shutdown_tx);
     }
-    
-    // Spawn polling thread
-    std::thread::spawn(move || {
-        let mut known_devices: HashSet<String> = HashSet::new();
-        
-        // Initial scan
-        for device in scan_windows_drives() {
-            known_devices.insert(device.name.clone());
-        }
-        
-        loop {
-            // Check for shutdown signal
-            if shutdown_rx.try_recv().is_ok() {
-                break;
-            }
-            
-            // Scan for devices
-            let current_devices = scan_windows_drives();
-            let current_names: HashSet<String> = 
-                current_devices.iter().map(|d| d.name.clone()).collect();
-            
-            // Check for newly connected devices
-            for device in current_devices {
-                if !known_devices.contains(&device.name) {
-                    let name = device.name.clone();
-                    let _ = app.emit("device-connected", device);
-                    known_devices.insert(name);
-                }
-            }
-            
-            // Check for disconnected devices
-            let disconnected: Vec<String> = known_devices
-                .difference(&current_names)
-                .cloned()
-                .collect();
-            
-            for name in disconnected {
-                let _ = app.emit("device-disconnected", name.clone());
-                known_devices.remove(&name);
-            }
-            
-            // Poll every 2 seconds
-            std::thread::sleep(Duration::from_secs(2));
-        }
-        
-        // Reset flag so watcher can be restarted if needed
-        WATCHER_STARTED.store(false, Ordering::SeqCst);
-    });
-    
-    Ok(())
-}
 
-/// Unix-specific watcher using filesystem events
-#[cfg(not(target_os = "windows"))]
-fn start_unix_watcher(app: AppHandle) -> Result<(), String> {
-    let (tx, rx) = mpsc::channel();
-    let (shutdown_tx, shutdown_rx): (Sender<()>, Receiver<()>) = mpsc::channel();
-    
-    // Store shutdown sender for later use
-    if let Ok(mut guard) = SHUTDOWN_TX.lock() {
-        *guard = Some(shutdown_tx);
-    }
-    
-    let mut watcher = RecommendedWatcher::new(
-        move |res: Result<Event, notify::Error>| {
-            if let Ok(event) = res {
-                let _ = tx.send(event);
-            }
-        },
-        // Configure for lower latency on macOS FSEvents
-        Config::default().with_poll_interval(Duration::from_millis(500)),
-    ).map_err(|e| e.to_string())?;
-    
-    let volumes_path = get_volumes_path();
-    watcher.watch(
-        &volumes_path,
-        RecursiveMode::NonRecursive,
-    ).map_err(|e| e.to_string())?;
-    
-    // Spawn thread to handle events
     std::thread::spawn(move || {
-        // Keep watcher alive
-        let _watcher = watcher;
-        
-        // Track which paths we have emitted "device-connected" for,
-        // so we can emit the matching "device-disconnected" even when
-        // the volume has a custom name not in DEVICE_VOLUMES.
-        let mut known_midi_captain_paths = std::collections::HashSet::new();
-        
+        let mut tracker = MountTracker::default();
         loop {
-            // Check for shutdown signal (non-blocking)
-            if shutdown_rx.try_recv().is_ok() {
-                break;
+            for event in tracker.poll(&list_mounts(), check_volume) {
+                let _ = match event {
+                    DeviceEvent::Connected(device) => app.emit("device-connected", device),
+                    DeviceEvent::Disconnected(path) => app.emit("device-disconnected", path),
+                };
             }
-            
-            // Check for filesystem events (with timeout to allow shutdown checks)
-            match rx.recv_timeout(std::time::Duration::from_millis(100)) {
-                Ok(event) => {
-                    match event.kind {
-                        EventKind::Create(_) => {
-                            // Volume mounted - check if it's a device
-                            for path in &event.paths {
-                                if let Some(device) = check_volume(path) {
-                                    known_midi_captain_paths.insert(path.clone());
-                                    let _ = app.emit("device-connected", device);
-                                }
-                            }
-                        }
-                        EventKind::Remove(_) => {
-                            // Volume unmounted - emit disconnect if we previously detected it
-                            for path in &event.paths {
-                                if known_midi_captain_paths.remove(path) {
-                                    let name_str = path
-                                        .file_name()
-                                        .map(|n| n.to_string_lossy().to_string())
-                                        .unwrap_or_default();
-                                    let _ = app.emit("device-disconnected", name_str);
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    // No event, continue loop (allows shutdown check)
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    // Channel closed, exit thread
-                    break;
-                }
+            // Sleep until the next poll, waking early on shutdown.
+            match shutdown_rx.recv_timeout(POLL_INTERVAL) {
+                Err(RecvTimeoutError::Timeout) => continue,
+                Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
             }
         }
-        
+
         // Reset flag so watcher can be restarted if needed
         WATCHER_STARTED.store(false, Ordering::SeqCst);
     });
-    
+
     Ok(())
 }
 
@@ -576,27 +486,109 @@ mod tests {
         assert!(result.is_none(), "Unknown volume with no config should not be detected");
     }
 
-    #[test]
-    fn test_parse_midi_captain_config_returns_drive_name() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.json");
-        std::fs::write(&path, r#"{"device": "std10", "usb_drive_name": "MYRIG", "buttons": []}"#).unwrap();
-        assert_eq!(parse_midi_captain_config(&path).as_deref(), Some("MYRIG"));
+    // ── MountTracker ──────────────────────────────────────────────────────────
+
+    fn mount(path: &str, name: &str) -> (PathBuf, String) {
+        (PathBuf::from(path), name.to_string())
+    }
+
+    fn device_at(path: &Path) -> DetectedDevice {
+        DetectedDevice {
+            name: path.file_name().unwrap().to_string_lossy().to_string(),
+            path: path.to_path_buf(),
+            config_path: path.join("config.json"),
+            has_config: true,
+        }
+    }
+
+    /// A `check` that recognizes the listed paths as devices.
+    fn devices_at<'a>(paths: &'a [&'a str]) -> impl FnMut(&Path) -> Option<DetectedDevice> + 'a {
+        move |p: &Path| paths.iter().any(|d| Path::new(d) == p).then(|| device_at(p))
+    }
+
+    fn summary(events: &[DeviceEvent]) -> Vec<String> {
+        events
+            .iter()
+            .map(|e| match e {
+                DeviceEvent::Connected(d) => format!("+{}", d.path.display()),
+                DeviceEvent::Disconnected(p) => format!("-{}", p.display()),
+            })
+            .collect()
     }
 
     #[test]
-    fn test_parse_midi_captain_config_returns_none_when_no_custom_name() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.json");
-        std::fs::write(&path, r#"{"device": "mini6", "buttons": []}"#).unwrap();
-        assert_eq!(parse_midi_captain_config(&path), None);
+    fn test_tracker_connects_then_stays_quiet() {
+        let mut t = MountTracker::default();
+        let mounts = [mount("/Volumes/MIDICAPTAIN", "MIDICAPTAIN"), mount("/Volumes/Data", "Data")];
+        let check = || devices_at(&["/Volumes/MIDICAPTAIN"]);
+        assert_eq!(summary(&t.poll(&mounts, check())), ["+/Volumes/MIDICAPTAIN"]);
+        assert!(t.poll(&mounts, check()).is_empty());
     }
 
     #[test]
-    fn test_parse_midi_captain_config_returns_none_for_non_device() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.json");
-        std::fs::write(&path, r#"{"device": "unknown"}"#).unwrap();
-        assert!(parse_midi_captain_config(&path).is_none());
+    fn test_tracker_disconnect_carries_the_path() {
+        let mut t = MountTracker::default();
+        let check = || devices_at(&["/Volumes/MYRIG"]);
+        t.poll(&[mount("/Volumes/MYRIG", "MYRIG")], check());
+        assert_eq!(summary(&t.poll(&[], check())), ["-/Volumes/MYRIG"]);
+        assert!(t.poll(&[], check()).is_empty());
+    }
+
+    #[test]
+    fn test_tracker_rename_with_new_path_is_disconnect_then_connect() {
+        // macOS/Linux: the mount point is named after the volume.
+        let mut t = MountTracker::default();
+        let check = || devices_at(&["/Volumes/MIDICAPTAIN", "/Volumes/STAGE_L"]);
+        t.poll(&[mount("/Volumes/MIDICAPTAIN", "MIDICAPTAIN")], check());
+        let events = t.poll(&[mount("/Volumes/STAGE_L", "STAGE_L")], check());
+        assert_eq!(summary(&events), ["-/Volumes/MIDICAPTAIN", "+/Volumes/STAGE_L"]);
+    }
+
+    #[test]
+    fn test_tracker_rename_at_same_path_is_disconnect_then_connect() {
+        // Windows: the drive letter can come straight back with the new label.
+        let mut t = MountTracker::default();
+        let check = || devices_at(&["E:\\"]);
+        t.poll(&[mount("E:\\", "MIDICAPTAIN")], check());
+        let events = t.poll(&[mount("E:\\", "STAGE_L")], check());
+        assert_eq!(summary(&events), ["-E:\\", "+E:\\"]);
+    }
+
+    #[test]
+    fn test_tracker_late_config_is_caught_within_retry_window() {
+        let mut t = MountTracker::default();
+        let mounts = [mount("/Volumes/STAGE_L", "STAGE_L")];
+        for _ in 0..MATCH_RETRIES - 1 {
+            assert!(t.poll(&mounts, devices_at(&[])).is_empty());
+        }
+        // config.json became readable on the last allowed check.
+        let events = t.poll(&mounts, devices_at(&["/Volumes/STAGE_L"]));
+        assert_eq!(summary(&events), ["+/Volumes/STAGE_L"]);
+    }
+
+    #[test]
+    fn test_tracker_ignores_unrecognized_volume_after_retries() {
+        let mut t = MountTracker::default();
+        let mounts = [mount("/Volumes/Backup", "Backup")];
+        let mut checks = 0;
+        for _ in 0..MATCH_RETRIES + 5 {
+            t.poll(&mounts, |_| {
+                checks += 1;
+                None
+            });
+        }
+        assert_eq!(checks, MATCH_RETRIES, "an ignored volume must not be re-read every poll");
+    }
+
+    #[test]
+    fn test_tracker_rechecks_ignored_volume_after_it_remounts() {
+        let mut t = MountTracker::default();
+        let mounts = [mount("/Volumes/STAGE_L", "STAGE_L")];
+        for _ in 0..MATCH_RETRIES {
+            t.poll(&mounts, devices_at(&[]));
+        }
+        t.poll(&[], devices_at(&[])); // unplugged
+        let events = t.poll(&mounts, devices_at(&["/Volumes/STAGE_L"]));
+        assert_eq!(summary(&events), ["+/Volumes/STAGE_L"]);
     }
 }

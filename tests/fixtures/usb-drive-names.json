@@ -1,0 +1,19 @@
+{
+  "_comment": "Shared cases for the drive-name rule: firmware/dev/core/config.py get_explicit_usb_drive_name and config-editor/src/lib/driveName.ts explicitUsbDriveName must both map each input to `explicit` (null = leave the drive label alone). Checked by tests/test_usb_drive_name.py and src/lib/driveName.test.ts.",
+  "cases": [
+    { "input": "MYBOARD", "explicit": "MYBOARD" },
+    { "input": "My Board", "explicit": "MYBOARD" },
+    { "input": "stage_l", "explicit": "STAGE_L" },
+    { "input": "  rig2  ", "explicit": "RIG2" },
+    { "input": "verylongdevicename", "explicit": "VERYLONGDEV" },
+    { "input": "MY-DEVICE!@#", "explicit": "MYDEVICE" },
+    { "input": "midicaptain", "explicit": "MIDICAPTAIN" },
+    { "input": "CIRCUITPY", "explicit": "CIRCUITPY" },
+    { "input": "", "explicit": null },
+    { "input": "   ", "explicit": null },
+    { "input": "!!!", "explicit": null },
+    { "input": "-- --", "explicit": null },
+    { "input": null, "explicit": null },
+    { "input": 123, "explicit": null }
+  ]
+}

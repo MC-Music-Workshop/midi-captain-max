@@ -135,10 +135,15 @@ impl From<serde_json::Error> for ConfigError {
 ///
 /// Accepts:
 /// 1. Volumes with a known name (CIRCUITPY or MIDICAPTAIN), or
-/// 2. Volumes whose config.json identifies as MIDI Captain **and** whose
-///    `usb_drive_name` matches the actual volume name (case-insensitive).
-///    This limits the surface: an arbitrary volume won't pass validation
-///    just because someone placed a config.json on it.
+/// 2. Volumes whose config.json identifies as MIDI Captain (a known
+///    `"device"`), whatever the volume is called — the same rule device
+///    detection uses (`device::check_volume`).
+///
+/// This used to also require a declared `usb_drive_name` to match the volume
+/// name. That added nothing (a config.json without the field passed on any
+/// volume) and locked the editor out of the pedal whenever the two differed,
+/// which is the normal state between saving a new USB Drive Name and the
+/// restart that applies it.
 pub(crate) fn validate_device_path(path: &str) -> Result<(), ConfigError> {
     let path = Path::new(path);
 
@@ -159,30 +164,16 @@ pub(crate) fn validate_device_path(path: &str) -> Result<(), ConfigError> {
         return Ok(());
     }
 
-    // Accept volumes that contain a valid MIDI Captain config.json.
-    // If usb_drive_name is explicitly declared in the config, it must match
-    // the actual volume name — preventing a stray config.json on an unrelated
-    // volume from passing. If usb_drive_name is not declared, any valid
-    // MIDI Captain config is accepted.
+    // Accept custom-named volumes that contain a valid MIDI Captain config.json.
     if let Some(volume_path) = get_volume_path(&canonical) {
-        let config_path = volume_path.join("config.json");
-        if crate::device::is_midi_captain_config(&config_path) {
-            match crate::device::parse_midi_captain_config(&config_path) {
-                Some(declared_name) if declared_name.eq_ignore_ascii_case(&volume_name) => {
-                    return Ok(());
-                }
-                None => {
-                    // No custom name declared — accept any valid MIDI Captain volume
-                    return Ok(());
-                }
-                _ => {} // declared name doesn't match this volume
-            }
+        if crate::device::is_midi_captain_config(&volume_path.join("config.json")) {
+            return Ok(());
         }
     }
 
     Err(ConfigError {
         message: format!(
-            "Path must be on a MIDI Captain device (CIRCUITPY, MIDICAPTAIN, or a custom-named volume whose config.json usb_drive_name matches), found: {}",
+            "Path must be on a MIDI Captain device (CIRCUITPY, MIDICAPTAIN, or a volume with a MIDI Captain config.json), found: {}",
             volume_name
         ),
         details: None,
@@ -584,6 +575,78 @@ pub fn restart_device(path: String) -> Result<(), ConfigError> {
     let path_obj = Path::new(&path);
     verify_device_connected(path_obj)?;
     soft_reboot_via_serial(path_obj)
+}
+
+/// The REPL line that applies a new drive name. `boot.py` writes the label,
+/// and it only runs on a hard reset; Ctrl-D (soft reload) doesn't run it.
+/// NVM byte 1 (`KEEP_DRIVE_BYTE` in `firmware/dev/core/boot_util.py`) tells
+/// that one boot to show the drive even in performance mode, so the renamed
+/// drive comes back without holding switch 1. Flag and reset are one line so
+/// the flag can't be left set without the reset: a leftover flag would show
+/// the drive on some later power-on, maybe on stage.
+pub(crate) const RENAME_RESET_LINE: &[u8] =
+    b"import microcontroller; microcontroller.nvm[1] = 1; microcontroller.reset()\r\n";
+
+/// Drive the REPL into `RENAME_RESET_LINE` and hold the port until the device
+/// drops off USB. `port` should have a short read timeout (~100 ms).
+///
+/// Ctrl-C, wait for code.py to stop, CRLF (CircuitPython consumes the next
+/// byte as the "Press any key" keypress, so without it the first byte of the
+/// command is eaten), wait for `>>>`, then the line. The waits key off the
+/// device's own output and fall through on timeout, like
+/// `soft_reboot_via_serial`.
+fn rename_reset_over_serial<P: Read + Write + ?Sized>(port: &mut P) -> Result<(), ConfigError> {
+    port.write_all(&[0x03])
+        .map_err(|e| ConfigError::msg(format!("Failed to send interrupt: {}", e)))?;
+    read_until(port, &["Press any key", "Code done running", ">>>"], Duration::from_secs(5));
+
+    port.write_all(b"\r\n")
+        .map_err(|e| ConfigError::msg(format!("Failed to enter REPL: {}", e)))?;
+    read_until(port, &[">>>"], Duration::from_secs(3));
+
+    port.write_all(RENAME_RESET_LINE)
+        .map_err(|e| ConfigError::msg(format!("Failed to send reset: {}", e)))?;
+    // The reset drops USB while this is in flight; errors from here are the
+    // expected outcome, not failures.
+    let _ = port.flush();
+    // CircuitPython only drains its console FIFO while the host holds the
+    // port open, so keep it open until the device goes away (the read errors)
+    // or a few seconds pass.
+    read_until(port, &[], Duration::from_secs(3));
+    Ok(())
+}
+
+/// Save & Restart when the drive name changed: eject the drive, then
+/// hard-reset the device so `boot.py` writes the new label.
+///
+/// The serial port is opened before the eject, so a device without one
+/// fails with its drive still mounted. The eject is best-effort: config.json
+/// was already fsynced by `write_config_raw`; ejecting first only stops the
+/// OS warning about a drive removed without ejecting. The caller waits for
+/// the drive to come back under its new name.
+#[command]
+pub async fn restart_device_with_rename(path: String) -> Result<(), ConfigError> {
+    validate_device_path(&path)?;
+    let path_obj = PathBuf::from(&path);
+    verify_device_connected(&path_obj)?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let port_name = find_device_serial_port(&path_obj)?;
+        let mut port = serialport::new(&port_name, 115200)
+            .timeout(Duration::from_millis(100))
+            .open()
+            .map_err(|e| ConfigError::msg(format!("Failed to open serial port {}: {}", port_name, e)))?;
+
+        if let Some(volume) = get_volume_path(&path_obj) {
+            if let Err(e) = eject_volume(&volume) {
+                eprintln!("restart_device_with_rename: eject failed, resetting anyway: {}", e.message);
+            }
+        }
+
+        rename_reset_over_serial(&mut *port)
+    })
+    .await
+    .map_err(|e| ConfigError::msg(format!("Restart task panicked: {e}")))?
 }
 
 /// Tell the device to reboot directly into the RP2040 ROM bootloader on its
@@ -997,5 +1060,76 @@ mod tests {
     fn read_until_resumes_after_interrupted_read() {
         let mut r = InterruptingReader { interrupted: false };
         assert!(read_until(&mut r, &["soft reboot"], Duration::from_secs(2)));
+    }
+
+    /// A CircuitPython console: answers Ctrl-C with the "press any key"
+    /// prompt, CRLF with `>>>`, and drops off USB (reads fail) once it sees
+    /// `microcontroller.reset()`. Records every byte written.
+    #[derive(Default)]
+    struct FakeRepl {
+        written: Vec<u8>,
+        pending: Vec<u8>,
+        reset: bool,
+    }
+
+    impl Read for FakeRepl {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            if self.reset {
+                return Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "device gone"));
+            }
+            if self.pending.is_empty() {
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "quiet"));
+            }
+            let n = self.pending.len().min(buf.len());
+            buf[..n].copy_from_slice(&self.pending[..n]);
+            self.pending.drain(..n);
+            Ok(n)
+        }
+    }
+
+    impl Write for FakeRepl {
+        fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+            self.written.extend_from_slice(data);
+            if data == [0x03] {
+                self.pending.extend_from_slice(
+                    b"Code done running.\r\n\r\nPress any key to enter the REPL. Use CTRL-D to reload.\r\n",
+                );
+            } else if data == b"\r\n" {
+                self.pending.extend_from_slice(b"\r\nAdafruit CircuitPython 7.3.1\r\n>>> ");
+            } else if data.windows(7).any(|w| w == b"reset()") {
+                self.reset = true;
+            }
+            Ok(data.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn rename_reset_sends_interrupt_keypress_then_one_line() {
+        let mut repl = FakeRepl::default();
+        let started = std::time::Instant::now();
+        rename_reset_over_serial(&mut repl).unwrap();
+
+        let mut expected = vec![0x03];
+        expected.extend_from_slice(b"\r\n");
+        expected.extend_from_slice(RENAME_RESET_LINE);
+        assert_eq!(repl.written, expected);
+        // Answered prompts and a device that dropped off USB: no timeout waited out.
+        assert!(started.elapsed() < Duration::from_secs(2), "took {:?}", started.elapsed());
+    }
+
+    #[test]
+    fn rename_reset_line_sets_flag_and_resets_together() {
+        let line = std::str::from_utf8(RENAME_RESET_LINE).unwrap();
+        // CP's REPL runs a line on CR: exactly one line, ending in CRLF.
+        assert!(line.ends_with("\r\n"));
+        assert_eq!(line.matches('\r').count(), 1);
+        assert_eq!(line.matches('\n').count(), 1);
+        let flag = line.find("microcontroller.nvm[1] = 1").expect("sets NVM byte 1");
+        let reset = line.find("microcontroller.reset()").expect("resets");
+        assert!(flag < reset, "flag must be set before the reset");
     }
 }

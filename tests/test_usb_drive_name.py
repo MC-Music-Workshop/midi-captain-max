@@ -134,6 +134,18 @@ def test_explicit_drive_name_midicaptain_only_when_asked_for():
     assert get_explicit_usb_drive_name({"usb_drive_name": "@@@"}) is None
 
 
+def test_explicit_drive_name_matches_shared_editor_cases():
+    """Same table as config-editor/src/lib/driveName.test.ts, so the editor's
+    "does this save need a rename restart?" agrees with what boot.py writes."""
+    import json
+    from pathlib import Path
+
+    fixture = Path(__file__).parent / "fixtures" / "usb-drive-names.json"
+    for case in json.loads(fixture.read_text())["cases"]:
+        got = get_explicit_usb_drive_name({"usb_drive_name": case["input"]})
+        assert got == case["explicit"], case
+
+
 def test_explicit_drive_name_agrees_with_get_usb_drive_name_when_valid():
     for raw in ("A", "abc_123", "My Board", "x" * 20, "CIRCUITPY"):
         cfg = {"usb_drive_name": raw}

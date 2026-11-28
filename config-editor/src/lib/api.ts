@@ -40,6 +40,15 @@ export async function restartDevice(path: string): Promise<void> {
   return invoke('restart_device', { path });
 }
 
+/**
+ * Eject the drive and hard-reset the device so boot.py writes the new drive
+ * name (a soft restart doesn't run boot.py). The drive disappears and comes
+ * back under the new name; the device watcher reports both.
+ */
+export async function restartDeviceWithRename(path: string): Promise<void> {
+  return invoke('restart_device_with_rename', { path });
+}
+
 export async function ejectDevice(path: string): Promise<void> {
   return invoke('eject_device', { path });
 }
@@ -144,7 +153,8 @@ export function onDeviceConnected(callback: (device: DetectedDevice) => void) {
   });
 }
 
-export function onDeviceDisconnected(callback: (name: string) => void) {
+/** `path` is the volume root that went away (a `DetectedDevice.path`). */
+export function onDeviceDisconnected(callback: (path: string) => void) {
   return listen<string>('device-disconnected', (event) => {
     callback(event.payload);
   });

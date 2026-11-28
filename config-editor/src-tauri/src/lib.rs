@@ -10,7 +10,7 @@ mod templates;
 mod updates;
 
 use agent::agent_tool;
-use commands::{detect_oem_v5_port, eject_device, enter_bootloader, enter_bootloader_oem_v5, read_config, read_config_raw, restart_device, validate_config, write_config, write_config_raw};
+use commands::{detect_oem_v5_port, eject_device, enter_bootloader, enter_bootloader_oem_v5, read_config, read_config_raw, restart_device, restart_device_with_rename, validate_config, write_config, write_config_raw};
 use config_files::{configs_dir, default_config, device_config_type, open_config_file, save_config_file};
 use device::{scan_devices, start_device_watcher, stop_device_watcher};
 use installer::{get_firmware_versions, install_firmware};
@@ -33,6 +33,7 @@ pub fn run() {
             write_config_raw,
             validate_config,
             restart_device,
+            restart_device_with_rename,
             eject_device,
             enter_bootloader,
             enter_bootloader_oem_v5,

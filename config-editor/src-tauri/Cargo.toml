@@ -33,7 +33,6 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-notify = "6"
 dirs = "5"
 serialport = "4"
 md-5 = "0.10"

@@ -9,12 +9,13 @@
   } from '$lib/stores';
   import {
     scanDevices, startDeviceWatcher, readConfigRaw, writeConfigRaw,
-    onDeviceConnected, onDeviceDisconnected, restartDevice, ejectDevice,
+    onDeviceConnected, onDeviceDisconnected, restartDevice, restartDeviceWithRename, ejectDevice,
     rpiRp2MountPath, detectOemV5Port, configsDir, openConfigFile, saveConfigFile,
     defaultConfig, deviceConfigType, getFirmwareVersions
   } from '$lib/api';
   import type { DetectedDevice, DeviceType, FirmwareVersions } from '$lib/types';
   import { firmwareSync, needsFirmwareNotice } from '$lib/firmwareSync';
+  import { driveRenameTarget, volumeLabel } from '$lib/driveName';
   import {
     buttonStates, afterSaveToDevice, afterSaveToFileAs, fileName, workingOnLabel,
     type WorkingOn
@@ -51,6 +52,14 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
   // Event listener cleanup functions
   let unlistenConnect: (() => void) | undefined;
   let unlistenDisconnect: (() => void) | undefined;
+
+  // A restart that applies a new drive name: the drive drops off and comes
+  // back under the new name (and, on macOS/Linux, a new path). While this is
+  // set, that disconnect isn't reported as one, and the drive that comes back
+  // as `to` is recognized as the same device.
+  let renaming = $state<{ from: DetectedDevice; to: string } | null>(null);
+  let renameTimer: ReturnType<typeof setTimeout> | null = null;
+  const RENAME_TIMEOUT_MS = 20000;
   
   const DEVICE_LABELS: Record<DeviceType, string> = {
     std10: 'STD10', mini6: 'Mini6', nano4: 'NANO4', duo2: 'DUO2', one1: 'ONE',
@@ -176,6 +185,11 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
         const exists = $devices.some(d => d.path === device.path);
         if (exists) return;
         $devices = [...$devices, device];
+
+        if (renaming && volumeLabel(device.name) === renaming.to) {
+          await finishRename(device);
+          return;
+        }
         $statusMessage = `Device connected: ${device.name}`;
 
         const wasSelected = $selectedDevice?.name === device.name;
@@ -205,12 +219,17 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
         }
       });
       
-      unlistenDisconnect = await onDeviceDisconnected(async (name) => {
-        // Remove device by name. The form and any edits stay (D7); Save to
-        // Device disables itself via `deviceConnected`. selectedDevice is kept
-        // so the device is re-selected when it reconnects.
-        $devices = $devices.filter(d => d.name !== name);
-        $statusMessage = `Device disconnected: ${name}`;
+      unlistenDisconnect = await onDeviceDisconnected(async (path) => {
+        // Remove the device at that volume path. The form and any edits stay
+        // (D7); Save to Device disables itself via `deviceConnected`.
+        // selectedDevice is kept so the device is re-selected when it reconnects.
+        const gone = $devices.find(d => d.path === path);
+        $devices = $devices.filter(d => d.path !== path);
+        if (renaming && renaming.from.path === path) {
+          $statusMessage = `Restarting as ${renaming.to}…`;
+          return;
+        }
+        $statusMessage = `Device disconnected: ${gone?.name ?? path}`;
       });
       
       // Auto-select if only one device
@@ -246,6 +265,7 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
     // Clean up event listeners to prevent memory leaks
     unlistenConnect?.();
     unlistenDisconnect?.();
+    if (renameTimer !== null) clearTimeout(renameTimer);
     if (rpiRp2PollTimer !== null) {
       clearInterval(rpiRp2PollTimer);
       rpiRp2PollTimer = null;
@@ -479,11 +499,27 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
   }
   
   async function doRestartDevice() {
-    if (!$selectedDevice) return;
+    const device = $selectedDevice;
+    if (!device) return;
+
+    // A new drive name is written by boot.py, which only a hard reset runs.
+    // Decide from the config on the device, not the form: the form may be a
+    // file or have unsaved edits. Unreadable config → the firmware leaves the
+    // label alone too, so a soft restart is right.
+    let renameTo: string | null = null;
+    try {
+      renameTo = driveRenameTarget(JSON.parse(await readConfigRaw(device.config_path)), device.name);
+    } catch {
+      renameTo = null;
+    }
 
     try {
-      await restartDevice($selectedDevice.config_path);
-      $statusMessage = 'Device restarting with new configuration...';
+      if (renameTo) {
+        await restartWithRename(device, renameTo);
+      } else {
+        await restartDevice(device.config_path);
+        $statusMessage = 'Device restarting with new configuration...';
+      }
     } catch (e: any) {
       console.error('Restart failed:', e);
       await message(
@@ -497,7 +533,58 @@ import PageControlSection from '$lib/components/PageControlSection.svelte';
       $statusMessage = 'Restart failed — please restart device manually';
     }
   }
-  
+
+  // Eject + hard reset; the device comes back under `to`. Throws if the
+  // restart couldn't be sent (doRestartDevice shows the manual-restart help).
+  async function restartWithRename(device: DetectedDevice, to: string) {
+    renaming = { from: device, to };
+    $statusMessage = `Restarting as ${to}…`;
+    if (renameTimer !== null) clearTimeout(renameTimer);
+    renameTimer = setTimeout(renameOverdue, RENAME_TIMEOUT_MS);
+    try {
+      await restartDeviceWithRename(device.config_path);
+    } catch (e) {
+      clearRename();
+      throw e;
+    }
+  }
+
+  function clearRename() {
+    renaming = null;
+    if (renameTimer !== null) clearTimeout(renameTimer);
+    renameTimer = null;
+  }
+
+  // The renamed drive is back: it's the device we were on, under a new name
+  // and path. Pick up where we were, like a reconnect of the same device.
+  async function finishRename(device: DetectedDevice) {
+    const from = renaming!.from;
+    clearRename();
+    $selectedDevice = device;
+    if ($workingOn?.kind === 'device' && $workingOn.device.path === from.path) {
+      $workingOn = { kind: 'device', device };
+      if (!$isDirty) {
+        // Small delay to ensure device is fully mounted before loading config
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await loadFromDevice(device, `Device restarted as ${device.name}`);
+        return;
+      }
+    }
+    $statusMessage = `Device restarted as ${device.name}`;
+  }
+
+  // Keep `renaming` so a late return is still recognized; just tell the user.
+  async function renameOverdue() {
+    renameTimer = null;
+    if (!renaming) return;
+    $statusMessage = `Waiting for ${renaming.to} to come back…`;
+    await message(
+      `The pedal restarted to apply the drive name ${renaming.to}, but the drive hasn't come back yet.\n\n` +
+      "If it doesn't appear, turn the pedal off, then hold Switch 1 while you turn it back on.",
+      { title: 'Drive Not Back Yet', kind: 'warning' }
+    );
+  }
+
   async function doEjectDevice() {
     if (!$selectedDevice) return;
 

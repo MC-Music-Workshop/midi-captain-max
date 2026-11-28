@@ -25,7 +25,7 @@ The config editor is a desktop app built with **SvelteKit 5 + Tauri 2 (Rust back
 | `src/lib/components/ConfigForm.svelte` | Toolbar (Undo/Redo/View JSON/Save), keyboard shortcuts |
 | `src/lib/components/ButtonRow.svelte` | Per-button fields; uses `onUpdate` callback prop |
 | `src/lib/components/ButtonsSection.svelte` | Iterates buttons, wires `handleButtonUpdate → updateField` |
-| `src/lib/components/DisplaySection.svelte` | Display text size settings |
+| `src/lib/components/DisplaySection.svelte` | Display settings: text sizes and button label off-state (`label_off_mode`) |
 | `src-tauri/src/config.rs` | Rust config structs + validation; must mirror `config.schema.json` |
 | `src-tauri/src/commands.rs` | Tauri commands: read/write/validate config, restart device, path security |
 | `src-tauri/src/device.rs` | USB device detection and watcher (cross-platform) |

@@ -482,7 +482,7 @@ impl DeviceType {
     }
 }
 
-/// Display text size settings
+/// Display settings: text sizes and the button label off-state style
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DisplayConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -491,6 +491,8 @@ pub struct DisplayConfig {
     pub status_text_size: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expression_text_size: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label_off_mode: Option<String>,
 }
 
 /// Jump slot: incoming CC value is the absolute target page index (0-based), clamped

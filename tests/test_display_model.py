@@ -54,7 +54,7 @@ class TestButtonVisual:
         assert v == {"label_color": 0x002600, "box_color": 0x002600}
 
     def test_off_mode_off_still_dims_display(self):
-        # get_off_color_for_display ignores off_mode — labels stay visible
+        # off_mode is the LED's; the screen label stays visible
         v = button_visual({"color": "green", "off_mode": "off"}, on=False)
         assert v["label_color"] == 0x002600
 
@@ -74,6 +74,22 @@ class TestButtonVisual:
     def test_off_color_ignored_when_on(self):
         v = button_visual({"color": "green", "off_color": "blue"}, on=True)
         assert v["box_color"] == 0x00FF00
+
+    def test_label_off_mode_none_never_changes(self):
+        for on in (True, False):
+            v = button_visual({"color": "green", "off_color": "blue"}, on, "none")
+            assert v == {"label_color": 0x00FF00, "box_color": 0x00FF00}
+
+    def test_label_off_mode_invert_on_is_dark_on_light(self):
+        v = button_visual({"color": "green"}, True, "invert")
+        assert v == {"label_color": 0x000000, "box_color": 0x00FF00,
+                     "fill_color": 0x00FF00}
+
+    def test_label_off_mode_invert_off_is_light_on_dark(self):
+        v = button_visual({"color": "green"}, False, "invert")
+        assert v == {"label_color": 0x00FF00, "box_color": 0x00FF00}
+        v = button_visual({"color": "green", "off_color": "blue"}, False, "invert")
+        assert v["label_color"] == 0x0000FF
 
 
 def _kt_state(**kw):
@@ -187,6 +203,10 @@ class TestBuildScreen:
         assert b0["label_color"] == 0x002600     # boots in off state (dim green)
         # Missing config beyond the provided list falls back to numbered white
         assert s["buttons"][2]["text"] == "3"
+
+    def test_boots_in_label_off_mode(self):
+        s = build_screen(self.BUTTONS, 10, 20, False, "EXP1", "EXP2", "none")
+        assert s["buttons"][0]["label_color"] == 0x00FF00
 
     def test_expression_entries(self):
         s = build_screen(self.BUTTONS, 10, 20, True, "VOL", "WAH")

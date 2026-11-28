@@ -20,6 +20,7 @@ from core.config import (
     validate_encoder_push,
     get_encoder_config,
     get_expression_config,
+    get_display_config,
     get_button_state_config,
     to_pages,
     get_active_page,
@@ -1871,3 +1872,13 @@ class TestCcStepButtons:
         }, index=0)
         assert "cc" not in btn
         assert "cc_slots" not in btn
+
+
+class TestDisplayConfig:
+    def test_label_off_mode_defaults_to_dim(self):
+        assert get_display_config({})["label_off_mode"] == "dim"
+        assert get_display_config({"display": {"label_off_mode": "blink"}})["label_off_mode"] == "dim"
+
+    @pytest.mark.parametrize("mode", ["dim", "none", "invert"])
+    def test_label_off_mode_passes_through(self, mode):
+        assert get_display_config({"display": {"label_off_mode": mode}})["label_off_mode"] == mode

@@ -424,7 +424,9 @@ if HAS_TFT:
     status_text_size = display_config["status_text_size"]
     expression_text_size = display_config["expression_text_size"]
 
-    print(f"Display config: button={button_text_size}, status={status_text_size}, expression={expression_text_size}")
+    LABEL_OFF_MODE = display_config["label_off_mode"]
+
+    print(f"Display config: button={button_text_size}, status={status_text_size}, expression={expression_text_size}, label_off={LABEL_OFF_MODE}")
 
     # Load fonts based on config
     BUTTON_FONT, BUTTON_FONT_HEIGHT = load_font(button_text_size)
@@ -635,7 +637,8 @@ if HAS_TFT:
     # and tests consume. This block only turns that model into displayio.
     screen_model = build_screen(
         buttons, BUTTON_COUNT, BUTTON_FONT_HEIGHT, HAS_EXPRESSION,
-        exp1_config.get("label", "EXP1"), exp2_config.get("label", "EXP2"))
+        exp1_config.get("label", "EXP1"), exp2_config.get("label", "EXP2"),
+        LABEL_OFF_MODE)
 
     for b in screen_model["buttons"]:
         # Create box background with border
@@ -824,17 +827,21 @@ def set_button_state(switch_idx, on):
 
     # Update display. Pass a config whose color is already resolved to the
     # current keytime state; button_visual() then applies the on/off rule
-    # (always-legible dim when off) — the same rule the boot screen used.
+    # (display.label_off_mode) — the same rule the boot screen used.
     if HAS_TFT and idx < len(button_labels):
         resolved = dict(btn_config)
         resolved["color"] = color_name
-        visual = button_visual(resolved, on)
-        if slot_label is not None:
-            button_labels[idx].text = slot_label[:6]
-        button_labels[idx].color = visual["label_color"]
-        if idx < len(button_boxes):
-            _, box_palette = button_boxes[idx]
-            box_palette[1] = visual["box_color"]
+        paint_tile(idx, button_visual(resolved, on, LABEL_OFF_MODE), slot_label)
+
+
+def paint_tile(idx, visual, text):
+    """Draw a display_model visual onto screen tile idx (label + box)."""
+    if text is not None:
+        button_labels[idx].text = text[:6]
+    button_labels[idx].color = visual["label_color"]
+    _, box_palette = button_boxes[idx]
+    box_palette[0] = visual.get("fill_color", 0x000000)
+    box_palette[1] = visual["box_color"]
 
 
 def init_leds():
@@ -960,11 +967,8 @@ def switch_page(n):
             _btn_cfg = buttons[i] if i < len(buttons) else {"label": str(i + 1), "color": "white"}
             # Same boot-off state build_screen() renders — shared so a page
             # flip re-labels exactly as the initial screen did.
-            _visual = button_visual(_btn_cfg, on=False)
-            button_labels[i].text = _btn_cfg.get("label", str(i + 1))[:6]
-            button_labels[i].color = _visual["label_color"]
-            _, _box_palette = button_boxes[i]
-            _box_palette[1] = _visual["box_color"]
+            paint_tile(i, button_visual(_btn_cfg, False, LABEL_OFF_MODE),
+                       _btn_cfg.get("label", str(i + 1)))
         if HAS_EXPRESSION and exp1_label is not None:
             exp1_label.text = exp1_config.get("label", "EXP1") + ": ---"
             exp2_label.text = exp2_config.get("label", "EXP2") + ": ---"
@@ -1467,11 +1471,7 @@ def _render_keytimes_led(btn_num, state, btn_config):
         # rgb_to_hex(rgb) resolved above (same inputs); label_color is the
         # full-brightness resolve with a black->button-color fallback.
         visual = keytimes_visual(state, btn_config)
-        button_labels[idx].text = visual["text"]
-        button_labels[idx].color = visual["label_color"]
-        if idx < len(button_boxes):
-            _, box_palette = button_boxes[idx]
-            box_palette[1] = visual["box_color"]
+        paint_tile(idx, visual, visual["text"])
 
 
 def handle_switches():

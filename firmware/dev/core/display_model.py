@@ -12,10 +12,10 @@ CircuitPython 7.x compatible (guarded by tools/check-circuitpython-parse.sh).
 # Import shim: on-device the package is core.colors; in the browser wasm
 # runtime the files sit flat (colors.py next to display_model.py).
 try:
-    from core.colors import (get_color, rgb_to_hex, get_off_color_for_display,
+    from core.colors import (get_color, rgb_to_hex, dim_color,
                              resolve_keytimes_render_color)
 except ImportError:
-    from colors import (get_color, rgb_to_hex, get_off_color_for_display,
+    from colors import (get_color, rgb_to_hex, dim_color,
                         resolve_keytimes_render_color)
 
 SCREEN_SIZE = (240, 240)
@@ -60,24 +60,30 @@ def compute_layout(button_count, button_font_height):
     }
 
 
-def button_visual(btn_config, on):
+def button_visual(btn_config, on, label_off_mode="dim"):
     """Label + box colors for a plain (non-keytimes) button's display state.
 
-    Off state renders off_color at full brightness when set (it overrides
-    off_mode), else the dimmed on-color (never fully off) so labels stay
-    legible — mirrors get_off_color_for_display's contract.
+    label_off_mode (display.label_off_mode) sets how the label shows off:
+      "dim"    - off_color at full brightness when set, else the dimmed
+                 on-color (never fully off, so labels stay legible).
+      "none"   - always the on-color: the label never changes with state.
+      "invert" - on is dark-on-light (box filled with the color, black text);
+                 off is the plain light-on-dark label (off_color when set).
+    The LED's off_mode never applies to the screen.
 
-    Returns {"label_color": 0xRRGGBB, "box_color": 0xRRGGBB}.
+    Returns {"label_color": 0xRRGGBB, "box_color": 0xRRGGBB}, plus
+    "fill_color" (box interior) when inverted.
     """
-    color_rgb = get_color(btn_config.get("color", "white"))
-    off_color = btn_config.get("off_color")
-    if on:
-        rgb = color_rgb
-    elif off_color:
-        rgb = get_color(off_color)
-    else:
-        rgb = get_off_color_for_display(color_rgb, btn_config.get("off_mode", "dim"))
+    rgb = get_color(btn_config.get("color", "white"))
+    if not on and label_off_mode != "none":
+        off_color = btn_config.get("off_color")
+        if off_color:
+            rgb = get_color(off_color)
+        elif label_off_mode == "dim":
+            rgb = dim_color(rgb)
     hex_color = rgb_to_hex(rgb)
+    if on and label_off_mode == "invert":
+        return {"label_color": 0x000000, "box_color": hex_color, "fill_color": hex_color}
     return {"label_color": hex_color, "box_color": hex_color}
 
 
@@ -135,7 +141,7 @@ EXPRESSION_POS = ((70, 150), (170, 150))
 
 
 def build_screen(buttons, button_count, button_font_height,
-                 has_expression, exp1_label, exp2_label):
+                 has_expression, exp1_label, exp2_label, label_off_mode="dim"):
     """Initial screen model: every button box+label in its boot (off) state,
     the status line, and expression readouts when the device has pedals.
 
@@ -148,7 +154,7 @@ def build_screen(buttons, button_count, button_font_height,
         btn_config = buttons[i] if i < len(buttons) else {"label": str(i + 1),
                                                           "color": "white"}
         x, y = layout["positions"][i]
-        visual = button_visual(btn_config, on=False)
+        visual = button_visual(btn_config, False, label_off_mode)
         entries.append({
             "x": x, "y": y,
             "w": layout["button_width"], "h": layout["button_height"],

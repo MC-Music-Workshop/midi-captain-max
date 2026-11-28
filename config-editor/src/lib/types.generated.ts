@@ -695,6 +695,10 @@ export interface DisplayConfig {
    * Expression pedal text size.
    */
   expression_text_size?: "small" | "medium" | "large";
+  /**
+   * How a button's screen label shows its off state. 'dim' = dimmed label, 'none' = label always lit (never changes with state), 'invert' = on shows dark text on a filled box, off shows the plain lit label.
+   */
+  label_off_mode?: "dim" | "none" | "invert";
 }
 /**
  * Display and text rendering settings.
@@ -712,6 +716,10 @@ export interface DisplayConfig1 {
    * Expression pedal text size.
    */
   expression_text_size?: "small" | "medium" | "large";
+  /**
+   * How a button's screen label shows its off state. 'dim' = dimmed label, 'none' = label always lit (never changes with state), 'invert' = on shows dark text on a filled box, off shows the plain lit label.
+   */
+  label_off_mode?: "dim" | "none" | "invert";
 }
 /**
  * Device-level: let an inbound MIDI Control Change switch the active page (jump/inc/dec). Absent or enabled=false means no inbound CC affects pages.

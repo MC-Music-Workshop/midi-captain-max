@@ -1019,26 +1019,37 @@ def validate_usb_drive_name(name):
     Returns:
         Valid drive name (sanitized) or "MIDICAPTAIN" if invalid
     """
+    return _sanitize_usb_drive_name(name) or "MIDICAPTAIN"
+
+
+def _sanitize_usb_drive_name(name):
+    """FAT label rules applied to `name`; "" when nothing valid is left."""
     if not name or not isinstance(name, str):
-        return "MIDICAPTAIN"
-    
+        return ""
+
     # Convert to uppercase and strip whitespace
     name = name.upper().strip()
-    
+
     # Filter to valid characters (alphanumeric + underscore).
     # Avoid str.isalnum() — not available in CircuitPython 7.x.
     # name is already uppercased, so only A-Z, 0-9, and _ are valid.
     name = "".join(c for c in name if ('A' <= c <= 'Z') or ('0' <= c <= '9') or c == '_')
-    
+
     # Truncate to 11 characters
-    if len(name) > 11:
-        name = name[:11]
-    
-    # Must have at least 1 character
-    if len(name) == 0:
-        return "MIDICAPTAIN"
-    
-    return name
+    return name[:11]
+
+
+def get_explicit_usb_drive_name(cfg):
+    """The drive name boot.py should write to the FAT label, or None.
+
+    None means "leave the drive's label alone": no `usb_drive_name` in the
+    config, a value with no valid characters left, or no config at all.
+    Never falls back to "MIDICAPTAIN" — a missing or broken setting must not
+    rename a drive the user named some other way (e.g. in Finder).
+    """
+    if not isinstance(cfg, dict):
+        return None
+    return _sanitize_usb_drive_name(cfg.get("usb_drive_name")) or None
 
 
 def get_usb_drive_name(cfg):

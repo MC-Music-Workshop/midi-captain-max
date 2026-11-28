@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../firmware/dev"))
 from core.config import (
     validate_usb_drive_name,
     get_usb_drive_name,
+    get_explicit_usb_drive_name,
     get_dev_mode,
     get_midi_thru_usb_to_din,
     get_midi_thru_din_to_usb,
@@ -95,6 +96,48 @@ def test_get_usb_drive_name_validation():
     
     cfg = {"usb_drive_name": "MY-DEVICE!@#"}
     assert get_usb_drive_name(cfg) == "MYDEVICE"
+
+
+# ── get_explicit_usb_drive_name: what boot.py writes to the FAT label ─────────
+# None = leave the label alone. Unlike get_usb_drive_name there is no
+# MIDICAPTAIN fallback: a missing or broken setting must not rename a drive.
+
+def test_explicit_drive_name_none_when_not_set():
+    assert get_explicit_usb_drive_name({}) is None
+    assert get_explicit_usb_drive_name({"usb_drive_name": None}) is None
+    assert get_explicit_usb_drive_name({"usb_drive_name": ""}) is None
+    assert get_explicit_usb_drive_name({"usb_drive_name": "   "}) is None
+
+
+def test_explicit_drive_name_none_when_nothing_valid_left():
+    assert get_explicit_usb_drive_name({"usb_drive_name": "!!!"}) is None
+    assert get_explicit_usb_drive_name({"usb_drive_name": "-- --"}) is None
+
+
+def test_explicit_drive_name_none_for_non_string_or_missing_config():
+    assert get_explicit_usb_drive_name({"usb_drive_name": 123}) is None
+    assert get_explicit_usb_drive_name({"usb_drive_name": ["A"]}) is None
+    assert get_explicit_usb_drive_name(None) is None
+    assert get_explicit_usb_drive_name("not a dict") is None
+
+
+def test_explicit_drive_name_sanitized_like_get_usb_drive_name():
+    assert get_explicit_usb_drive_name({"usb_drive_name": "My Board"}) == "MYBOARD"
+    assert get_explicit_usb_drive_name({"usb_drive_name": "verylongdevicename"}) == "VERYLONGDEV"
+    assert get_explicit_usb_drive_name({"usb_drive_name": "MY-DEVICE!@#"}) == "MYDEVICE"
+    assert get_explicit_usb_drive_name({"usb_drive_name": "stage_l"}) == "STAGE_L"
+
+
+def test_explicit_drive_name_midicaptain_only_when_asked_for():
+    """An explicit MIDICAPTAIN is a real request; it's never a fallback."""
+    assert get_explicit_usb_drive_name({"usb_drive_name": "midicaptain"}) == "MIDICAPTAIN"
+    assert get_explicit_usb_drive_name({"usb_drive_name": "@@@"}) is None
+
+
+def test_explicit_drive_name_agrees_with_get_usb_drive_name_when_valid():
+    for raw in ("A", "abc_123", "My Board", "x" * 20, "CIRCUITPY"):
+        cfg = {"usb_drive_name": raw}
+        assert get_explicit_usb_drive_name(cfg) == get_usb_drive_name(cfg)
 
 
 # ── dev_mode tests ────────────────────────────────────────────────────────────

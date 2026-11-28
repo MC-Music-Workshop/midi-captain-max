@@ -18,6 +18,14 @@ USB DRIVE — two modes, controlled by config.json:
     Drive always mounts on boot — no switch needed.
     Convenient when iterating on firmware locally.
 
+  Editor rename (NVM byte 1): when a save changes the drive name, the config
+    editor sets microcontroller.nvm[1] = 1 and hard-resets. That one boot
+    shows the drive whatever the mode, so the renamed drive comes back.
+
+DRIVE NAME: when the drive is shown and config.json sets usb_drive_name,
+the FAT volume label is rewritten to match (only if it differs). With no
+usb_drive_name, or an unreadable config.json, the label is left alone.
+
 To reload after config/code changes:
 - Send Ctrl+D over serial console (re-runs code.py only; settings read here,
   such as dev_mode, need a power cycle)
@@ -46,17 +54,17 @@ supervisor.disable_autoreload()
 # Load config settings needed at boot time (drive name, dev mode, HID set).
 # boot.py runs before normal module search paths are established,
 # so we add /core to sys.path explicitly.
-usb_drive_name = "MIDICAPTAIN"  # Default fallback
+usb_drive_name = None           # Default: leave the drive label alone
 dev_mode = False                # Default: performance mode
 hid_enabled = False             # Default: keep CircuitPython's HID set (kbd + mouse + consumer)
 try:
     import sys
     sys.path.insert(0, "/core")
-    from config import load_config, get_usb_drive_name, get_dev_mode
+    from config import load_config, get_explicit_usb_drive_name, get_dev_mode
 
     cfg = load_config("/config.json")
     dev_mode = get_dev_mode(cfg)
-    usb_drive_name = get_usb_drive_name(cfg)
+    usb_drive_name = get_explicit_usb_drive_name(cfg)
 
     # CircuitPython 7.x on the RP2040 turns on keyboard, mouse and consumer
     # control HID by default, so HID works whatever this finds. When a button
@@ -141,7 +149,19 @@ switch_1.pull = digitalio.Pull.UP
 time.sleep(0.05)  # Allow pull-up to stabilize before reading
 
 switch_held = not switch_1.value          # True when switch is pressed
-enable_usb_drive = dev_mode or switch_held  # dev_mode overrides switch gate
+
+# One-shot request from the config editor (rename + hard reset). Read and
+# cleared on every boot, before the `or` below can short-circuit past it: a
+# flag left set in dev mode would otherwise show the drive on some later
+# performance-mode boot.
+editor_keep_drive = False
+try:
+    from boot_util import consume_keep_drive_flag, apply_drive_label
+    editor_keep_drive = consume_keep_drive_flag(microcontroller.nvm)
+except Exception as e:
+    print(f"⚠️  boot_util unavailable: {e}")
+
+enable_usb_drive = dev_mode or switch_held or editor_keep_drive
 
 
 # CRITICAL: disable_usb_drive() must be called BEFORE any USB initialization.
@@ -155,23 +175,32 @@ if not enable_usb_drive:
     except Exception as e:
         print(f"⚠️  USB disable failed: {e}")
 
-# If USB is enabled, apply the custom drive label.
-# This runs AFTER the disable check so USB only initializes when needed.
+# If USB is enabled, apply the configured drive label.
+# This runs AFTER the disable check so USB only initializes when needed. A
+# hidden drive doesn't need a label; a new name is written the next time the
+# drive is shown.
 if enable_usb_drive:
-    mode_label = "DEV MODE" if dev_mode else "switch held"
-    print(f"🔓 USB DRIVE ENABLED as '{usb_drive_name}' ({mode_label})")
-    if not dev_mode:
-        print("   Release switch and reboot to hide drive")
+    if dev_mode:
+        mode_label = "DEV MODE"
+    elif editor_keep_drive:
+        mode_label = "editor restart"
+    else:
+        mode_label = "switch held"
+    # CP 7.x has no storage.remount(label=...) (that call always raised
+    # TypeError, so the drive was never renamed); set VfsFat.label instead.
+    # apply_drive_label always hands write access back to the USB host.
     try:
-        # readonly=True: CircuitPython is read-only, USB host has write access
-        # (needed for config editor to save files to the device)
-        storage.remount("/", readonly=True, label=usb_drive_name)
-    except TypeError:
-        # CircuitPython 7.x doesn't support label=; skip remount so the USB
-        # host retains default write access
-        pass
+        if apply_drive_label(storage, usb_drive_name):
+            print(f"🏷️  Drive renamed to '{usb_drive_name}'")
     except Exception as e:
         print(f"⚠️  Drive label warning: {e}")
+    try:
+        _label = storage.getmount("/").label
+    except Exception:
+        _label = "?"
+    print(f"🔓 USB DRIVE ENABLED as '{_label}' ({mode_label})")
+    if not (dev_mode or editor_keep_drive):
+        print("   Release switch and reboot to hide drive")
 
 # Clean up - switch will be available again in code.py
 switch_1.deinit()

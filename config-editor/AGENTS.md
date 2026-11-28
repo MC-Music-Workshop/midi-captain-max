@@ -28,7 +28,8 @@ The config editor is a desktop app built with **SvelteKit 5 + Tauri 2 (Rust back
 | `src/lib/components/DisplaySection.svelte` | Display text size settings |
 | `src-tauri/src/config.rs` | Rust config structs + validation; must mirror `config.schema.json` |
 | `src-tauri/src/commands.rs` | Tauri commands: read/write/validate config, restart device, path security |
-| `src-tauri/src/device.rs` | USB device detection and watcher (cross-platform) |
+| `src-tauri/src/device.rs` | USB device detection and watcher: polls mounted volumes every 2 s on every platform (`MountTracker`); `device-disconnected` carries the volume path |
+| `src/lib/driveName.ts` | USB Drive Name rule shared with the firmware: when a restart must be a rename restart (see "USB Drive Name: Rename Restart") |
 | `src-tauri/src/installer.rs` | Firmware installer (mirrors `deploy.sh` copy order) |
 | `src-tauri/src/updates.rs` | In-app editor updates (#18): `check_for_update` / `install_update` over `tauri-plugin-updater`; feed, channel and signing pipeline in [`.github/AGENTS.md`](../.github/AGENTS.md) "In-app updates" |
 | `src-tauri/src/config_files.rs` | Whole-config file IO with no device: open/save/default config, device type probe (#36) |
@@ -175,7 +176,7 @@ The config editor is held to **0 svelte-check warnings**. When adding form contr
 
 ## Serial Soft-Reboot
 
-`restart_device` sends Ctrl-C (`0x03`) + Ctrl-D (`0x04`) over serial to trigger a CircuitPython soft reload. The USB drive stays mounted — no eject or power cycle needed.
+`restart_device` sends Ctrl-C (`0x03`) + Ctrl-D (`0x04`) over serial to trigger a CircuitPython soft reload. The USB drive stays mounted — no eject or power cycle needed. A soft reload doesn't run `boot.py`, so a changed USB Drive Name goes through `restart_device_with_rename` instead (see "USB Drive Name: Rename Restart").
 
 - **Port discovery**: Filters by Adafruit VID (`0x239A`). Requires exactly one Adafruit device connected.
 - **macOS cu.*/tty.* deduplication**: Each USB serial device appears as both `/dev/cu.*` and `/dev/tty.*`. Code deduplicates by preferring `cu.*` (doesn't block waiting for carrier detect).
@@ -205,6 +206,14 @@ Mirrors `deploy.sh`'s copy order. Key rules:
 
 `+page.svelte` reads `get_firmware_versions` for the selected, connected device (on selection, after every Save to Device, after an install) and `firmwareSync.ts` classifies the pair: `older` and `unmanaged` (no `VERSION.txt`) show the banner; `newer` (dev deploys) and `unknown` (unparseable, e.g. `dev`) stay quiet so the dev workflow isn't nagged. Versions compare as `vX.Y.Z[-alpha|beta|rc.N][-N-gSHA]` with `git describe` commits ranking after their tag. The banner's **Update Firmware** calls `FirmwareInstaller`'s exported `install()` through `bind:this`, so it reuses the panel's whole flow (unsaved-changes prompt, progress, #132/#186 CTAs) instead of a second install path. Dismiss is keyed on device path + both versions, for the session only.
 
+## Device Watcher (`device.rs`)
+
+One polling loop on every platform: every `POLL_INTERVAL` (2 s) it lists the mounted volumes (`list_mounts`: drive letters on Windows, `get_volumes_path()` entries elsewhere) and `MountTracker::poll` diffs them into events. macOS/Linux used `notify` filesystem events on the volumes folder until #41; that checked a new volume once, at mount time, and a custom-named drive is only recognized by reading its config.json, which often isn't readable for the first second or two, so the device never appeared until the app restarted.
+
+- **Identity is (path, name).** A drive that returns at the same path under a new name (a Windows letter after a rename) is disconnect + connect, same as the new mount point on macOS. Disconnects are emitted before connects.
+- **Unrecognized new volumes get `MATCH_RETRIES` (5) checks**, then are ignored until they unmount, so other drives aren't re-read every poll (and sleeping external disks aren't woken).
+- **The first poll reports devices `scan_devices` already returned**; the frontend's path dedupe drops them.
+
 ## Device Snapshots Go Stale (`+page.svelte`, `device.rs`)
 
 `DetectedDevice` is a point-in-time snapshot: `has_config` is a one-shot `exists()` at scan time (`device.rs`). A device re-detected mid-mount — which happens routinely during the post-install soft reboot — can freeze `has_config: false` into the selected-device store for the rest of the session.
@@ -219,6 +228,15 @@ Ctrl-C + Ctrl-D on the CDC console. Both the Restart Device button and Save & Re
 - **Hold the port open until the device acknowledges the reload.** CircuitPython only drains its console FIFO while the USB CDC line is connected — on the host side, while the port is open. Close it with the Ctrl-D still unread and the device stays halted at `Press any key to enter the REPL` with the reload byte stuck in the buffer, indefinitely. Nothing on the device recovers it; the next thing to *open* the port does, which makes the bug invisible to any test harness that reconnects to watch the console. Bench-measured on a ONE1: the old fixed `500 ms` / `100 ms` sleeps parked the device 5/5 times when a config write preceded the restart, 0/8 once both waits keyed off the device's own output (`Code done running` / `Press any key` / `>>>`, then `soft reboot` / `code.py output:`).
 - **A host write to CIRCUITPY slows the shutdown.** `write_config_raw` + `sync_all` takes ~3.6 s on a USB MSC volume, and code.py's unwind right after it runs well past a fixed half-second wait. That is why Save & Restart exposed this and the standalone Restart button mostly didn't.
 - **`Ctrl-C` on an already-halted device lands in the REPL, not the prompt.** The waiting supervisor consumes it as the "press any key" keypress, so the reboot path must accept `>>>` as "code.py has stopped". Ctrl-D reboots from there just the same.
+
+## USB Drive Name: Rename Restart (`restart_device_with_rename`, `driveName.ts`)
+
+`boot.py` writes the drive's FAT label, and only a hard reset runs `boot.py`. So `doRestartDevice` (Restart Device, and Save & Restart through it) reads the **device's** `config.json` (not the form, which may be a file or have unsaved edits) and asks `driveRenameTarget(config, device.name)` whether the label needs to change. If not, it soft-reboots as before. If so:
+
+- **`restart_device_with_rename`** opens the serial port first (no port → error with the drive still mounted), ejects the volume best-effort (config.json was already fsynced; the eject only stops the OS's "not ejected properly" warning), then Ctrl-C, CRLF, and one line: `import microcontroller; microcontroller.nvm[1] = 1; microcontroller.reset()`. Flag and reset share a line so the flag can't be left set without the reset (it shows the drive on one boot; see firmware/AGENTS.md "USB Drive Behaviour"). It holds the port until reads fail (device gone) or 3 s pass. `async` + `spawn_blocking`, like the installer.
+- **`+page.svelte` `renaming` state.** Set before the command, so the drive's disconnect shows "Restarting as NAME…" instead of "Device disconnected". The drive that comes back with `volumeLabel(name) === renaming.to` is the same device (`finishRename`): it becomes the selected device and, if it was what you're working on, the working-on device, reloaded unless there are unsaved edits. Normal reconnects still match by **name** (#36 tables); the rename is the one case where the name changes on purpose. After 20 s a dialog says how to bring the drive back by hand; `renaming` stays set so a late return is still recognized.
+- **The rule matches the firmware.** `explicitUsbDriveName` mirrors `get_explicit_usb_drive_name` in `firmware/dev/core/config.py`: rename only when `usb_drive_name` is set and something valid is left after sanitizing. `tests/fixtures/usb-drive-names.json` is checked by `driveName.test.ts` and `tests/test_usb_drive_name.py`. `volumeLabel` drops the ` 1` macOS appends to a second volume with the same name (FAT labels can't contain spaces), so that suffix doesn't trigger a rename on every save.
+- **`validate_device_path` doesn't compare the config's `usb_drive_name` with the volume name.** It used to, which locked every command out of a custom-named drive between saving a new name and the restart that applies it. A volume with a MIDI Captain config.json is accepted whatever it's called, the same rule as detection.
 
 ## Reflash CircuitPython / Bootloader Entry (`enter_bootloader`, `ReflashCircuitPython.svelte`)
 

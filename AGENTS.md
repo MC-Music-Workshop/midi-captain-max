@@ -74,6 +74,7 @@ New code belongs in `firmware/dev/` or new directories (never in `original_helmu
 | `firmware/dev/code.py` | Unified firmware: config, display, bidirectional MIDI |
 | `firmware/dev/boot.py` | Disables autoreload; USB drive gating; custom drive label |
 | `firmware/dev/core/config.py` | Config loading, `get_usb_drive_name()`, `validate_usb_drive_name()`, `get_dev_mode()` |
+| `firmware/dev/core/boot_util.py` | `boot.py` helpers: `apply_drive_label()` (writes the FAT label when `usb_drive_name` is set), `consume_keep_drive_flag()` (the editor's one-shot NVM byte 1) |
 | `firmware/dev/core/hid.py` | HID dispatch: `KEY_TABLE`, `MODIFIER_TABLE`, `dispatch_hid()` |
 | `firmware/dev/core/button.py` | `ButtonState`: toggle/momentary mode, keytimes cycling |
 | `firmware/dev/core/colors.py` | Color palette and `get_off_color()` |

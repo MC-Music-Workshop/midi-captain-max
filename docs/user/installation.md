@@ -65,7 +65,7 @@ After updating the app, connect your pedal: if its firmware is now older than th
 ## Updating an Existing MIDI Captain MAX Install
 
 1. Connect your MIDI Captain via USB and power it on.
-   - The device may mount as `CIRCUITPY` or `MIDICAPTAIN`.
+   - The device may mount as `CIRCUITPY`, `MIDICAPTAIN`, or the name you gave it in the Config Editor's **USB Drive Name** field.
    - If no drive appears, hold switch 1 / KEY0 while plugging in USB.
 2. Install and open the MIDI Captain MAX Config Editor.
 3. Scroll to the **Firmware Installation** section at the bottom of the app window.

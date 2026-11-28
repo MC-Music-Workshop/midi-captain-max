@@ -81,12 +81,12 @@ Connect your device, edit buttons, and save — the editor writes `config.json` 
 
 ### Custom USB Drive Name
 
-If you own multiple MIDI Captains, it gets confusing which one is which when they're all named MIDICAPTAIN. Give each one a unique drive name in two steps — both are needed:
+If you own multiple MIDI Captains, it gets confusing which one is which when they're all named MIDICAPTAIN. Give each one its own drive name in the Config Editor:
 
-1. **Rename the drive** in Finder (macOS) or File Explorer (Windows), just like renaming a USB stick. FAT volume labels allow up to 11 characters (letters, numbers, and underscores; stored as uppercase), and the name persists across power cycles.
-2. **Enter the same name in the Config Editor's USB Drive Name field** and save.
+1. Enter a name in the **USB Drive Name** field (up to 11 letters, numbers and underscores; shown in uppercase).
+2. Click **Save to Device & Restart** (or **Save to Device**, then **Restart Device**).
 
-The field tells the tooling what the drive is called: the deploy script uses it to find a custom-named drive, and the Config Editor requires it to match the actual volume name when it's set. It can't rename the drive itself yet.
+The drive disappears for a few seconds and comes back under the new name, and the editor picks it up again. The name is stored on the drive, so it stays across power cycles. Leave the field blank to keep the drive's current name; clearing it doesn't rename the drive back. The pedal needs firmware from the same release as the editor: older firmware never renamed the drive.
 
 ### Keytimes (Multi-State Cycling + Short/Long Press)
 

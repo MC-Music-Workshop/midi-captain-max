@@ -151,7 +151,7 @@ When adding a new device, update ALL of these (copy-paste between variants is th
 3. `firmware/dev/code.py` — device detection allow-list + module import block
 4. `firmware/dev/boot.py` — boot switch pin if different from GP1
 5. `config-editor/src-tauri/src/config.rs` — `DeviceType` enum + button count match + validation
-6. `config-editor/src-tauri/src/device.rs` — `is_midi_captain_config` + `parse_midi_captain_config` match arms
+6. `config-editor/src-tauri/src/device.rs` — `is_midi_captain_config` (goes through `DeviceType::from_name`, so step 5 covers it; add a test)
 7. `config-editor/src/lib/types.ts` — `DeviceType` union
 8. `config-editor/src/lib/formStore.ts` — all 4 device maps
 9. `config-editor/src/lib/validation.ts` — device-specific constraints
@@ -355,7 +355,7 @@ USB HID (keyboard + mouse) via the `"hid"` message type:
 ### Config Loading (`firmware/dev/core/config.py`)
 
 - `get_display_config(config)` — returns display settings with defaults (`"medium"` for all sizes)
-- `get_usb_drive_name(config)` — validated USB volume label; defaults to `"MIDICAPTAIN"`
+- `get_usb_drive_name(config)` — validated USB volume label; defaults to `"MIDICAPTAIN"`. For display only: `boot.py` writes the label from `get_explicit_usb_drive_name(config)`, which returns `None` (leave the label alone) instead of a default
 - `get_dev_mode(config)` — `bool(config.get("dev_mode", False))`, always safe to call
 - `validate_usb_drive_name(name)` — enforces FAT32 label rules: uppercase, alphanumeric + underscore, max 11 chars
 - `STATE_OVERRIDE_FIELDS` — fields that can be overridden per keytime state (see source for full list)
@@ -368,16 +368,23 @@ USB HID (keyboard + mouse) via the `"hid"` message type:
 ```python
 dev_mode    = get_dev_mode(cfg)
 switch_held = not switch_1.value   # GP1, pull-up: LOW = pressed
-enable_usb_drive = dev_mode or switch_held
+editor_keep_drive = consume_keep_drive_flag(microcontroller.nvm)   # always, before the `or`
+enable_usb_drive = dev_mode or switch_held or editor_keep_drive
 
 if not enable_usb_drive:
     storage.disable_usb_drive()    # MUST be first
 
 if enable_usb_drive:
-    storage.remount("/", readonly=False, label=usb_drive_name)
+    apply_drive_label(storage, usb_drive_name)   # core/boot_util.py
 ```
 
 Two separate `if` blocks (not `if/else`) make the ordering constraint explicit — `disable` always appears above `remount`.
+
+**Drive label (#41).** CP 7.x has no `storage.remount(label=...)`; that call raised `TypeError`, which `boot.py` swallowed, so the drive was never renamed. `apply_drive_label` sets `storage.getmount("/").label` instead: remount read-write (CircuitPython can write, the USB host can't), set the label, and remount read-only in a `finally` so the host always gets write access back. It writes only when the label differs, so a normal boot never touches flash, and it never raises. The label lives in the FAT filesystem and survives resets, power cycles and CircuitPython reflashes that keep the filesystem.
+
+**Only an explicit name renames.** `boot.py` uses `get_explicit_usb_drive_name(cfg)`, not `get_usb_drive_name`: `None` (no `usb_drive_name`, nothing valid left after sanitizing, or no readable config) leaves the label alone. Falling back to `MIDICAPTAIN` would rename every `CIRCUITPY` drive on upgrade, rename drives the user named in Finder, and rename a drive whose config.json is broken. The editor's `driveName.ts` mirrors the rule; `tests/fixtures/usb-drive-names.json` holds the shared cases.
+
+**NVM byte 1: one-shot "show the drive".** The config editor sets `microcontroller.nvm[1] = 1` in the same REPL line as `microcontroller.reset()` when a save changes the drive name (`restart_device_with_rename`), so the renamed drive comes back without holding switch 1. `consume_keep_drive_flag` reads and clears it on **every** boot, before `dev_mode or switch_held` can short-circuit past it; a flag left set would show the drive on some later performance-mode power-on. It writes NVM only when the flag is set (each NVM write erases a flash sector). Byte 0 is the boot-in-progress flag (see CP 7.x Syntax Restrictions).
 
 `boot.py` manually inserts `/core` via `sys.path.insert(0, "/core")` to import `config.py`. If config loading fails, a bare `except Exception` swallows it and safe defaults are used.
 
@@ -413,8 +420,10 @@ When changing `boot.py`, `usb_drive_name`, or `dev_mode`, verify on physical har
 2. **Update mode**: hold Switch 1 while powering on → drive mounts with configured name
 3. **Dev mode** (`dev_mode: true`): drive always mounts on boot without switch press
 4. **Custom name**: set `usb_drive_name`, power-cycle with Switch 1 → drive appears with that name
-5. **Validation**: lowercase, special chars, >11 chars → verify auto-correction or fallback to `"MIDICAPTAIN"`
-6. **Config failure**: corrupt `config.json` → device still boots, falls back to `"MIDICAPTAIN"`
+5. **Validation**: lowercase, special chars, >11 chars → verify auto-correction; a name with nothing valid left (`"!!!"`) leaves the label unchanged
+6. **Config failure**: corrupt `config.json` → device still boots, drive label unchanged, drive still writable from the computer
+7. **No name set**: remove `usb_drive_name` from a drive named in Finder → name unchanged after power-cycling with Switch 1
+8. **Editor rename**: change USB Drive Name in the editor, Save to Device & Restart in performance mode → drive comes back under the new name without holding Switch 1, and is hidden again on the next plain power-on
 
 ### Desktop Tests (pytest)
 - `tests/` with CircuitPython hardware mocks in `tests/mocks/`

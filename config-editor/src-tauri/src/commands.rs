@@ -346,54 +346,93 @@ pub fn validate_config(json: String) -> Result<(), ConfigError> {
 /// Adafruit USB Vendor ID — all MIDI Captain devices use Adafruit CircuitPython boards
 const ADAFRUIT_VID: u16 = 0x239A;
 
-/// Find a CircuitPython serial port by looking for Adafruit VID.
+/// Pull the chip ID out of `boot_out.txt`: the `UID:` line, which our
+/// `boot.py` prints (CircuitPython 8+ also writes it itself). CircuitPython
+/// uses the same ID, as uppercase hex, for the USB serial number.
+fn parse_boot_out_uid(boot_out: &str) -> Option<String> {
+    boot_out
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("UID:"))
+        .map(|uid| uid.trim().to_ascii_uppercase())
+        .filter(|uid| !uid.is_empty())
+}
+
+/// The chip ID of the device at `path` (its drive root, or a file on it such
+/// as `config.json`). `None` when `boot_out.txt` has no `UID:` line: firmware
+/// from before the line was added, or not power-cycled since installing it.
+fn read_device_uid(path: &Path) -> Option<String> {
+    let root = if path.is_dir() { path } else { path.parent()? };
+    parse_boot_out_uid(&fs::read_to_string(root.join("boot_out.txt")).ok()?)
+}
+
+/// Pick this device's port from the Adafruit-VID candidates, given as
+/// `(port name, USB serial number)`.
 ///
-/// On macOS each USB serial device appears as both `/dev/cu.*` and `/dev/tty.*`.
-/// We deduplicate by USB serial number and prefer `cu.*` (doesn't block on open).
-fn find_device_serial_port(_device_path: &Path) -> Result<String, ConfigError> {
+/// With the device's `uid`, a port whose serial number matches is the one.
+/// A port that reports a *different* serial number is another board and is
+/// never picked. Only ports that report none fall back to the old rule:
+/// exactly one candidate, or refuse rather than restart the wrong board.
+///
+/// On macOS each USB serial device appears as both `/dev/cu.*` and
+/// `/dev/tty.*`; keep `cu.*` (call-up port, doesn't block on carrier detect).
+fn pick_device_port(
+    candidates: &[(String, Option<String>)],
+    uid: Option<&str>,
+) -> Result<String, ConfigError> {
+    let mut ports: Vec<&(String, Option<String>)> = match uid {
+        Some(uid) => {
+            let matched: Vec<_> = candidates
+                .iter()
+                .filter(|(_, sn)| sn.as_deref().is_some_and(|sn| sn.eq_ignore_ascii_case(uid)))
+                .collect();
+            if matched.is_empty() {
+                candidates.iter().filter(|(_, sn)| sn.is_none()).collect()
+            } else {
+                matched
+            }
+        }
+        None => candidates.iter().collect(),
+    };
+
+    if ports.iter().any(|(name, _)| name.contains("/cu.")) {
+        ports.retain(|(name, _)| !name.contains("/tty."));
+    }
+
+    match ports.len() {
+        0 => Err(ConfigError {
+            message: "No serial port found for this device. Is it connected?".to_string(),
+            details: None,
+        }),
+        1 => Ok(ports[0].0.clone()),
+        n => Err(ConfigError {
+            message: format!(
+                "Found {} CircuitPython devices and can't tell which one this is. \
+                 Update its firmware and power-cycle it, or disconnect the others.",
+                n
+            ),
+            details: None,
+        }),
+    }
+}
+
+/// Find the serial port of the device at `device_path`.
+fn find_device_serial_port(device_path: &Path) -> Result<String, ConfigError> {
     let ports = serialport::available_ports().map_err(|e| ConfigError {
         message: format!("Failed to enumerate serial ports: {}", e),
         details: None,
     })?;
 
-    // Filter to Adafruit VID ports, preferring cu.* over tty.* on macOS
-    let mut adafruit_ports: Vec<_> = ports
-        .iter()
-        .filter(|p| {
-            matches!(
-                &p.port_type,
-                serialport::SerialPortType::UsbPort(info) if info.vid == ADAFRUIT_VID
-            )
+    let candidates: Vec<(String, Option<String>)> = ports
+        .into_iter()
+        .filter_map(|p| match p.port_type {
+            serialport::SerialPortType::UsbPort(info) if info.vid == ADAFRUIT_VID => {
+                Some((p.port_name, info.serial_number))
+            }
+            _ => None,
         })
         .collect();
 
-    // On macOS, cu.* and tty.* are the same physical device — deduplicate.
-    // Keep cu.* (call-up port, doesn't block waiting for carrier detect).
-    if adafruit_ports.len() > 1 {
-        let has_cu = adafruit_ports.iter().any(|p| p.port_name.contains("/cu."));
-        if has_cu {
-            adafruit_ports.retain(|p| p.port_name.contains("/cu."));
-        }
-    }
-
-    match adafruit_ports.len() {
-        0 => Err(ConfigError {
-            message: "No CircuitPython serial port found. Is the device connected?".to_string(),
-            details: None,
-        }),
-        1 => Ok(adafruit_ports[0].port_name.clone()),
-        _ => {
-            // Multiple distinct Adafruit devices.
-            // Future: correlate by USB serial number.
-            Err(ConfigError {
-                message: format!(
-                    "Found {} CircuitPython devices. Disconnect other devices and try again.",
-                    adafruit_ports.len()
-                ),
-                details: None,
-            })
-        }
-    }
+    pick_device_port(&candidates, read_device_uid(device_path).as_deref())
 }
 
 fn open_device_serial(path: &Path) -> Result<Box<dyn serialport::SerialPort>, ConfigError> {
@@ -841,6 +880,60 @@ fn eject_volume(volume_path: &Path) -> Result<(), ConfigError> {
 #[cfg(all(test, not(target_os = "windows")))]
 mod tests {
     use super::*;
+
+    fn port(name: &str, sn: Option<&str>) -> (String, Option<String>) {
+        (name.to_string(), sn.map(str::to_string))
+    }
+
+    #[test]
+    fn boot_out_uid_from_boot_py_line() {
+        let text = "Adafruit CircuitPython 7.3.1 on 2022-06-22; Raspberry Pi Pico with rp2040\r\n\
+                    Board ID:raspberry_pi_pico\r\nUID:e6614c311b7a8b2f\r\n🔒 USB drive disabled\r\n";
+        assert_eq!(parse_boot_out_uid(text).as_deref(), Some("E6614C311B7A8B2F"));
+        assert_eq!(parse_boot_out_uid("Board ID:raspberry_pi_pico\n"), None);
+        assert_eq!(parse_boot_out_uid("UID:\n"), None);
+    }
+
+    #[test]
+    fn device_uid_from_root_or_config_path() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("boot_out.txt"), "Board ID:x\nUID:ABC123\n").unwrap();
+        let config = dir.path().join("config.json");
+        std::fs::write(&config, "{}").unwrap();
+        assert_eq!(read_device_uid(dir.path()).as_deref(), Some("ABC123"));
+        assert_eq!(read_device_uid(&config).as_deref(), Some("ABC123"));
+    }
+
+    #[test]
+    fn picks_port_matching_uid_among_several() {
+        let ports = [
+            port("/dev/tty.usbmodem1101", Some("AAAA")),
+            port("/dev/cu.usbmodem1101", Some("AAAA")),
+            port("/dev/tty.usbmodem1201", Some("BBBB")),
+            port("/dev/cu.usbmodem1201", Some("BBBB")),
+        ];
+        assert_eq!(pick_device_port(&ports, Some("bbbb")).unwrap(), "/dev/cu.usbmodem1201");
+    }
+
+    #[test]
+    fn never_picks_a_port_with_a_different_serial_number() {
+        let ports = [port("COM5", Some("AAAA"))];
+        assert!(pick_device_port(&ports, Some("BBBB")).is_err());
+    }
+
+    #[test]
+    fn without_uid_keeps_single_device_rule() {
+        let one = [port("/dev/tty.usbmodem1101", Some("AAAA")), port("/dev/cu.usbmodem1101", Some("AAAA"))];
+        assert_eq!(pick_device_port(&one, None).unwrap(), "/dev/cu.usbmodem1101");
+        let two = [port("COM5", Some("AAAA")), port("COM6", Some("BBBB"))];
+        assert!(pick_device_port(&two, None).is_err());
+    }
+
+    #[test]
+    fn uid_known_but_ports_report_no_serial_falls_back_to_single_device_rule() {
+        assert_eq!(pick_device_port(&[port("COM5", None)], Some("AAAA")).unwrap(), "COM5");
+        assert!(pick_device_port(&[port("COM5", None), port("COM6", None)], Some("AAAA")).is_err());
+    }
 
     #[test]
     fn macos_volume_name_and_path() {

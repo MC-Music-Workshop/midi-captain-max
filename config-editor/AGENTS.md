@@ -177,7 +177,7 @@ The config editor is held to **0 svelte-check warnings**. When adding form contr
 
 `restart_device` sends Ctrl-C (`0x03`) + Ctrl-D (`0x04`) over serial to trigger a CircuitPython soft reload. The USB drive stays mounted — no eject or power cycle needed.
 
-- **Port discovery**: Filters by Adafruit VID (`0x239A`). Requires exactly one Adafruit device connected.
+- **Port discovery** (`find_device_serial_port`): Filters by Adafruit VID (`0x239A`), then matches the port's USB serial number to the chip ID on the `UID:` line of the device's `boot_out.txt`. That's how several connected pedals are told apart. `boot.py` prints the line because CircuitPython 7.x doesn't write it, and `boot.py` output lands in `boot_out.txt`. A port reporting a different serial number is never picked. With no `UID:` line (older firmware, or not power-cycled since the update: `boot.py` runs only on a hard reset), it falls back to "exactly one Adafruit device or refuse".
 - **macOS cu.*/tty.* deduplication**: Each USB serial device appears as both `/dev/cu.*` and `/dev/tty.*`. Code deduplicates by preferring `cu.*` (doesn't block waiting for carrier detect).
 - **Timing**: 500ms delay between Ctrl-C and Ctrl-D. Verified on macOS; VM USB passthrough adds unreliable latency.
 - **Serial port busy**: If another program has the port open, the open will fail. Frontend shows manual restart instructions as fallback.

@@ -31,6 +31,15 @@ import storage
 import supervisor
 import time
 
+# Chip ID, which CircuitPython also uses as the USB serial number. boot.py's
+# output lands in boot_out.txt, so the Config Editor can match this drive to
+# its serial port when several pedals are connected (CP 8+ writes this line
+# itself; 7.x doesn't).
+try:
+    print("UID:" + "".join("{:02X}".format(b) for b in microcontroller.cpu.uid))
+except Exception:
+    pass
+
 # NVM byte 0 — "boot in progress" flag. Set to 1 here; code.py clears it
 # to 0 once init reaches steady state (just before the main loop). If we
 # read 1 on entry, the previous boot didn't complete — diagnose by
